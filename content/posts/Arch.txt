@@ -1,0 +1,1647 @@
+$$
+\newcommand{\b}{\boldsymbol}
+\newcommand{\t}{\text}
+\newcommand{\bmat}[1]{\begin{bmatrix}#1\end{bmatrix}}
+\newcommand{\ip}[1]{\left\langle#1\right\rangle}
+\newcommand{\c}{\mathcal}
+\newcommand{\E}{\mathop{\mathbb E}\limits}
+\newcommand{\p}{\partial}
+\newcommand{\d}{\mathrm d}
+\newcommand{\cur}[1]{\left\{#1\right\}}
+\newcommand{\H}{\t H}
+\newcommand{\j}{\mathtt j}
+\newcommand{\e}{\mathtt e}
+\newcommand{\vare}{\varepsilon}
+\newcommand{\R}{\mathbb R}
+$$
+
+本文分析如今主流的长文本模型的架构。主要参考 [2503.17407](https://arxiv.org/abs/2503.17407)。
+
+## O. Notation
+
+以下 notation 在全局通用：
+
+- $S$：文本长度。
+- $L$：模型层数。
+- $H$：所有层——包括 attn、变种 attn、FFN 和 MoE——的输入输出维度。
+
+以下 notation 仅适用于 vanilla attn：
+
+- $N_q$：query 头数。
+- $N_{kv}$：kv 头数。$N_q=N_{kv}$ 是标准 MHA；$N_{kv}=1$ 是 MQA；标准等大小分组下，$1<N_{kv}<N_q$ 且 $N_{kv}\mid N_q$ 是 GQA。
+- $d$：单头维度。有 $d=H/N_q$。一般大模型 scale 宽度时都只增加头数，而 $d$ 维持不变。
+
+以下 notation 是指代 vanilla attn 中间变量的通用记号。
+
+- $\b x_i\in\R^H$：attn 输入的第 $i$ 个 token。
+- $\b q_i,\b k_i,\b v_i$：第 $i$ 个 token 的 QKV 向量。如果不使用额外维度作为输入，则默认是同一个 head 的 QKV。
+- $\b A_{i,j}=\ip{\b q_i,\b k_j}$：本文中用 **attn-score** 特指这个裸的、未经 $1/\sqrt d$ 或其它修正的内积结果。
+- $\b Y_{i,:}=\t{softmax}\left(\dfrac{\b A_{i,:}}{\tau\sqrt d}\right)$：本文中用 **attn-distribution** 特指这个关于每个 query 的所有 key 归一化的矩阵；其中的每一项被称作 **attn-prob**。
+- $\b W$：投影矩阵，会通过下标/上标来区分投影的对象。
+
+## I. Overview
+
+长文本方法有两个主要维度：
+
+- 如何存储/维护/读取历史？
+    - **显式**：保存所有 KV，支持精确随机访问。
+    - **稀疏**：只支持 **结构化** 或 **动态选择** 的稀疏访问。
+    - **低维**：保存降维后的 KV。
+    - **压缩**：将历史 KV 压缩为固定大小的 state。
+    - **在线学习**：Test-Time-Training，状态本身可在线更新。
+    - **混合**：少量显式注意力负责高分辨率召回，递归/线性状态负责低成本汇总。
+- 在什么地方动手脚？
+    - **直接改架构**。方法往往是 architecture-specific，不一定能直接利用现成的模型。
+    - **免训练的后处理**。不降低训练成本。
+    - **decode 时的压缩**。不降低训练成本。
+    - **latent 维度压缩**。不意味着 token 维度的压缩。
+    - **分布式计算**。不降低全局计算量。
+
+## II. Positional Embeddings
+
+位置编码主要需解决两个问题：
+
+- 在标准的 context length $S_o$ 下的训练。
+- 外推到目标 context length $S_t$（此时记 **scale factor** $\alpha=S_t/S_o$）时需要作出哪些改变，也即 **外推** (*extrapolation*)。
+
+### I. Vanilla Positional Embeddings
+
+本节考虑有哪些标准的 PosEmb 方案，不考虑外推。
+
+#### I. Absolute Positional Embeddings
+
+这些 PosEmb 与绝对位置相关。
+
+- **Functional Positional Embedding**：用一个与绝对位置相关的函数 $\b f_p$ 刻画。代表是 **Sinusoidal Positional Embedding (SinPE)**，有 $\b f_{p,2i}=\cos(p\cdot10000^{-2i/H}),\b f_{p,2i+1}=\sin(p\cdot10000^{-2i/H})$。
+    仅在 embedding 输入后被启用一次，直接加上去，之后不再使用。
+    RoPE 可以看做是其直系后代。
+- **Learned Positional Embedding**：用一个可学习的参数矩阵 $\b W:\R^{S_o\times H}$，仅在 embedding 输入后被加上去一次。
+    因为缺乏外推能力在 LLM 领域基本被淘汰。对外推能力要求有限的 CV 领域中仍有一定应用。
+- **No Positional Embedding (NoPE)**：不加 PosEmb。双向 attn 中这会导致失去位置信息；但如果有 causal-mask，则会打破完全的置换对称性，使模型可能隐式获得顺序/位置线索，但不等价于显式、稳定地编码任意绝对或相对位置。虽然最初提出时是纯粹作为一个 ablation baseline，但是近期有些模型会选择插入 NoPE 层，与 RoPE 层混合使用。
+
+#### II. Relative Positional Embeddings
+
+这些 PosEmb 只与相对位置有关。
+
+- **T5 式**：不是给 embedding 上加 bias，而是给 attn mat 上 bias；公式是
+    $$
+    \t{Attn}(\b Q,\b K,\b V)=\t{softmax}(\b Q\b K^\top/\sqrt d+\b B)\b V
+    $$
+    其中 $\b B$ 是一个可学习的 stationary 参数矩阵，也即 $\b B_{i,j}$ 只与 $i-j$ 相关。为了有泛化性，采取 **Logarithmic Bucketing**，短距离被精确映射到独立的桶，而长距离则按照对数比例粗略分桶。
+
+    这种 PosEmb 理论上是 head-wise + layer-wise 独立的；实际上为了减少参数量，通常选择 layer-wise 共用 $\b B$。
+
+    一些后继做法如 **FIRE** 认为用桶来建立 bias 是不精确的，转而使用参数化的函数来刻画。
+
+    曾经是红极一时的组件，但如今主流模型基本上都不再使用。
+
+- **ALiBi**：不使用可学习的 $\b B$，而是使用固定的 $\b B=m\cdot(-(i-j))$（默认是 $i\geq j$ 的因果场景），惩罚距离更远的分数。原始 ALiBi 使用按 head 预设且不学习的斜率，并在各层复用相同的 head-wise schedule。理论上具有 head-wise + layer-wise 独立可学习的潜力。
+    曾经也红极一时，被若干主流开源框架内置，但如今也边缘化：主要是因为这个线性 inductive bias 太强了，对 RAG 极其不友好。
+    与 T5 的关系类似上一小节中正弦编码与可学习编码的关系。这些东西其实都可以看做是增加了一个加性 kernel，因此也有后继工作试图替换为更好的 kernel，但未进入主流部署。
+
+- **Rotary Position Embedding (RoPE)**：把 SinPE 中的加法换成乘法（旋转）。用 2D 旋转矩阵
+    $$
+    \b R(\theta)=\bmat{\cos\theta&\sin\theta\\-\sin\theta&\cos\theta}
+    $$
+    堆叠得到 $\b R_p\in\R^{d\times d}$ 的旋转矩阵：有 $\b R_p=\bigoplus_{i=0}^{d/2-1}\b R(p10000^{-2i/d})$。然后有 $\b q_p'=\b R_p\b W_q\b x_p$，$\b k_p'=\b R_p\b W_k\b x_p$。这样算 attn-score 时和差化积可知只保留相对距离项。
+
+    一些变体会仅对一部分通道旋转，被称为 **Partial RoPE**。这对于 **MLA** 格外重要：标准 RoPE 若夹在内容 Q/K 投影之间，会阻碍推理时静态吸收投影矩阵，因此只能对少数维度使用。
+
+    是如今的绝对主流；但其外推能力依赖于具体的变体实现。
+
+#### III. Conclusion
+
+除了上述两种分类以外，还有第三种 **Content-Aware Position Embedding**，会动态根据上下文决定 PosEmb。但是它们比较 toy，没有工业级模型会真的部署它们，所以忽略。
+
+|     方法     |          作用于          | 作用形式 | 参数化 |
+| :----------: | :----------------------: | :------: | :----: |
+|    SinPE     |  first layer; emb-wise   |   加法   |   无   |
+|  可学习 PE   |  first layer; emb-wise   |   加法   |   有   |
+|     NoPE     |            /             |    /     |   无   |
+|      T5      |  all layers; head-wise   |   加法   |   有   |
+|    ALiBi     |  all layers; head-wise   |   加法   |   无   |
+|     RoPE     |  all layers; head-wise   |   乘法   |   无   |
+| Partial RoPE | all-layers; partial head |   乘法   |   无   |
+
+### II. Extrapolation
+
+本节考虑具体的外推方案。
+
+#### I. Position Reorganization
+
+这种外推方案考虑复用一些训练时得到的 PosEmb。
+
+- **T5**：复用体现在桶机制上，同一个桶中的所有间距都是在复用。
+
+- **ReRoPE / SelfExtend**：人为将相对距离限制到不超过或略微超过预训练长度 $S_o$。具体地，标准 RoPE score 可以写作
+    $$
+    A_{m,n}=\b q_m^\top\b R_{m-n}\b k_n
+    $$
+    而这些方法引入一个映射 $f$，并在推理时使用
+    $$
+    A_{m,n}=\b q_m^\top\b R_{f(m-n)}\b k_n
+    $$
+    分为几种模式：
+
+    - **Truncated ReRoPE**：$f(x)=\min(x,S_o-1)$（0-indexed），强制截断。代价是完全失去了超过上限距离时的区分度。
+    - **Leaky ReRoPE**：取一个阈值 $w$，并用 $f(x)=\min(x,w)+\dfrac{\max(0,x-w)}s$，其中 $s$ 是一个较大的缩放因子。仍然保留少量区分度；有可能出现 $f(x)>S_o$ 的场合，但因为超过幅度不大，一般认为可以稳定外推。
+    - **SelfExtend**：使用离散化分组方案 $f(x)=\min(x,w)+\left\lfloor\dfrac{\max(0,x-w)}G\right\rfloor$。
+
+    两种 ReRoPE 方法对 $f$ 的引入破坏了可分解性，需要修改 attn 算子，且与 flash-attn 不兼容；而 SelfExtend 可以通过修改给模型提供的 index 或 KV cache 索引 + 修改 attn-mask 并合并实现，不太需要碰核心 attn 算子，整体对已有工程更友好。
+
+以上几种复用方案均属于早期丐版解决方案，现代模型已经不再使用。但它们的优势在于免 tune，可直接 zero-shot 外推。不过，有一些现代化的方法，比如说 Qwen 中使用的 **DCA**：
+
+对于预训练 context length $S_o$，取一个 chunk length $S_c$，一般有 $S_c=\dfrac34S_o$，然后将 $S_t$ 切 chunk。**key 的 PosEmb 总是被设为 chunk 中的相对 index**，然后将 attn 分为三类：
+
+- **intra-chunk attn**：同一个 chunk 中的 query 的 PosEmb 同样被设为 chunk 中的相对 index，这样块内 attn 完全符合 pretrain 场景。
+- **successive-chunk attn**：下一个 chunk 中的 query 的 PosEmb 被设为 **局部滑动窗口** 结果，令 query 的相对 index 是 $i$，则其 PosEmb 被设为 $\min(S_o-1,i+S_c)$。
+- **inter-chunk attn**：更之后的 chunk 中的 query 的 PosEmb 被设为边界值 $S_o-1$。
+
+这意味着需要特制 attn 算子，具体地，同一个投影后 query 需按三套 position id 形成至多三种 RoPE 版本，然后在访问的时候根据 key 的位置不同，动态路由三者之一。它仍然是一个 training-free 的外推方案，可以直接应用于 pretrained 模型上，而且并不一定需要长文本 tune。
+
+#### II. Position Interpolation
+
+这类方案使用 **内插** (*interpolation*)：复用类方法基本上是在操作相对距离，而内插类方法直接对绝对 index 处理。因为本节有很多详细推理，会分小节处理。
+
+##### I. Linear Position Interpolation
+
+直接对 index 除以 scale factor $\alpha$，也即使用 $\omega_i'=b^{-2i/d}/\alpha$。可以发现，因为最高频信号的频率由 $1$ 降到了 $1/\alpha$，因此代价是对局部高频细节的感知被严重破坏。
+
+##### II. NTK-Aware Interpolation
+
+如果模型陷入 Lazy Training 状态，则其 NTK $\Theta_k(\b x,\b x')=\ip{\nabla_\theta f(\b x;\theta_k),\nabla_\theta f(\b x';\theta_k)}$ 在训练过程中近似冻结为初始化核 $\Theta_0(\b x,\b x')$。而在 MSE 下有
+$$
+\dot\theta_t=-\nabla_\theta L=-\sum\nabla_\theta f(\b x_i,\theta_t)(f(\b x_i,\theta_t)-y_i)
+\\\dot f_t(\b x)=\ip{\nabla_\theta f(\b x,\theta_t),\dot\theta_t}=-\sum\Theta_t(\b x,\b x_i)(f(\b x_i,\theta_t)-y_i)
+\\\b u_t^i:=f(\b x_i,\theta_t)-y_i
+\\\dot{\b u}_t=-\Theta\b u_t
+\\\b u_t=\exp(-\Theta t)\b u_0
+$$
+由 Mercer 定理，可以对 $\Theta$ 特征分解，并推出残差 $\b u_t$ 在 $\Theta$ 的大特征值对应特征向量方向衰减最快。因此结论是模型具有 **spectral bias**，**大特征值方向残差收敛更快**。
+
+如果 NTK 是 stationary 的，则此时可以应用 Bochner 定理，以 Fourier 基作为本征函数，对 **功率谱** 分析。
+
+一些工作表明，NTK 往往具有「低通滤波器」的性质：功率随频率增加而迅速衰减。这意味着低频信号的特征值更大，stationary NTK 的 spectral bias 体现为 **优先学习低频信号**。但这建立在低通滤波的前提下。
+
+------
+
+RoPE 的频率和 kernel 的频率之间存在紧密联系。具体地，考虑单层 attn：
+$$
+\b q_m=\b R_m\b W_q\b x_m
+\\\b k_n=\b R_n\b W_k\b x_n
+\\A_{m,n}=\b x_m^\top\b W_q^\top\b R_{n-m}\b W_k\b x_n
+\\\dfrac{\p A_{m,n}}{\p\b W_q}=(\b R_{n-m}\b W_k\b x_n)\b x_m^\top
+\\\dfrac{\p A_{m,n}}{\p\b W_k}=(\b R_{m-n}\b W_q\b x_m)\b x_n^\top
+\\\Theta((m,n),(m',n'))
+\\=\E_{\b W_k,\b W_q}\left[\ip{\dfrac{\p A_{m,n}}{\p\b W_q},\dfrac{\p A_{m',n'}}{\p\b W_q}}+\ip{\dfrac{\p A_{m,n}}{\p\b W_k},\dfrac{\p A_{m',n'}}{\p\b W_k}}\right]
+\\\Theta_q:=\E_{\b W_k}\left[\t{tr}\Big(((\b R_{n-m}\b W_k\b x_n)\b x_m^\top)^\top(\b R_{n'-m'}\b W_k\b x_{n'})\b x_{m'}^\top\Big)\right]
+\\=\E_{\b W_k}\left[\t{tr}\Big(\b x_m\b x_n^\top\b W_k^\top\b R_{(m-n)+(n'-m')}\b W_k\b x_{n'}\b x_{m'}^\top\Big)\right]
+$$
+然后套若干次 $\t{tr}(AB^\top)=\t{tr}(A^\top B)$ 的性质，把确定和随机的东西拆分开来，得到
+$$
+=\b x_m^\top\b x_{m'}\cdot\b x_n^\top\b x_{n'}\cdot\E_{\b W_k}\left[\t{tr}\Big(\b W_k^\top\b R_{(m-n)+(n'-m')}\b W_k\Big)\right]
+$$
+初始化时假设有 $\b W_k\sim\c N(\b 0,\dfrac1d\b I_{(d,d)\times(d,d)})$，然后由 Gaussian 矩阵的二次型期望公式，有
+$$
+=\dfrac1d\ip{\b x_m,\b x_{m'}}\ip{\b x_n,\b x_{n'}}\t{tr}(\b R_{(m-n)+(n'-m')})
+$$
+$\Theta_k$ 的推导同理。然后得到
+$$
+\Theta((m,n),(m',n'))=\dfrac2d\ip{\b x_m,\b x_{m'}}\ip{\b x_n,\b x_{n'}}\t{tr}(\b R_{(m-n)+(n'-m')})
+$$
+因为我们只考察相对位置介导的动力学，因此 $\b x$ 相关的项可以直接忽略。定义 $k_1=n-m,k_2=n'-m'$，则
+$$
+\Theta(k_1,k_2)\propto\t{tr}(\b R_{k_2-k_1})=\sum_{i=0}^{d/2-1}2\cos((k_2-k_1)\omega_i)
+$$
+由此，我们得到了仅考虑相对位置的单层 RoPE NTK 在 attn 上的 stationary 性质，以及它的定量表达式。
+
+现在即可代入 Bochner 定理，显式写出功率
+$$
+\mu_\t{attn}(\omega)=\sum_{i=0}^{d/2-1}\delta(\omega-\omega_i)+\delta(\omega+\omega_i)
+$$
+这表明，**attn 模块对下标 NTK 的影响，是在所有 $\omega_i$ 处贡献相同强度**。
+
+------
+
+一些说法会引用 Spectral Bias 并得到基频上的指数衰减分析，我看了一圈后觉得没啥道理，所以这里不分析了。直接由单层 attn 的频谱推理吧：
+
+- 原始 RoPE 的最高频信号是 $\omega_0=1$，对局部 token 可以制造很明显的偏差，而且模型已经适应了这一点。但是线性内插后，有 $\omega_0'=1/\alpha$，局部注意力机制衰退明显，必须把它修正到 $1$。
+- 而最低频信号是 $\omega_{d/2-1}=b^{-(d-2)/d}$，对应的周期是 $2\pi/b^{-(d-2)/d}$。要保证同一个周期上不出现符号翻转，需要保证 $\omega'_{d/2-1}=\omega_{d/2-1}/\alpha$。
+
+NTK 提出的解决方案是取 $b'=\alpha^{d/(d-2)}\cdot b$ 以及 $\omega_i'=b'^{-2i/d}$，这样一方面保证最高频仍然是 $\omega'_0=1$，另一方面最低频 $\omega'_{d/2-1}=b'^{-(d-2)/d}=b^{-(d-2)/d}/\alpha$，波长则相应翻了 $\alpha$ 倍。
+
+当然，这整个推导只能提供 intuition；我们并不总是能假装模型处于 NTK 态，上述对整个网络频谱的推导也并不严谨。事实上，NTK-aware Interpolation 的成功完全是因为它效果就是好。
+
+此外，NTK 取 $b'$ 的操作并不能完全保证高频不动，积攒起来也会有误差，因此才需要 YaRN。
+
+##### III. YaRN
+
+注意到 NTK 本身仅仅要求最高频 $\omega_0$ 保持 $1$ 且最低频 $\omega_{d/2-1}$ 变为原来的 $1/\alpha$，其本身选择扩大底数的方法是纯粹 empirical 的。因此 YaRN 选择用一个权重 $\gamma_i$ 进行缩放：有
+$$
+\omega_i'=(1-\gamma_i)\dfrac{\omega_i}\alpha+\gamma_i\omega_i
+$$
+这样只需要取 $\gamma_i$ 平滑地由 $1$ 过渡到 $0$，即可在 $i$ 较小时（高频区）近似于原始 RoPE，保证分辨力同时规避 NTK 的高频误差；较大时（低频区）近似于线性内插，保证长距离平滑分布；中间过渡段近似于 NTK。
+
+定义频率比率 $r_i=S_o/\lambda_i=S_o\omega_i/2\pi$，则可取
+$$
+\gamma_i=\t{clamp}(\dfrac{\ln(r_i/r_\t{low})}{\ln(r_\t{high}/r_\t{low})},0,1)
+$$
+其中一般取 $r_\t{low}=1,r_\t{high}=32$。
+
+此外，YaRN 还有一个贡献，就是指出了插值导致的 **过度平滑性**。形式化地，对于单个 query，attn-score 关于下标的结果可以用 $A(x)$ 描述：有
+$$
+Z=\sum_{j=1}^{S_o}\exp(A(j))\approx\int_0^{S_o}\exp(A(x))\d x
+\\p_i=\dfrac{\exp(A(i))}Z
+$$
+其中只能训练出 $[0,S_o]$ 上的 $A$，但我们认为 $A$ 具有向非整数点的连续性（这也是内插能成立的根本）。
+
+而其熵为
+$$
+\c H=-\sum_{i=1}^{S_o}p_i\log p_i\approx-\int_0^{S_o}p\ln p\d x
+$$
+线性内插的场景，相当于用
+$$
+Z'=\sum_{j=1}^{S_t}\exp(A(j/\alpha))\approx\alpha\int_0^{S_o}\exp(A(x))\d x=\alpha Z
+\\p_i'=\dfrac{\exp(A(i/\alpha))}{Z'}\approx\dfrac{\exp(A(i/\alpha))}{\alpha Z}
+\\\c H'=-\sum_{i=1}^{S_t}p_i'\log p_i'\approx-\int_0^{S_t}p'\ln p'\d x
+\\=-\int_0^{S_t}\dfrac{\exp(A(x/\alpha))}{\alpha Z}\ln \dfrac{\exp(A(x/\alpha))}{\alpha Z}\d x
+\\=-\int_0^{S_o}\dfrac{\exp(A(x))}{Z}\ln \dfrac{\exp(A(x))}{\alpha Z}\d x
+\\\approx\c H+\ln\alpha
+$$
+这意味着 **线性内插** 会导致 **熵增** 也即概率分布平滑化。因为 YaRN 在低频区近似于线性内插，所以也会遇到同样的问题。
+
+所以需要调小温度，对 logit 作一个 sharpening。具体的系数也可以显式推导出：令 $\beta=1/\tau$，则有：
+
+$$
+Z(\beta):=\sum\exp(\beta A(i))
+\\p_i(\beta):=\exp(\beta A(i))/Z(\beta)
+\\\c H(\beta):=-\sum p_i(\beta)\log p_i(\beta)
+$$
+有一个公式是
+$$
+\dfrac{\p\c H}{\p\beta}=-\beta\t{Var}_{p(\beta)}(A)
+$$
+而我们的目标是调整 $\beta$ 抵消 $\ln\alpha$ 的熵增。也即，
+$$
+\int_1^\beta\beta'\t{Var}(p(\beta'))\d \beta'=\ln\alpha
+$$
+在 $\beta$ 接近 $1$ 时，不妨作出以下假设：方差项为常数 $V$，且 $\beta^2-1\approx2\Delta \beta$，则有
+$$
+\ln\alpha\approx V(\beta^2-1)/2\approx V\Delta \beta
+\\\beta\approx1+\dfrac1V\ln\alpha
+$$
+而在实际使用的 attn 式子中，$\b Q$ 和 $\b K$ 被同时乘以一个 $\t{mscale}=1+0.1\ln\alpha$，因此有 $\beta=\t{mscale}^2$。mscale 中的 $0.1$ 是在 LLaMA 上拟合出的经验值，如果仍使用一阶展开，则有 $\beta\approx1+0.2\ln\alpha$，可以发现这对应 $V=5$，不过因为估测误差太多所以没啥参考价值。
+
+##### IV. LongRoPE
+
+不管是 NTK 还是 YaRN，其实都是人工搓出来的过渡式；LongRoPE 选择直接暴力搜了一组 factor 出来。
+
+#### III. Conclusion
+
+综合表明，RoPE 外插的关键即在于：
+
+- 使用算子友好的标准可分形式 $\theta_{p,i}=p\omega_i$。
+- 保证高频精度：$\omega_0=1$。但不一定足够，最好严格保证一批下标较小的 $\omega$ 不变。
+- 保证低频周期不重复：$\lambda_{d/2-1}\approx S_t$。
+- NTK 相关推导给了一些 intuition，但并不完全严谨。
+- YaRN 在长程表现类似线性内插，所以需要 mscale。
+
+另外，对这些外插方法的 tune 需求分析：
+
+|   方法   | Zero-Shot 能力 |         tune 需求          |                          原因                           |
+| :------: | :------------: | :------------------------: | :-----------------------------------------------------: |
+|   复用   |      优秀      |         完全不需要         |                        设计初衷                         |
+| 线性内插 |      极差      |          非常必要          |               高频被压缩<br />未用 mscale               |
+|   NTK    |      较好      | 可选，但一般不推荐深度微调 |         高频仍有误差<br />深度潜力不如线性内插          |
+|   YaRN   |      优秀      |  可选，大倍率扩展推荐使用  |                   微调效率高且效果好                    |
+| LongRoPE |      极好      |   低，最好使用渐进 tune    | 允许较短的长文本 tune<br /> 并 zero-shot 处理更长长文本 |
+
+另外有一个技巧是 **Dynamic NTK**，也即不使用固定的 $S_t$，而是动态根据实际样本的长度设定。这样更加适合 zero-shot 的场景。tune 时也可以使用这个技巧针对性增强模型 Dynamic 的能力。
+
+## III. Attention Architecture
+
+标准的 attn 复杂度是平方的，显然无法 scale。本节列举基于 attn 的改进方案。
+
+- full-attn 的各种 **高效精确计算** 方法，包括 flash-attn / 多卡并行等，不是本文重点。
+- 在架构上应用 **静态** 的 **sparse-attn** 或 **hierarchical-attn**。
+- 在部署时 **动态** 使用 **sparse-attn**。
+- KV 相关操作。
+
+请注意，为了与 MoE（常常也被称作 sparse-model）区分，本节提到的所有 sparse 都会使用全称 **sparse-attn**，与之相对的是 **global-attn**（也常被称为 full-attn / dense-attn，但因为这俩玩意用得太多了，本文还是用 global），也即标准的平方 attn。
+
+### I. KV Organization
+
+维护 KV 的若干方法。
+
+- **MHA**：标准 attn，$N_q=N_{kv}$。
+
+- **MQA**：$N_{kv}=1$，所有 head 共享 KV，主要优势在于节省 KV\$。并行时经常需要复制 KV-Proj。
+
+- **GQA**：$1<N_{kv}<N_q$，若干 Q 共享同一份 KV。并行时如果不能整除也需要复制 KV-Proj。
+    一个特殊的技巧是 **Uptraining**，也即把已经训好的 MHA 改造为 inference-friendly 的 GQA。常见步骤是首先把所有 KV-head 做 **mean-pooling**，然后再 tune。
+
+- **MLA**：传统 attn 是 $\b q=\b W_q\b x,\b k=\b W_k\b x,\b v=\b W_v\b x$，并要往 KV\$ 中存 $\b k$ 和 $\b v$。定义 $d_q$ 为 Q 的 latent 维数，$d_{kv}$ 为 KV 的 latent 维数，则 MLA 解耦为
+    $$
+    \b h_q=\b W_q^D\b x;\b q=\b W_q^U\b h_q
+    \\\b h_{kv}=\b W_{kv}^D\b x;\b k=\b W_k^U\b h_{kv};\b v=\b W_v^U\b h_{kv}
+    \\\b q_i^\top\b k_j=\b h_q^\top[(\b W_q^U)^\top\b W_k^U]\b h_{kv}
+    $$
+    于是往 KV\$ 中存储 $\b h_{kv}$ 即可。特别地，认为所有 head 均 **共享** 同一个 $\b W_{kv}^D$ 以及同一个 $\b W_q^D$，但持有 **独立** 的 $\b W_k^U$、$\b W_v^U$ 和 $\b W_q^U$。
+
+    此外，虽然训练时需要维护完整的 $\b W_q^U$ 与 $\b W_k^U$，但推理时可以只加载 $\b W^\t{absorb}_{qk}=(\b W_q^U)^\top\b W_k^U$。同理，$\b W_v^U$ 也可以与算完后的升维矩阵 $\b W_o$ 融合。这样做可以避免显式展开完整的 $\b q,\b k,\b v$，保证所有计算都在 latent 下进行。
+
+    但是一个问题是 $\b W_{qk}^\t{absorb}$ 与 RoPE 不兼容。解决方案是只对少量 dim（共 $d_r$ 维，独立于 $d$）用 Partial RoPE（DeepSeek 官方称作 **Decoupled RoPE**）。具体地，分别用 $\b W_q^R$ 和 $\b W_k^R$ 从 $\b h_q$ 和 $\b x$ 升维得到这些维度，然后应用 RoPE。特别地，$\b W_k^R$ 同样被所有 head 共享，这样 **推理态** 只需要往 KV\$ 写：
+
+    - 所有 head 中被 KV 共享的 $\b h_{kv}=\b W_{kv}^D\b x_i$。
+    - 所有 head 共享的 positional key $\b R_i\b W^R_k\b x_i$。
+
+    同时只需要储存以下参数：
+
+    - $\b W_{kv}^D\in\R^{d_{kv}\times H}$，共 $1$ 个。
+    - $\b W_q^D\in\R^{d_q\times H}$，共 $1$ 个。
+    - $\b W_k^R\in\R^{d_r\times H}$，共 $1$ 个。
+    - $\b W_q^R\in\R^{d_r\times d_q}$，共 $N_q$ 个。
+    - $(\b W_q^U)^\top\b W_k^U\in\R^{d_q\times d_{kv}}$，共 $N_q$ 个。
+    - $\b W_o\b W_v^U\in\R^{H\times d_{kv}}$，共 $N_q$ 个。
+    - 注意到此处完全没有 $N_{kv}$ 的出现，而且有很多东西都共享了。推测原因是 $\b W^U$ 和 $\b W^D$ 只要有一个是独立的就足够区分所有 head，不需要两个都独立。
+
+- **shared-KV**：MQA 等 **KV-head sharing** 方法能成立，已经表明 KV 的 diversity 似乎并没有那么重要。因此近期一个很大的趋势就是连 KV 都不再区分，只确保 Q 有足够 diversity。此时同一个矩阵同时作为算 attn-score 的 $\b K$ 和乘以 attn-distribution 矩阵的 $\b V$。在这种场合，本文会通过文本叙述，强调这两个是同一个东西。
+
+- **CLA**：临近的若干层成为一组，组内共用第一层生成的 KV。与前面所有 intra-layer 方法是独立的维度。**着眼于 from-scratch。**
+
+- **MLKV**：与 CLA 核心机制高度同构，但显式联合参数化层间共享与层内 GQA/MQA 式共享，并测试了更激进的共享配置。着眼于 **uptraining**。
+
+- **You Only Cache Once** (YOCO)：
+
+    - 将模型切成两半：前 $L/2$ 层的 **self-decoder** 和后 $L/2$ 层的 **cross-decoder**。
+
+    - 前 $L/2$ 层使用一些省 KV\$ 的架构，如 SWA 等。
+
+    - 在第 $L/2$ 层结束时，用此时的 hidden state **唯一一次** 生成全局的 KV\$。
+
+    - 之后所有层不再生成 KV，而是通过 cross-attn 反复读取前面生成的全局 KV\$。
+
+- 因此总体趋势是，**随着模型被 scale 到充分大，为了让 inference 更快，KV 的地位整体会弱化，而弱化 KV 对模型表现的影响并没有早期以为的那么大**。
+
+### II. Sparse Attention Architecture
+
+本节考虑架构层面的稀疏 attn。
+
+- **Longformer**：长文本处理的先驱。因为太古老，甚至用的是 bidirectional encoder，但原论文的 sliding-window 机制也支持 causal-attn。堆叠以下三种模块：
+
+    - Sliding Window Attention：每个 index 固定 attend to 两侧 $w/2$ 个 token，相当于 CNN 的局部感受野。堆叠多层也可以扩大感受野。
+    - Dilated Sliding Window Attention：在 SWA 的基础上添加一些间隔，例如只与 $\pm 2,\pm4,\dots$ 的 token 交互。同样的技巧在 CNN 中也有应用。
+    - Global Attention：只对少量 token 启用，数目通常与文本长度无关。
+
+    现在已经只能作为历史文件记录了。
+
+- **BigBird**：另一个先驱。除了 SWA 和少量 token 启用的 global-attn 以外，还引入了：
+
+    - Random Attention：随机 attend 到固定数量个 token。
+
+    通过随机图论相关分析，有结论：在适当随机图假设下，Random-Attn 以高概率提供 $O(\log S)$ 级别的路径，而双向 global-token 通过全局枢纽提供 $O(1)$ 图距离。不过现代模型基本上不用了。
+
+- **Sliding Window Attention**：虽然前两个模型都用了，但是是从 bidirectional 角度分析的。现代 sparse-attn 对 SWA 的分析会从 causal 的角度展开：
+
+    - 首先，SWA 对 decoding 友好，这意味着 KV\$ 的 length 是固定的，其中好处自不必多言。
+    - 其次，flash-attn 官方已经集成了 SWA。
+    - 现代模型一般选择堆叠 global 和 SWA（如 Gemma）或者接近输入端用 SWA、顶层用 global 等方法，总之仍然保留 global 以维持全局注意力。
+
+
+### III. Attention Sink
+
+**StreamingLLM** 指出了长程 attn 的一个根本问题：
+
+- softmax 总是强制要把总和为 $1$ 的 attn-prob 分配到整个 context。
+- 但是如果当前 token 与 context 中任何词都没有明确的语义关联（比如说 generic answer），模型会倾向于把最初的几个 token 作为垃圾场，在没有明确目标时把大量 attn-prob 扔过去。
+
+这几个 token 就被称作 **attention sink**。它一般具有以下几个特征：
+
+- **request-invariant**：对于几乎所有的 request，它都被稳定地施加注意力。
+- **fixed-position**：位置固定，通常在序列起始处。
+- **layer/head-invariant**：绝大多数 layer / head 都有出现。（为什么是绝大多数？下文有一些研究进行更详细的分析。）
+
+在 Dense-Attn 中，这不是什么大问题（模型始终能看到完整的 KV\$）。但是在 SWA 中，attn-sink 会被移出 window，于是会导致模型表现变差。
+
+常见的解决方案包括：
+
+- 把开头的若干个（一般取 $4$ 个）token 永久保留在 context 中。出自 **StreamingLLM**。
+- 加一个 KV 均为零的 token，换言之归一化的分母变为 $Z+1$。在 **StreamingLLM** 中称为 **Zero Sink**。
+- 加一个可学习的占位符 token。同样出自 **StreamingLLM**。
+- 加一个可学习的 bias，换言之归一化的分母变为 $Z+e^{b_h}$。来自 **gpt-oss**。
+- 对 attn output 加一个 gating，也即 $\b o_i'=\sigma(\b W_g\b x_i)\odot\b o_i$。称为 **gated-attention**，来自 qwen。
+    - 虽然在 SDPA 阶段无法缓解 attn-sink，但是 attn-sink 的发生本来就意味着 KV\$ 中没啥有用信息，则模型可以学会用 gate 直接扔掉当前的无用信息。
+    - 在 Linear Attention 中应用广泛。
+
+
+### IV. Hierarchical Attention Architecture
+
+本节提供分层 attn 架构的基础。在后文的 NSA 以及 DeepSeek V4 中，会把分层 attn 与稀疏 attn 结合，得到更现代化的结构。
+
+- **HAN**：分层注意力的先驱。甚至用的是 RNN 而不是 transformer。
+
+    - 首先每个词有其 feature。
+    - 然后句子通过综合词得到句级 feature。
+    - 整个文章通过综合句子得到全局 feature，用于下游任务。
+    - 因为目标是得到全局 feature，所以 **信息流动是单向的**，$\t{word}\to\t{sentence}\to\t{global}$。
+
+    可解释性很强，而且奠定了典型的分层模式。但已经只能作为历史文件进行记录了。
+
+- **Hi-Transformer**：分层注意力用在 transformer 的先驱。
+
+    - 在每个句子结尾插入 `<CLS>`，然后进行 sentence-wise 的 self-attn，得到 sentence 内部的 **word emb** 和 `<CLS>` 处的 **局部 sentence emb**。因为句子一般不会过长，这个是高效的。
+    - 把局部 sentence emb 拼接，加上句子的 PosEmb 然后再 self-attn。复杂度为 $O(M^2)$，其中 $M$ 是句子数。得到 **全局 sentence emb**。
+    - 此时 word emb 仍然只是句子内部的。用全局 sentence emb 替换第一步中得到的局部 sentence emb 然后再 sentence-wise self-attn，把全局 sentence emb 持有的全局信息分发给 word emb。
+    - **信息流动是双向的**，$\t{word}\to\t{sentence}\to\t{global}\to\t{sentence}\to\t{word}$。
+
+- 预告：这些远古方法分层是以句子为单位的。现代做法已经不这样搞了，都直接大力切块。而且聚合的方法也不是 attn，而是更粗暴的线性层 + softmax 之类。
+
+### V. Sparse Attention Deployment
+
+前一节中的 SWA 或类似层主要集中于训练阶段。而本节的动态方法主要集中于推理阶段，而且大部分是即插即用的。
+
+- **H₂O**：绝大多数的 attn 均集中于极少数的几个 token（被称为 **Heavy Hitter**；注意与 attn-sink 的区别，Heavy-Hitter 可以是 request-variant 的）。于是：
+    - 和 SWA 相同，最新的几个 token 永远保留。
+    - 记录所有 token 的历史 attn-prob 总和，分数高则意味着是 heavy-hitter。
+    - 对于既不是 heavy-hitter 又不在 window 中的 token，把它从 KV\$ 中踢出。
+- **Scissorhands**：思想和 H₂O 几乎相同，不过在方法上：
+    - H₂O 选择保留累计 attn-prob 最高的一批，换言之是按照 sum 进行评分。
+    - 而 Scissorhands 只看阈值：对于每个已经离开 window 的 token，统计其 prob 超过某阈值的次数，并保留次数最多的一批。
+- **SnapKV**：
+    - attn 具有「早熟性」：在 prefill 结束后，无论后续 decode 阶段多长，基本上只会 attend to prompt 中特定的几个 token（当然，仍然是 request-variant 的，不等于 attn-sink）。而且，关注点在 prefill 结束时就已经几乎确定。
+    - 因此在 prefill 结束后，取最后的若干（比如说 $32$）个 token，称作 **观察窗口**。窗口内 token 的 attn-prob 聚合后，其中权重最大的 token 是重要的。随后按 head 一次性压缩 prompt KV，保留这些重要 token 以及观察窗口内 token 的 KV\$；生成 token 的 KV 仍会在 decode 时继续追加。
+- **PyramidKV** / **PyramidInfer**：
+    - 不同层的 attn-distribution 模式不同：靠近输入的浅层更分散，广泛 attend to context；而靠近输出的深层更集中，绝大多数 score 都集中在某些关键 token 上。
+    - 因此浅层应分配更多的 KV\$ 预算，深层则可少分配一些。
+    - 是否与前文 **底层 SWA + 顶层 global** 的模式矛盾？不矛盾！
+        - 底层的模式一般是分散地 attend to window；顶层的模式一般是集中在 long-term 的少量 token 中。
+        - SWA + global 是 pretrain 架构，而 Pyramid 是 inference 方法。
+        - 二者混合起来，可以发现底层的 KV\$ 因为用了 SWA 所以小；高层的 KV\$ 因为用了 pyramid 所以也小；刚好互补地压缩了全局 KV\$。
+- **Quest**：
+    - 前述方法虽然在动态维护 KV\$，但判断 token 重要性的方式是 **静态** 的，一旦把 token 踢掉就加不回来了。
+    - 因此 Quest 选择在 paged-attn 中的每个 page 维护其中 Key 在 **每一维上的最大值和最小值**，然后根据 query 每一维的正负性，选择与最大值或最小值相乘，得到该 page 上 attn-score 的 **理论上限**。
+    - 对于理论上限很低的 page，可以直接 skip，不用从 HBM 读取完整 K/V 并执行 attention 计算；完整 KV cache 仍保存在 GPU 显存中。
+    - 可以与 Pyramid 等静态方法结合，先用前面的方法静态筛掉肯定不会 attend to 的 token，然后再动态加载其中真的有用的东西。
+- **MInference**：
+    - 不同 attn-head 会自然涌现出分工能力。大体可以分为三种：
+        - **A-shape**：只关注 **静态** 的 attn-sink 和 sliding window。在 attn-score heatmap 上就是固定的最左侧竖线（attn-sink）以及对角线附近，因此得名。
+        - **Vertical-Slash**：某些关键 token 被所有位置 attend to，而这些关键 token 的位置是 **动态** 的。在 heatmap 上就是若干竖线（每个关键 token）以及对角线附近，因此得名。（换言之，结论类似 SnapKV）
+        - **Block-Sparse**：精确锁定与当前 local context 语义相关的某个 block，负责真正的高级语义。
+    - 每个 head 属于哪种模式以及使用多少预算，是离线确定的；但 Vertical-Slash 和 Block-Sparse 的具体稀疏索引会随 prompt 在线变化。因此在 pretrain 完后可以先离线分类，然后看人下菜碟：
+        - A-shape 用正常的 SWA + attn-sink 模式。
+        - Vertical-Slash 进行 SnapKV 式的 query 探测，动态选择 vertical columns 和 slash relative offsets，然后在这些位置上执行精确 sparse-attn。
+        - Block-Sparse 使用类似 Quest 的思想定位具体的 block。
+    - 同时专门编写了相应的算子。
+- **DuoAttention**：同样是在对 head 分类。这次是分为看全局的 **retrieval head** 和看局部的 **streaming head**，给前者维护全量 KV\$ 而后者维护轻量 KV\$。
+
+### VI. Modern Sparse Attention
+
+本节考虑 DeepSeek 的若干架构。
+
+#### I. NSA
+
+MInference / DuoAttention 是马后炮地对已经训练好的 head 分类。NSA 选择在设计之初就专门区分功能。
+
+不仅如此，在同一个 head 内部就集成了所有功能——同一个 head 共用同一份 query，但设三个分支，每个分支用不同的 KV-proj：
+
+- SWA：标准的 SWA。不用 attn-sink，因为其它分支接管了这一功能。
+- **Compressed Attention (Comp)**：进行固定步长的重叠压缩，每个 block 内部通过带 intra-block positional encoding 的可学习 MLP，把所有 KV 聚合为有代表性的压缩 KV，然后在压缩 KV 序列上跑 attn。
+    - 与分层 attn 的区别在于此处的 block 选择固定步长而不是以 sentence 分割，同时 block 内部是直接聚合而不是 intra-block attn。
+    - 与 Quest 的区别在于 Quest 的目标是高效检索因此会进入 block 内部，而 Comp 的目标是进行粗粒度 attn 因此只用保留压缩 token 即可。
+- **Selected Attention (Sel)**：类似 Quest，但是 Quest 因为是即插即用所以只能用 max/min 作为相似度上界的 proxy，而 Sel 因为是 from-scratch 所以可以更精细。具体地，考虑复用 Comp 的 attn-distribution，把所有与 Sel block 有交的 Comp block attn-prob 确定性求和得到 Sel score。如果使用 GQA / MQA，需要把同一个 group 的打分进一步聚合。
+
+每个 query 均会过同一个轻量级 gate 网络，分别为三个分支产生 sigmoid gate，然后把三个分支的输出加权求和作为该 query 的真实输出。这样 attn-sink 会被直接接管到 Sel 分支中，SWA 专心做 SWA 即可。
+
+```mermaid
+graph TD
+	x --> q --> g[gate] --> o[final output]
+
+	subgraph SWA
+	kv1
+	a1
+	o1
+	end
+	subgraph Comp
+	kv2
+	kv22
+	a2
+	o2
+	end
+	subgraph Sel
+	s
+	kv3
+	kv32
+	a3
+	o3
+	end
+
+	x --> kv1[SWA kv]
+	x --> kv2[Comp kv]
+	x --> kv3[Sel kv]
+
+	kv1 --> a1[SWA attn-score] --> o1[SWA output] --> o
+	kv2 --"pooling / MLP"--> kv22[Comp block-wise kv]
+	q --> a1
+
+	q --> a2
+	kv22 --> a2[Comp attn-score] --> o2[Comp output] --> o
+	a2 --"aggregate"--> s[Sel block score]
+	s --"top K"--> kv32[Sel intra-selected-block kv]
+	kv3 --> kv32
+	q --> a3
+	kv32 --> a3[Sel attn-score] --> o3[Sel output] --> o
+```
+
+#### II. DSA
+
+NSA 侧重于 from-scratch，而 DSA 则更符合工程实践。
+
+具体地，考虑已经有一个使用 global-attn 的 MLA model，在此基础上为 **每个 attn 层** 训练一个外置 **Lightning Indexer** 筛选出值得注意的位置，而 attn 层只看这些位置的 KV。Lightning Indexer 也会算 attn，因此为了区分，分别称为 **indexer-attn** 和 **core-attn**。
+
+为了提速，Indexer 的架构非常简洁：
+
+- 使用 **MQA**，极致 K share；不用 V。Indexer 的 \#head 远少于 core-attn 的 \#head。
+
+- 算出来的 attn-score 被直接 **ReLU** 而不是 softmax。
+
+- 所有 head 的 score 被加权求和得到 **index score** $I_{t,s}$。形式化地：
+
+    - $\b q_{t,j}^I$ 为 index $t$、第 $j$ 个 head 的 Q。
+    - $\b k_s^I$ 为被检索的历史 index $s$ 的 K。
+    - $w_{t,j}^I$ 为当前 query index $t$ 对第 $j$ 个 head 的 query-dependent 加权。它与 V 有区别：V 的贡献者是 key index，而 $w$ 的贡献者是 query index。
+
+    $$
+    I_{t,s}=\sum_jw_{t,j}^I\t{ReLU}(\ip{\b q_{t,j}^I,\b k_s^I})
+    $$
+
+- 算完 index score 后，输出其中 top-$K$ 的 index。
+
+
+而 core-attn 只看 indexer 给出的少量关键 index。
+
+其训练也需要技巧：
+
+- **Dense Warmup Stage** 冻结 backbone 只训 indexer，**且不启用 top-$K$ 路由**，并希望 index score 过 softmax 后得到的 distribution 接近 global-attn 提供的 distribution，距离用 KL 散度衡量。
+- **Sparse Training Stage** 同时训两者，**且启用路由**，但是两个分支被强行 detach：
+    - backbone 只用 next-token CE 更新。
+    - indexer 只用 KL 更新。
+
+#### III. DeepSeek V4 (CSA/HCA)
+
+其首先使用了 DeepSeek 提出的名叫 **mHC** 的技巧，取代传统的残差连接 $\b x_{\ell+1}=\b x_\ell+F_\ell(\b x_\ell)$。具体地：
+
+- 在进入第 $0$ 层之前，将 $\b x_0$ 复制 $n_\t{hc}=4$ 份，得到 $\b X_0\in\R^{n_\t{hc}\times(S\times H)}$。之后的每一层也都有形状相同的 $\b X_\ell$，不同的是其中的每一项不再是严格的复制。
+- 使用公式 $\b X_{\ell+1}=\b H_\ell^\t{res}\b X_\ell+(\b H_\ell^\t{post})^\top F_\ell(\b H_\ell^\t{pre}\b X_\ell)$。其中：
+    - $\b H_\ell^\t{res}\in\R^{n_\t{hc}\times n_\t{hc}}$ 决定 $n_\t{hc}$ 个分量如何混合。
+    - $\b H_\ell^\t{pre/post}\in\R^{1\times n_\t{hc}}$ 决定 $n_\t{hc}$ 个分量如何混合为模块的输入，以及模块的输出如何解耦为相应的分量。
+    - $\b X_\ell$ 归一化后，分别过标准 linear layer 得到原始混合矩阵 $\tilde{\b H}_\ell^\t{res/pre/post}$。然后 res 用 Sinkhorn 保证双随机、pre 取 sigmoid、post 取 sigmoid 后 **乘二**。（这是因为 sigmoid 初始值接近 $0.5$，乘以二后变成 $1$，保证 identity-preserving）
+- 最后一层的 $\b X_L$ 过某种聚合得到输出 $\b x_L$。
+- $\b H_\ell^\t{res}$ 的双随机保证了谱范数不超过 $1$，连续堆叠时由子乘性同理，进而保证了稳定的 residual signal propagation。
+- 主要额外开销包括：
+    - 理论上 border 处的显存开销扩大 $n_\t{hc}$ 倍。实际上只对 PP border 储存完整的 $\b X_\ell$，非 border 处只 AC 存储 $F_\ell$ 的输入输出（和朴素 residual 开销相同），然后因为 $\b H$ 计算的开销是 negligible 的所以可以快速重计算出全体 $\b X_\ell$。
+    - 引入几个额外的 linear layer 以求 $\b H$。因为 $n_\t{hc}$ 很小，显存开销是 negligible 的。
+    - 做了几个额外的矩阵乘法 / Sinkhorn。因为 $n_\t{hc}$ 很小，计算开销是 negligible 的。
+
+在此之上，每一层的 $F$ 是以下三者之一：
+
+- 标准 SWA。
+- CSA / HCA，将在下文 formulate。
+
+其具体堆叠方式与架构相关：V4 Flash 先堆两个 SWA，然后交替 CSA/HCA；V4 Pro 先堆两个 HCA，然后交替 CSA/HCA。
+
+首先 formulate **CSA**。它缝合了 NSA 的压缩机制和 DSA 的 Indexer，但进行了深度耦合，而不是 NSA 的分路形式。
+
+其使用一种通用的 **压缩模块** (comp)，输入 token 序列 $\cur{\b x}_S$，输出压缩后的 feature 序列 $\cur{\b c}_{S/S_\t{comp}}$，其中 $\b c$ 可以是 indexer-attn 使用的 K，也可以是 core-attn 使用的 K/V（实际上 core-attn 使用了 **shared-KV**，因此不区分二者）。
+
+- 为了保证分块一致性，每次压缩 **相邻两块**。令第一块的 index 集合是 $\c U$，第二块的集合是 $\c V$。
+- $\b x_i$ 过投影矩阵得到局部特征 $\b h_i^a,\b h_i^b\in\R^{d_\t{comp}}$ 和局部得分 $\b z_i^a,\b z_i^b\in\R^{d_\t{comp}}$，其中 $a,b$ 区分这个 token 是处于相邻两块中的第一块还是第二块。
+- $[\b z_\c U^a,\b z_\c V^b]$ 在每一维上分别做联合 softmax 得到 $\b s_i^a,\b s_i^b$，则有 $\b c=\sum_{i\in\c U}\b s_i^a\odot\b h_i^a+\sum_{j\in\c V}\b s_j^b\odot\b h_j^b$。$\b z$ 可以提供 dimension-wise 的细粒度监督。
+- CSA 的 block size 取得很小，只有 $4$，主要的压缩任务是 Indexer 进行。
+
+query 正常 MLA 式降维到 $\b h_q$，但是使用不同的升维矩阵可以分别得到 indexer-Q 和 core-Q。
+
+- 前者用于 DSA 式的 Indexer：indexer-Q 与 indexer-comp 给出的 indexer-K 算传统的点积（*这一步使用 FP4*），并正常 ReLU + reweight 得到 index score，之后 top-$K$ 给出关键 index。
+- 后者用于 MQA + shared-KV 的 core-attn。具体地，core-Q 与 core-comp 给出的 core-KV（共用）以及独立分支给出的一批 sliding window KV（共用）共同做 core-attn。共 $K_\t{indexer}+S_\t{window}$ 个 KV term。
+- 使用 learnable attn-sink。位置编码以 MLA 式的 Partial RoPE 进行。
+- 输出时的投影分层进行，以避免一次性造出过大的拼接向量，同时对 TP 等并行方法更友好。
+
+```mermaid
+graph TD
+x
+subgraph comp
+cx[x] --> ch[h^a,h^b]
+cx --> cz[z^a,z^b] --"softmax"--> cs[s^a,s^b]
+cw[weighted-sum]
+ch --> cw
+cs --> cw
+cw --> cf[compressed-feature]
+end
+subgraph indexer
+c1
+ik
+iq
+ia
+ii
+end
+x --> c1["indexer-comp"] --> ik[indexer-K]
+c1 -.- comp
+x --> hq[latent-Q]
+hq --> iq[indexer-Q]
+iq --> ia[indexer-attn]
+ik --> ia
+ia --"ReLU + reweight + Top-K"--> ii[indexer-selected indexes]
+subgraph core
+cq
+c2
+ckv
+skv
+ca
+kvt
+end
+hq --> cq[core-Q]
+c2 --> ckv[core-shared-KV]
+x --> c2[core-comp]
+c2 -.- comp
+ii --"index selection"--> ckv
+x --> skv[sliding-window-KV]
+ckv --> kvt[kvterms]
+skv --> kvt
+kvt --> ca[core-attn]
+cq --> ca
+ca --> o[output]
+```
+
+然后 formulate **HCA**。
+
+- 压缩块长比起 CSA 大幅度提高，实际取 $128$。
+- 不使用重叠压缩。
+- 因为压得太狠了，不用再使用 Indexer，压缩后直接做 global-attn。除此之外仍然允许看到最近 window 的 token-KV。共 $S/S_\t{HCA-block}+S_\t{window}$ 个 KV term。
+- 使用和 CSA 相同的 shared-KV MQA + learnable attn-sink。
+
+KV\$ 包括：
+
+- 最近 $S_\t{window}$ 个 token latent KV。
+- 每 $S_\t{comp}$ 个 token 产生一个 CSA block latent KV。（只在 CSA 层出现）
+- 每 $S_\t{HCA-block}$ 个 token 产生一个 HCA block latent KV。（只在 HCA 层出现）
+- 对于非 RoPE 的维数用 FP8，RoPE 维用 BF16。
+
+使用标准 MoE，前三层的 Router 是预定义的 Hash，后面层的 Router 是标准可学习 Router。使用 Muon。
+
+### VII. Stabilization Techniques
+
+虽然与长文本主线不一定有关，但我没学过，所以补上。
+
+- attn-score 的 $1/\sqrt d$ 的修正：早期是纯 empirical 的，不过 μP 有解释：为了保证 RMSNorm 意义下的稳定性。
+- **QK-norm**：为了避免 QK 的 norm 过大导致 attn 爆炸，在算 attn 前先对 QK 归一化。早期会使用 L2 norm（此时内积变为余弦相似度，因此也称为 **cosine attn**），不过现在版本一般使用更贴近 μP 传统的 RMSNorm。是现代模型的标配。
+- **attention-logit soft-capping**：在算 softmax 之前先过 tanh 等平滑操作，是另一种避免 attn 爆炸的方法。
+
+### VIII. Conclusion
+
+|      方法       |             阶段             |                             角色                             |
+| :-------------: | :--------------------------: | :----------------------------------------------------------: |
+|       MHA       |          layer (KV)          |                     layer 管理 KV 的方式                     |
+|       MQA       |    layer (KV) / inference    |    layer 管理 KV 的方式；cache-friendly，可以 uptraining     |
+|       GQA       |    layer (KV) / inference    |                             同上                             |
+|       MLA       |          layer (KV)          |             layer 管理 KV 的方式，cache-friendly             |
+|       CLA       |       inter-layer (KV)       |           跨 layer 管理 KV 的方式，cache-friendly            |
+|      MLKV       | inter-layer (KV) / inference |   跨 layer 管理 KV 的方式，cache-friendly，推荐 uptraining   |
+|      YOCO       |       inter-layer (KV)       | 特殊架构，前 $L/2$ 层短程注意力，$L/2$ 层唯一一次生成全局 KV\$，后 $L/2$ 层交叉注意力 |
+| SWA + attn-sink |     layer (attn target)      |                layer 管理 attn target 的方式                 |
+|   global-attn   |     layer (attn target)      |                layer 管理 attn target 的方式                 |
+|       H₂O       |          inference           |            token 筛选器，筛出 sum prob 最大 token            |
+|  Scissorhands   |          inference           |        token 筛选器，筛出超过 threshold 最多的 token         |
+|     SnapKV      |           prefill            |     token 筛选器，筛 prefill 结尾时 most-attended token      |
+|    PyramidKV    |          inference           |          token 筛选器，给不同层分配不同 KV\$ budget          |
+|      Quest      |          inference           |              token 检索器，支持更高效检索 KV\$               |
+|   MInference    |        head taxonomy         |                        看 head 下菜碟                        |
+|  DuoAttention   |        head taxonomy         |                        看 head 下菜碟                        |
+|       NSA       |         layer (head)         |                    在 head 内部分三条支路                    |
+|       DSA       |       layer (indexer)        |             token 筛选器，训 indexer 预测 target             |
+|       CSA       |            layer             |              先压缩，然后训 indexer 预测 target              |
+|       HCA       |            layer             |                          大压缩比例                          |
+
+## IV. Non-Traditional Architecture
+
+本节讨论非传统架构。其核心思想只有一条：
+
+- 传统 attention 保存全部历史 KV，并允许 query 随机访问历史。上一节的种种方法，要么是在排除某些权重过低的访问（sparse-attn 的各种变体），要么是在合并某些临近的访问（hierarchical-attn / compressed-attn 的各种变体），都没有改变随机访问的本质。
+- 而这些非传统路线的共同做法是把历史先写入某种递归式的 **state**，再从 state 中读取。形式化地，有如下动力系统：
+
+$$
+M_k=\t{Update}_k(M_{k-1},x_k)
+\\y_k=\t{Read}_k(M_k,x_k)
+$$
+
+- 当然，有些非传统路线为了并行友好，会在保留 state 的同时，推导出一种等价的、类似 vanilla attn 的格式；这不掩盖它们总是有 state 格式的事实。
+
+作出以下约定：
+
+- $M_k$ 或等价物在下文中统一使用 **记忆** 称呼。**在绝大多数算法中，记忆的形状是时不变的，本文只考虑这样的算法。**
+
+- $x_k$ 是系统的输入，而 $y_k$ 是输出。它们可以是标量/向量/矩阵，但形状一般是 **时不变** 的。
+
+- 下标 $k$ 在 LLM 的语境中，一般即指输入的 index，是 **离散** 的。不过因为在各种控制论 / 信号处理 / 微分方程研究中，有无数种离散-连续互化的模式，因此也常常会从 **连续** 的角度审视整个问题。连续时一般使用微分方程描述转移：有
+    $$
+    \dot M(t)=\t{Generator}_t(M(t),x(t))
+    $$
+    在以下讨论中，一般默认下标 $_k$ 是在讨论离散语境，而括号 $(t)$ 是在讨论连续语境。
+
+本节中的所有问题都要从 **更新** 和 **读取** 两个主轴进行分析。事实上，传统方法也能纳入这样的框架：
+
+- 传统方法的记忆 $M$ 是整个 KV\$。
+    - MQA / GQA / CLA / shared-KV 等方法都在从宽度上压缩单个 token 贡献的 KV term 大小，但不简化长度。
+    - SWA 以及各种部署方案会扔掉一部分 KV term，在长度上缩水。
+    - CSA / HCA 等方案会合并一部分 KV term，在长度上打包。
+- 传统方法的读取是 attn。
+    - 压缩 KV term 的 SWA 等方法同样也能优化读取效率，因为被丢弃的 KV term 就不会访问了。
+    - Lightning Indexer 是另一种优化读取的方法，使用 proxy model 预测 core model 的访问。
+
+这样类似的分析方法将在下文多次出现。
+
+特别地，上述框架仅仅是整个网络中的一层；真实部署时会取代或部分取代 attn 层，并与 FFN 层结合得到整个网络。
+
+### I. State-Space Models
+
+第一大类是 **State-Space Model**。其思想可以概述为：
+
+- 记忆的 size 是固定的，因此可以用 **固定维数的向量** $\b M\in\R^{d_m}$ 来建模。
+- 更新是 **线性** 的。这意味着存在关系式 $\dot{\b M}(t)=\b A(t)\b M(t)+\b B(t)\b x(t)$，其中 $\b A(t)\in\R^{d_m\times d_m},\b B(t)\in\R^{d_m\times d_i}$ 是矩阵。特别地，$\b A(t)$ 在整个 SSM 中居于核心地位，而且是一个颇为通用的 notation（例如，CTMC 中的无穷小生成元是一个特例），因此使用专有称呼 **状态矩阵** (*State Matrix*) 描述。
+- 读取是 **线性** 的。这意味着存在关系式 $\b y(t)=\b C(t)\b M(t)+\b D(t)\b x(t)$，其中 $\b C(t)\in\R^{d_o\times d_m},\b D(t)\in\R^{d_o\times d_i}$。
+- 注意这个描述是连续的，在实际应用时需要离散化。
+
+> [!TIP]
+>
+> **线性性** 给了此种方法很好的数学性质，这是区别于传统方法比如说 **RNN** 的：RNN 的一种特定的连续版本（即 **Elman RNN**）可以写作
+> $$
+> \dot{\b M}(t)=\tanh(\b W_h\b M(t)+\b W_x\b x(t))
+> $$
+> 但因为有非线性 tanh 的介入，并不能归入这个框架。
+>
+> 时域上的线性性并不会削弱 SSM 的表达能力。事实上，状态矩阵 $\b A(t)$ 与更新矩阵 $\b B(t)$ 本身可以包含复杂的非线性成分。而且，这里的 $(t)$ 仅仅表示它与时间相关，并没有规定具体的依赖方式；接受 $\b x(t)$ 作为输入也算是一种依赖。
+>
+> 然而在 NLP 术语上，提到 SSM 一般默认指的是 **LTI-SSM**，也即 $\b A,\b B,\b C,\b D$ 全都是时不变的 SSM。与之对应的是 **LTV-SSM**——但是没事为啥要让系统是 LTV 的呢？因此这里的 LTV 几乎总是指「依赖 $\b x(t)$」，故一般被称作 **Selective-SSM** 以示区分。下文的分析框架会使用较为通用的方法，对两种场合均适用。
+
+> [!TIP]
+>
+> 上述描述指定了输入是 $d_i$ 维的、输出是 $d_o$ 维的。如果这两个维数都大于 $1$，这就是 **Multiple-Input Multiple-Output** (MIMO) 系统。反之，如果都等于 $1$，就是 **Single-Input Single-Output** (SISO) 系统。
+>
+> 在一些场合，我们不妨先只考虑 SISO 系统，然后不管是进一步改造为 MIMO，还是设置多个独立的 SISO 处理每一维然后再混合，都是可行方案。
+>
+> 例子：传统的 **CNN** 中，每个卷积核都是一个 SISO 系统；要处理 $d_i$ 到 $d_o$ 的 channel 变换，需要 $d_i\times d_o$ 个独立卷积核。
+
+SSM 方法一般要考虑两个相互独立的维度：
+
+- SSM 本身是如何建模、优化并计算的。
+- SSM 是如何作为大模型中的一个部件，与其它算法联动的。
+
+本节将分开探讨这两个问题。
+
+#### I. SSM By Itself
+
+##### I. Discretizations
+
+首先考虑把连续模型离散化的方法。
+
+分析此类问题一般总是需要依赖状态矩阵 $\b A$ 是 **时不变** 的前提，因为此时连续方程
+$$
+\dot{\b M}(t)=\b A\b M(t)+\b B(t)\b x(t)
+$$
+存在简单通解：
+$$
+\b M(t)=\exp((t-t_0)\b A)\b M(t_0)+\int_{t_0}^t\exp((t-\tau)\b A)\b B(\tau)\b x(\tau)\d\tau
+$$
+那么按照 $\Delta_k$ 为步长离散化（**此处允许步长有时变性**），并记 $\Delta^k=\sum_{i=1}^k\Delta_i$，则有
+$$
+\b M_k:=\b M(\Delta^k)
+\\=\exp(\Delta_k\b A)\b M_{k-1}+\int_{\Delta^{k-1}}^{\Delta^k}\exp((\Delta^k-\tau)\b A)\b B(\tau)\b x(\tau)\d\tau
+$$
+这个积分项很难受，但如果作出 **Zero-Order Hold (ZOH)** 假设，也即相邻两次采样之间 $\b x$ 和 $\b B$ 均不变，则可以直接把 $\b B(\tau)\b x(\tau)$ 一项作为常数提出去，得到 
+$$
+\b M_k\approx\exp(\Delta_k\b A)\b M_{k-1}+\b A^{-1}(\exp(\Delta_k\b A)-\b I)\b B_k\b x_k
+$$
+为了让公式更好看且能与 Taylor 展开相关联，在第二项上面同时乘除一个标量，得到以下公式：
+$$
+\bar{\b A}_k:=\exp(\Delta_k\b A)
+\\\bar{\b B}_k:=(\Delta_k\b A)^{-1}(\exp(\Delta_k\b A)-\b I)(\Delta_k\b B_k)
+\\\b M_k\approx\bar{\b A}_k\b M_{k-1}+\bar{\b B}_k\b x_k
+$$
+以上方法因为依赖 ZOH 假设，被称作 **ZOH 法**。
+
+另一种方法是 **双线性变换** 方法，亦称 **Tustin 法**。具体地，对积分项使用二阶的 **梯形公式** $\int_a^b f(t)\d t\approx\dfrac{b-a}2[f(b)+f(a)]$，则有
+$$
+\b M_k-\b M_{k-1}=\int_{\Delta^{k-1}}^{\Delta^k}\dot{\b M}(\tau)\d\tau
+\\=\int_{\Delta^{k-1}}^{\Delta^k}(\b A\b M(\tau)+\b B(\tau)\b x(\tau))\d\tau
+\\\approx\dfrac{\Delta_k}2(\b A\b M_{k-1}+\b B_{k-1}\b x_{k-1}+\b A\b M_k+\b B_k\b x_k)
+$$
+纯粹 play with formula 得到
+$$
+\b M_k\approx(\b I-\dfrac{\Delta_k}2\b A)^{-1}(\b I+\dfrac{\Delta_k}2\b A)\b M_{k-1}
+\\+(\b I-\dfrac{\Delta_k}2\b A)^{-1}\dfrac{\Delta_k}2(\b B_k\b x_k+\b B_{k-1}\b x_{k-1})
+$$
+这时候再假设 $\b x_k\approx\b x_{k-1},\b B_k\approx\b B_{k-1}$ 得到
+$$
+\b M_k\approx(\b I-\dfrac{\Delta_k}2\b A)^{-1}(\b I+\dfrac{\Delta_k}2\b A)\b M_{k-1}+(\b I-\dfrac{\Delta_k}2\b A)^{-1}\Delta_k\b B_k\b x_k
+\\\bar{\b A}_k:=(\b I-\dfrac{\Delta_k}2\b A)^{-1}(\b I+\dfrac{\Delta_k}2\b A)
+\\\bar{\b B}_k:=(\b I-\dfrac{\Delta_k}2\b A)^{-1}\Delta_k\b B_k
+$$
+> [!TIP]
+>
+> 这个 $\bar{\b A}_k$ 可以看做上一版中 $\exp(\Delta_k\b A)$ 的 **Padé 近似**：Taylor 展开是用多项式对函数进行逼近，而 Padé 近似是使用多项式的比值（有理函数）进行逼近，在信号处理中更常用，因为能保极点。
+>
+> exp 的一阶 Padé 近似是 $\exp x\approx\dfrac{1+x/2}{1-x/2}$，代入即可由 ZOH 版本得到 Tustin 版本。
+
+在 S4 及其前身中主要使用 Tustin 离散化，原因如下：
+
+- 更稳定。如果系统是稳定的，也即 $\b A$ 的全体特征值均满足 $\Re(\lambda_i)<0$，则 $\bar{\b A}$ 的特征值严格位于单位圆内。
+- exp 算起来比较麻烦。
+- 与对 $\b A$ 结构作出的某些先验更适配。
+
+> [!NOTE]
+>
+> **线性性的第一个好处**：容易对连续方程求精确解，并对解进行高精度的近似。
+
+但是，在更后期的一些模型中，已经不会再整一套有如此数学背景的离散化模式了，更倾向于非常简单粗暴的离散化模式。
+
+> [!IMPORTANT]
+>
+> Takeaways：
+> $$
+> \begin{align*}
+> \begin{cases}
+> \bar{\b A}_k:=\exp(\Delta_k\b A)
+> \\\bar{\b B}_k:=(\Delta_k\b A)^{-1}(\exp(\Delta_k\b A)-\b I)(\Delta_k\b B_k)
+> \end{cases}&&(\t{ZOH})
+> \\\begin{cases}
+> \bar{\b A}_k:=(\b I-\dfrac{\Delta_k}2\b A)^{-1}(\b I+\dfrac{\Delta_k}2\b A)
+> \\\bar{\b B}_k:=(\b I-\dfrac{\Delta_k}2\b A)^{-1}\Delta_k\b B_k
+> \end{cases}&&(\t{Tustin})
+> \end{align*}
+> $$
+
+##### II. Modelling
+
+本节考虑对系统要作出哪些先验。一些先验需要结合下一小节中计算方法才能理解为什么要这么设计，但为了结构整洁，优先在这节罗列所有常见先验。
+
+这里要区分两个概念：**初始化** 先验，以及 **结构** 先验。前者把 SSM 初始化到一个接近最优值的位置，让优化算法需要更少步数即可收敛。后者则是约束 $\b A$ 从属于某种特定的、可以加速计算的结构，诸如对角阵或 **Normal Plus Low Rank** (NPLR) 阵。
+
+先分析结构先验。
+
+- NPLR 阵，形如 $\b A=\tilde{\b A}-\b P\b Q^\top$，其中 $\tilde{\b A}$ 是正规矩阵，而 $\b P,\b Q\in\R^{d_m\times r}$。**此处的 $\b P,\b Q$ 是实矩阵。**
+    做一个坐标系变换，即可把 NPLR 变成 **Diagonal Plus Low Rank** (DPLR) 形式：考虑酉分解 $\tilde{\b A}=\b V\b\Lambda\b V^\H$，则有
+    $$
+    \b V^\H\b A\b V=\b\Lambda-(\b V^\H\b P)(\b V^\H\b Q)^\H
+    $$
+    因此转而参数化 $\tilde{\b P}=\b V^\H\b P,\tilde{\b Q}=\b V^\H\b Q$，则有
+    $$
+    \b A=\b V(\b\Lambda-\tilde{\b P}\tilde{\b Q}^\H)\b V^\H
+    $$
+    **因此，此处的 $\tilde{\b P},\tilde{\b Q}$ 变成复矩阵。**
+
+    实际实现时：
+
+    - $\b V$ 一般只在初始化时用于从 $\b A$ 得到 DPLR 格式，这之后 **完全不再使用**；它的职责会被外包到 $\b B_k$ 和 $\b C$ 中，**因此 $\b B_k,\b C$ 需要是复矩阵**。
+    - $\tilde{\b P},\tilde{\b Q}$ 有多种实现方式，包括初始化后即不再学习、允许在复数内学习、强制 $\tilde{\b P}=\tilde{\b Q}$ 等。
+    - $\b\Lambda$ 可以学习也可以不学习，但为了让复对角表示仍然对应实值系统，并保证最终卷积核为实数，需要显式维护共轭成对结构。
+
+- 后续研究表明，在合适初始化下，直接使用对角阵也可以取得接近 S4 的效果，因此也会直接取 $\b A=\b V\b\Lambda\b V^\H$，并只维护 **对角阵** $\b\Lambda$。又可细分为两种模式：
+
+    - **复对角阵**：和 NPLR 一样，需要维护共轭结构。
+    - **实对角阵**：在系统中这就是只有 **指数衰减性质**（因为 $\Re(\lambda_i)\leq0$ 所以必然是衰减），没有震荡性质；因此需要专门适配，将在处理完初始化先验后再次分析。优势是结构更简单。
+
+- 注意到取 $\b A$ 为对角阵后，$\b M$ 的维度之间其实彼此已经解耦。这启示我们或许 $\b A$ 可以更简单一点，比如说直接写成 **单位阵倍数** 的形式：即有 $\b A=a\b I$。
+
+然后分析初始化先验。一个重要的理论起点是 **HiPPO** 矩阵：一种对 **单输入** 系统在特定空间（**多项式空间**）下的最优近似。
+
+我们的目标是让记忆 $\b M(t)$——一个 **有限** 的 $d_m$ 维向量，涵盖 $\b x([0,t])$——一段 **无穷** 的区间——上的所有信息。因为只考虑单输入，所以此处退化为标量 $x(t)$。
+
+一个自然的想法是用 $\b M(t)$ 的每一维表示 $[0,t]$ 上某函数空间一组基底的系数。也即，考虑一族函数 $p_0(z),\dots,p_{d_m-1}(z)$，我们希望有
+$$
+x(tz)\approx\sum_{i=0}^{d_m-1}\b M^i(t)p_i(z),\forall z\in[0,1]
+$$
+其中，一组常见的基是 **Legendre 多项式**，也即对 $\cur{1,z,z^2,\dots}$ 的标准多项式基在 $\ip{f,g}=\int_0^1f(\tau)g(\tau)\d\tau$ 意义下做 Gram-Schmidt 正交化的结果。
+
+前 $d_m$ 个 Legendre 多项式张成的函数空间即为 $d_m-1$ 阶多项式空间。取
+$$
+\b M^i(t)=\int_0^1x(tz)p_i(z)\d z=\dfrac1t\int_0^tx(z)p_i(z/t)\d z
+$$
+即可得到该空间下最优的 $\b M$。现在推导其微分方程：
+$$
+t\dot{\b M^i}(t)+\b M^i(t)=x(t)p_i(1)-\int_0^tx(z)\dfrac{z}{t^2}p_i'(z/t)\d z
+\\=x(t)p_i(1)-\int_0^1x(tz)zp_i'(z)\d z
+$$
+其中 $zp_i'(z)$ 仍属于 $d_m-1$ 阶多项式空间，故可以展开为 $\sum_j a_{i,j}p_j(z)$。而且展开式有闭式解：
+$$
+a_{i,j}=\begin{cases}\sqrt{2i+1}\sqrt{2j+1}&(j<i)\\i&(j=i)\\0&(j>i)\end{cases}
+$$
+代入 $p_i(1)=\sqrt{2i+1}$，得到
+$$
+t\dot{\b M}^i(t)=-\b M^i(t)+\sqrt{2i+1}x(t)
+\\-\sum_{j<i}\sqrt{2i+1}\sqrt{2j+1}\b M^j(t)-i\b M^i(t)
+$$
+即得
+$$
+\dot{\b M}(t)=\dfrac1t\b A_\t{HiPPO}\b M(t)+\dfrac1t\b B_\t{HiPPO}x(t)
+\\(\b A_\t{HiPPO})_{i,j}:=\begin{cases}-\sqrt{2i+1}\sqrt{2j+1}&(j<i)\\-(i+1)&(j=i)\\0&(j>i)\end{cases}
+\\(\b B_\t{HiPPO})_i:=\sqrt{2i+1}
+$$
+即得到 **High-order Polynomial Projection Operators**，也即 HiPPO 矩阵。因为是使用 Legendre 基得到的，也被记作 **HiPPO-LegS**。
+
+注意到上式比前述 SSM 的标准形式多了时间修正 $1/t$。通过 $\tau=\log t$ 换元，可以在对数坐标系下变成标准 SSM 形式。
+
+这里的 HiPPO 矩阵服从 NPLR 的形式：令 $\b p\in\R^{d_m}$ 满足 $\b p_i=\sqrt{i+1/2}$，则有 $\b A_\t{HiPPO}=\tilde{\b A}-\b p\b p^\top$。这也是为什么 NPLR / DPLR 成为 $\b A$ 的第一种常见先验。
+
+现在推理 $\tilde{\b A}$ 的特征谱。容易得到分解
+$$
+\tilde{\b A}=-\dfrac12\b I+\b S
+$$
+其中 $\b S$ 是满足 $\b S^\top=-\b S$ 的反对称矩阵，贡献纯虚的特征值；同时 $-\dfrac12\b I$ 意味着所有特征值的实部都是 $-\dfrac12$。
+
+通过非常神秘的数学分析可以得到有 $\omega_i\approx \dfrac{d_m}{\pi}\left(\dfrac{d_m}{2i+1}-1\right)$，其中 $i\in\cur{0,\dots,d_m/2-1}$（这里给出正半轴；由共轭关系可以取反得到负半轴）。于是即得 **S4D-Inv** 初始化方案
+$$
+\lambda_i=-\dfrac12+\j\dfrac{d_m}{\pi}\left(\dfrac{d_m}{2i+1}-1\right)
+$$
+另一方面，HiPPO-LegS 使用的 Legendre 基意味着要记忆完整的 $[0,t]$ 前缀；如果我们只需要关注 **滑动窗口**，则使用 Fourier 基会更好，此时对应的模式称作 **HiPPO-FouT**，对应的特征值即为 **S4D-Lin**
+$$
+\lambda_i=-\dfrac12+\j\pi i
+$$
+如果是复对角阵方案，则初始化一般使用 S4D-Inv（适合长程）或 S4D-Lin（适合短程）之一。
+
+**Mamba** 则为了硬件友好，将 $\b\Lambda,\b B,\b C,\b D$ 全部限制为 **实矩阵**。则此时 SSM 式子 $\dot{\b M}(t)=\b\Lambda\b M(t)+\b B(t)\b x(t)$ 中 $\b\Lambda$ 的语义就是纯粹的 **多尺度指数衰减**。
+
+因此此处再纠结什么多项式基什么的就有点刻舟求剑了，直接设为一个 **多尺度等比数列** 即可。
+
+此外，因为 $\bar{\b A}_k=\exp(\Delta_k\b A)$，则 $\Delta_k$ 同样影响记忆。而因为会在每个 channel 上维护一个独立的 SISO 系统（参见下文分析），所以一般 **所有 channel 对 $\b A$ 都使用同一组初始化方案**；但是不同 channel 的初始 $\Delta$ 独立采样为 log-uniform 分布。
+
+而 **Mamba-2** 改为每个 head 一个标量 $a$；官方默认先采样 $-a\sim U(1,16)$，同时让 $\Delta$ 作 log-uniform 初始化。
+
+> [!TIP]
+>
+> 此处对 Mamba 和 Mabma-2 的描述并不够准确，下文将给出完整严谨的描述，此处仅提供 Intuition。
+
+> [!IMPORTANT]
+>
+> Takeaways：
+>
+> NPLR / DPLR：
+>
+> - 理论可训练参数包括 $\cur{\b\Lambda,\tilde{\b P},\tilde{\b Q},\b B,\b C,\b D,\delta=\log\Delta}$，其中 $\b\Lambda$ 满足共轭结构，$\tilde{\b P},\tilde{\b Q},\b B,\b C$ 因为缝入 $\b V$ 所以在复数域中优化，转移矩阵直接使用 $\b\Lambda-\tilde{\b P}\tilde{\b Q}^\H$。
+> - 实际上 $\b C$ 除了缝 $\b V$ 以外还会缝一点别的东西，下文将详述。
+> - 为了保证 $\Re(\lambda_i)<0$，常常需要 $\lambda_i=-\t{softplus}(a_i)+\j b_i$ 的参数化，其中 $\t{softplus}(x)=\ln(1+\e^x)$。
+> - $\delta=\log\Delta$ 的参数化与 HiPPO 的换元更契合，同时保证 $\Delta>0$。
+> - 一些简化实现会使用 $\tilde{\b Q}=\tilde{\b P}$。
+> - 初始化使用长程的 HiPPO-LegS 或短程的 HiPPO-FouT。
+>
+> 复对角阵：
+>
+> - 理论可训练参数包括 $\cur{\b\Lambda,\b B,\b C,\b D,\delta=\log\Delta}$，其中 $\b\Lambda$ 满足共轭结构，$\b B,\b C$ 仍然需要在复数域上。
+> - 初始化使用长程的 S4D-Inv 或短程的 S4D-Lin。
+>
+> 实对角阵：
+>
+> - 所有矩阵都在实数进行。
+> - Mamba 不同 head 的 $\b A$ 采用相同的初始化，$\Delta$ 使用 log-uniform 初始化。
+>
+> 对角阵的标量倍：
+>
+> - 相当于所有特征值全部强制相同的场景。
+> - Mamba-2 中每个 head 的 $a$ 默认均匀初始化，$\Delta$ 使用 log-uniform 初始化。
+
+##### III. System View
+
+特别地，注意到 HiPPO 的推理是在单输入场景进行的。为了改造为 MIMO，有以下解决方案：
+
+- 所有通道 **共享** 同一个 $\b A$，但 $\b B$ 的形状得到了扩展，变为 $d_m\times d_i$。但此时严格 HiPPO 语义不再有效，而且不同通道通过 $\b A$ 高度耦合，表达能力受限。
+- 对于每个通道维护一个 **独立** 的 SISO，跑完后再对每个位置做 output projection 或 transformer FFN 式的通道混合。是一种类似卷积中 **depthwise convolution + pointwise channel mixing** 技巧的操作。
+- 其中第二者更加常见，而且一般不会像 CNN 一样同时维护 $d_i\times d_o$ 个独立的 SISO。
+- 事实上，上述两种模式都有些极端了，分别类似 MQA 和 MHA；折衷的方式是允许若干 channel 共用 $\b A$，这种方式类似 GQA。一般把共用 $\b A$ 的所有 channel 视作一个 **head**，而其中的 channel 数即为 **head width**。
+
+形式化地，可以有以下 framework：
+
+- 输入输出形状均为 $(S,H)$。头数为 $N_h$，memory dim 为 $d_m$，单头输入输出维度为 $d_s$。
+
+- 因此：
+
+    - $\b M_k^{(h)}\in\R^{d_m\times d_s}$：注意到此处扩充到 **矩阵状态**，相当于每个 channel 各自有一个内部状态，但是共用转移矩阵。
+    - $\bar{\b A}_k^{(h)}$ 有两种模式：
+        - 最标准的 SSM 式 $\bar{\b A}_k^{(h)}\in\R^{d_m\times d_m}$，左乘到 $\b M_k^{(h)}$ 上，相当于让 $\b M_k^{(h)}$ 的所有列 **共用** 同一个转移系统，且允许行间混合。不会物化出完整矩阵，一般会采用 DPLR 或对角法。
+        - Hadamard 式 $\bar{\b A}_k^{(h)}\in\R^{d_m\times d_s}$，Hadamard 积到 $\b M_k^{(h)}$ 上，所有位置 **独立** 维护转移系统，但不允许混合。也可以是看做每个通道都是一个 $d_s=1$ 的窄 SSM head。
+        - 这两种本质上都是对大的向量化转移系统的结构化约束。事实上如 Mamba-2 可以同时服从这两种模式。
+    - $\bar{\b B}_k^{(h)}\in\R^{d_m}$：通过与输入 $\b x_k\in\R^{d_s}$ 的外积得到写入量，这是为了与扩充到矩阵状态的 $\b M$ 所做的适配。一些版本会在不同 head 间共享，类似 GQA。
+        - 进一步，只有在 S4/S4D 中会显式重建出 $\bar{\b B}$ 来；Mamba-1 中因为离散化语义几乎丧失，直接使用 $\b B_k^{(h)}(\b\Delta_k^{(h)}\odot\b x_k)^\top$ 的公式，因此都没有显式的 $\bar{\b B}$ 出现了。
+    - $\b C_k^{(h)}\in\R^{d_s\times d_m}$：注意到因为此时 $\b M_k^{(h)}$ 变成矩阵，读出时必须采用 $\t{diag}(\b C_k^{(h)}\b M_k^{(h)})\in\R^{d_s}$ 的 einsum 格式。一些版本会在 $d_s$ 维共享，也即令 $\b C_k^{(h)}\in\R^{1\times d_m}$ 并使用 $\t{diag}(\b1_{d_s}\b C_k^{(h)}\b M_k^{(h)})\in\R^{d_s}$，或者写成列向量即有 $(\b M_k^{(h)})^\top\b C_k^{(h)}$；还有些版本会选择 GQA 式地进行 head 共享。
+    - $\b D_k^{(h)}\in\R^{d_s\times d_s}$；不过更常见的格式是只维护 $\R^{d_s}$ 并用 $\odot$，甚至标量点积。
+
+- 如果写成公式就是
+    $$
+    \underbrace{\b M_k^{(h)}}_{d_m\times d_s}=\begin{cases}\underbrace{\bar{\b A}_k^{(h)}}_{d_m\times d_m}\underbrace{\b M_{k-1}^{(h)}}_{d_m\times d_s}\\\underbrace{\bar{\b A}_k^{(h)}}_{d_m\times d_s}\odot\underbrace{\b M_{k-1}^{(h)}}_{d_m\times d_s}\end{cases}+\begin{cases}\underbrace{\bar{\b B}_k^{(h)}}_{d_m}\underbrace{\b x_k^\top}_{d_s}\\\underbrace{\b B_k^{(h)}}_{d_m}(\underbrace{\b\Delta_k^{(h)}}_{d_s}\odot\underbrace{\b x_k}_{d_s})^\top\end{cases}
+    \\\b y_k^{(h)}=\t{diag}(\underbrace{\b C_k^{(h)}}_{d_s\times d_m}\underbrace{\b M_k^{(h)}}_{d_m\times d_s})+\underbrace{\b D_k^{(h)}}_{d_s\times d_s}\underbrace{\b x_k}_{d_s}
+    $$
+
+##### IV. Calculation
+
+有了具体的建模和初始化，还要研究如何高效计算。
+
+首先考虑 $\b B,\b C,\Delta$ 全部 LTI 系统，则此时 $\bar{\b A}$ 和 $\bar{\b B}$ 同样是 LTI 的。于是由线性性，可以直接以矩阵幂的形式展开递推式，得到
+$$
+\b y_k=\b C\bar{\b A}^k\bar{\b B}\b x_0+\dots+\b C\bar{\b B}\b x_k
+$$
+（特别地，因为 $\b D$ 项是 trivial 的，此处我们忽略之。或者，也可以当作钦定了 $\b D=\b0$。）
+
+那么可以定义一个卷积核（有时被看做一种 **Krylov 序列** 或 **冲激响应**）
+$$
+\bar{\b K}:\cur{\bar{\b K}_0=\b C\bar{\b B},\dots,\bar{\b K}_k=\b C\bar{\b A}^k\bar{\b B},\dots}
+$$
+即有
+$$
+\b y=\bar{\b K}*\b x
+$$
+使用 FFT 可以在训练时快速计算卷积。
+
+> [!NOTE]
+>
+> **线性性的第二个好处**：容易由递推式展开为求和式，进一步写成卷积式。
+
+然而一个问题是，虽然长度为 $S$ 的 Krylov 序列总计只有 $S\times d_o\times d_i$ 项，但中间计算需要求出全体 $\bar{\b A}^i$，共 $S\times d_m^2$ 项，而通常有 $d_m\gg d_i,d_o$。
+
+在 LTI + DPLR 的场景，有高效计算方法。具体地，若序列长度为 $S$，则只需考虑截断形式幂级数
+
+$$
+\hat{\b K}(z)=\sum_{i=0}^{S-1}\bar{\b K}_iz^i=\sum_{i=0}^{S-1}\b C\bar{\b A}^i\bar{\b B}z^i
+\\=\b C\left(\sum_{i=0}^{S-1}(z\bar{\b A})^i\right)\bar{\b B}=\b C(\b I-(z\bar{\b A})^S)(\b I-z\bar{\b A})^{-1}\bar{\b B}
+$$
+形式幂级数在取 $z$ 为 $S$ 次单位根 $\omega_S$ 时，可以被用于计算 DFT。此时有
+$$
+\hat{\b K}(\omega_S)=\b C(\b I-\bar{\b A}^S)(\b I-\omega_S\bar{\b A})^{-1}\bar{\b B}
+$$
+于是可以直接学习 $\tilde{\b C}=\b C(\b I-\bar{\b A}^S)$。（注意 $\tilde{\b C}$ 显式依赖截断长度 $S$；改变 kernel 长度时，需要相应转换或重新生成该参数）
+
+进一步，代入 $\bar{\b A},\bar{\b B}$ 的 Tustin 定义，推式子可以得到令 $s(z)=\dfrac2\Delta\dfrac{1-z}{1+z}$，则有
+$$
+(\b I-z\bar{\b A})^{-1}\bar{\b B}=\dfrac2{1+z}(s(z)\b I-\b A)^{-1}\b B
+\\\hat{\b K}(\omega_S)=\dfrac2{1+\omega_S}\tilde{\b C}(s(\omega_S)\b I-\b A)^{-1}\b B
+$$
+代入 $\b A=\b\Lambda-\tilde{\b P}\tilde{\b Q}^\H$ 的 DPLR 参数化，则其中有一项 $(s(z)\b I-\b\Lambda+\tilde{\b P}\tilde{\b Q}^\H)^{-1}$，有
+$$
+\b R(z):=(s(z)\b I-\b\Lambda)^{-1}=\t{diag}(\dfrac1{s(z)-\lambda_1},\dots,\dfrac1{s(z)-\lambda_{d_m}})
+\\(s\b I-\b A)^{-1}=\b R-\b R\tilde{\b P}(\b I_r+\tilde{\b Q}^\H\b R\tilde{\b P})^{-1}\tilde{\b Q}^\H\b R
+$$
+其中第二条是经典求逆小工具之 **Woodbury 恒等式**。于是在单位根上即有
+$$
+\hat{\b K}(\omega_S)=\dfrac2{1+\omega_S}\tilde{\b C}\Big(\b R-\b R\tilde{\b P}(\b I_r+\tilde{\b Q}^\H\b R\tilde{\b P})^{-1}\tilde{\b Q}^\H\b R\Big)\b B
+$$
+现在要对 $\omega_S$ 的 $0\sim S-1$ 次幂求点值。把矩阵乘法展开，会发现要求一堆形如
+$$
+k(z)=\sum_n\dfrac{a_n}{s(z)-\lambda_n}
+$$
+的式子。把这个式子对 $S$ 个点值求值，即称作 **Cauchy 求值**。直接求值的复杂度是 $O(d_mS)$，是慢的；如果用多点求值方法，可以做到对数平方，代价是并行能力受损，需要权衡。
+
+最终，我们以免计算 $\bar{\b A}$ 幂次的方法得到了 Krylov 序列的 DFT 结果。只需再对输入序列求 DFT 后，点积并 IDFT 回来，就完美计算了输出！
+
+但我们看到，为了算一个卷积，我们整了一堆花活：
+
+- 使用的式子强依赖于 Tustin 的具体形式。
+- 把一些项缝入 $\tilde{\b C}$ 并寄希望于其能完美学习。
+- 使用了高复杂度的多点求值。
+- 使用了 Woodbury 恒等式。
+
+而我们知道，数学越多、工作越烂。如果基于对角阵，则 $\bar{\b A}$ 也是对角阵，所以其全部幂次可以直接 $O(Sd_m)$ 简单计算，完全绕开了繁琐的公式。
+
+------
+
+然而，只有 LTI 的 $\bar{\b A},\bar{\b B}$ 才支持上述 Krylov 卷积形式。对于 LTV 的场景，考虑定义一种运算 $\bullet$，其满足 $(\b U_1,\b V_1)\bullet(\b U_2,\b V_2)=(\b U_2\b U_1,\b U_2\b V_1+\b V_2)$，则 LTV 场合即是要对全体 $(\bar{\b A}_k,\bar{\b B}_k\b x_k)$ 在 $\bullet$ 运算意义下求出前缀和。按照 **associative scan** 理论，因为 $\bullet$ 有结合律，这玩意可以并行。这种分析在 Mamba 中被应用。
+
+------
+
+进一步，到了单位阵的标量倍的场景，则方法又不一样了。定义 $a_k$ 为 $\bar{\b A}_k$ 前面的系数，考虑 SISO，则有
+$$
+\b M_k=a_k\b M_{k-1}+x_k\b B_k
+\\y_k=\b C_k^\top\b M_k
+$$
+展开得到
+$$
+\b M_k=\sum_{i=1}^k\left(\prod_{j=i+1}^ka_j\right)x_i\b B_i
+\\y_k=\b C_k^\top\sum_{i=1}^k\left(\prod_{j=i+1}^ka_j\right)x_i\b B_i
+\\=\sum_{i=1}^k\left(\prod_{j=i+1}^ka_j\right)x_i\ip{\b C_k,\b B_i}
+$$
+这个式子好像有点熟悉？如果把 $\b B$ 当成 K，$\b C$ 当成 Q，$x$ 当成 V，则前面的系数会是一个类似 mask 的角色：
+$$
+\b L_{k,i}=\begin{cases}\prod_{j=i+1}^ka_j&(i\leq k)\\0&(i>k)\end{cases}
+$$
+而且因为稳定参数化保证 $0<a_k<1$，这个 mask 描述了随距离衰减的关系。直接令 $\b B$ 堆积得到 $\b K$，$\b C$ 堆积得到 $\b Q$，$x$ 堆积得到 $\b V$，则有
+$$
+\b y=(\b L\odot(\b Q\b K^\top))\b V
+$$
+完全变成线性注意力了！这个关系即被称作 **Structured State Space Duality** (SSD)。
+
+最后一个问题是，这个 $\b L$ 与 flash-attn 等算子兼容吗？注意到 $\b L$ 满足一个特定性质：它是一个 **1-Semiseparable Matrix**，这意味着所有完全位于严格下三角区域的子矩阵秩均至多为 $1$。
+
+因此做下标分块后，intra-block 的 $\b L$ 使用矩阵乘法/并行快速计算，inter-block 串行或进一步 associative scan 即可。
+
+> [!IMPORTANT]
+>
+> Takeaways：
+>
+> - NPLR / DPLR + LTI：经过复杂数学推理后得到 Krylov 序列的 DFT 式，然后 FFT。
+> - 对角阵 + LTI：直接求对角阵幂次得到 Krylov 序列，然后 FFT。
+> - 对角阵 + LTV：定义新运算并 associative scan。
+> - SSD：直接转成线性注意力并应用 flash-attn 式矩阵乘法。
+
+##### V. Relationship with Causal Convolution
+
+我们已经知道，LTI 的 SSM 可以被写成 Krylov 卷积形式。
+
+而另一方面，**有限** kernel $\b K=[K_1,\dots,K_p]$ 的 **因果卷积**，也即
+$$
+y_k=K_1x_k+K_2x_{k-1}+\dots+K_px_{k-p+1}
+$$
+也可以被写成 SSM 形式：只需要取 $\bar{\b A}$ 为移位矩阵 $\b S_{i,j}=[i=j+1]$，并取 $\b B=\b e_1,\b C=\b K$ 即可。
+
+事实上，只要 SSM 的 $\bar{\b A}$ 满足以下两条件：
+
+- 主对角线及其上方全部为 $0$。
+- 是 Toeplitz 矩阵（沿主对角线相同的矩阵）。
+
+即可被显式对应到有限 kernel 因果卷积。
+
+#### II. SSM as a Component
+
+##### I. S4
+
+- SSM 用法：DPLR + LTI + SISO + channel mixing。
+- 直接把 SSM 当成一个 block。
+- 现代 SSM 的奠基之作。
+
+##### II. S4D
+
+提出了 S4D-Inv 和 S4D-Lin，表明在合适的对角初始化下，可以不使用 DPLR / NPLR 低秩修正而达到接近 S4 的效果。
+
+##### III. H3
+
+注意到 S4/S4D 中使用的 SSM 更关注全局信息，因此既不擅长回忆，也不擅长比较。而 H3 选择显式为模型提供回忆能力。
+
+形式化地，首先 token 被分别投影到 QKV。但是，它写出了下面这个意义不明的式子
+$$
+\b o=\b q\cdot\t{SSM}_\t{diag}(\t{SSM}_\t{shift}(\b k)\otimes\b v)
+$$
+其中：
+
+- $\t{SSM}_\t{shift}$ 是一个用于实现近邻检索的 SSM，其实可以被理解为因果卷积。卷积核长度被设得很小（例如 $2$），提供非常局部的信号。它的功能可以概括为，维护近期一批 token 的 $\b k$，并通过与 $\b v$ 的 Hadamard 积营造了一种 **绑定** 的效果。之后的工作中更多地把它换成卷积。
+
+- $\t{SSM}_\t{diag}$ 就是朴素对角 SSM。而且因为有 shift-SSM 分担一部分语义，此处更有底气使用对角先验。
+
+这套架构有意义的主要在于以下三个贡献：
+
+- 对局部的顺序使用某种结构建模。在 H3 中对应 shift SSM。
+- 使用另一个结构建模长程依赖。在 H3 中对应 diag SSM。
+- 使用 Hadamard 积作为 gating。
+
+H3 中具体使用的这两种 SSM 比较接近手工构造，理论支持并不强。
+
+##### IV. Hyena
+
+Hyena 借鉴了 H3 的分工，但移除了奇怪的 shift SSM，且在 **单个 Hyena Block** 中即堆叠多个短程与长程模块。
+
+对于输入的 token $\b x_k\in\R^H$，进行 position-invariant 的投影，生成 $R$ 个局部门控向量 $\hat{\b g}_k^1,\dots,\hat{\b g}_k^R\in\R^H$ 和一个局部内容向量 $\hat{\b v}_k\in\R^H$。从这里直到最后，这些向量的 $d$ 个通道是彼此独立的，只在最后会进行混合。
+
+定义单个 channel 上的 **短程卷积** 为 kernel size 为 $K$ 的 causal 卷积，看到 $[k-K+1,k]$ 范围中的所有局部信息。对 $R$ 个 $\hat{\b g}$ 和一个 $\hat{\b v}$，每个共 $H$ 维，分别应用一次短程卷积，共有 $(R+1)H$ 个独立的卷积核。跑完后得到短程门控向量 $\b g_k^1,\dots,\b g_k^R$ 和短程内容向量 $\b v_k$。
+
+定义单个 channel 上的 **长程卷积** 是 kernel 为下式的卷积：
+$$
+h_\ell=\gamma(\ell)(\exp(-\alpha\tau_\ell)+\vare)
+$$
+其中 $\tau_\ell=\ell/(S-1)$ 是归一化距离，$\gamma$ 是可学习的 FFN，$\alpha$ 和 $\vare$ 是可学习的参数。整体刻画了一个随距离衰减的核。同上，应用时对向量的每一维建立一个独立的卷积核。这个卷积核的特征是 **长度无关**，参数量与卷积长度解耦。
+
+现在描述具体内部流程。分 $R$ 层进行：
+
+- 第一层时，有 $\b z_k^1=\b v_k$，也即短程内容向量。
+- 做长程卷积，得到长程信息 $\b m^1_{0:S-1}$。
+- 与门控 $\b g^1_{0:S-1}$ 做 Hadamard 积，得到 $\b z^2_{0:S-1}$。
+- 重复多次，最终会得到 $\b z_{0:S-1}^{R+1}$，即为输出。
+- 一般 $R$ 不会过大，$2$ 或 $3$ 即可。
+
+现在判断复杂度。短程卷积因为 $K$ 不大，所以是 $O(SK)$ 的；长程卷积用 FFT 因此是 $O(S\log S)$。
+
+注意到 Hyena 中全程使用的都是卷积而不是 SSM。这进一步表明了 SSM 和卷积的部分一致性和可替换性：
+
+- 短程模块可以使用短因果卷积或 shift-SSM。
+- 长程模块可以使用全局因果卷积或常规 SSM。
+
+##### V. Mamba
+
+一方面，Mamba 继承了 H3/Hyena 的短程-长程分开 + 门控机制；另一方面，在长程方面它又回归了 SSM。
+
+形式化地，有如下架构：
+
+- $\b x_k$ 分别投影到 $\hat{\b v}_k$ 和 $\b g_k$。
+- $\hat{\b v}_k$ 过短程卷积得到 $\b v_k$。
+- $\t{SiLU}(\b v_k)$ 进入 SSM 得到 $\b y_k$。
+- $\b y_k$ 与门控 $\t{SiLU}(\b g_k)$ 做 Hadamard 积，然后过线性层得到输出。
+
+特别地，其在 SSM 上也有若干创新：
+
+- 使用 **selective-SSM**，让 $\b B_k,\b C_k$ 和 $\Delta_k$ LTV 依赖于输入。
+- 使用实对角先验。
+- 使用 associative scan 加速计算。
+
+##### VI. Mamba-2
+
+提出了前文的 SSD 以及相关加速方法。将 Mamba 的 per-channel diagonal SSM 改为 multi-head scalar-identity SSM，并显著增大 state size；每个 head 同时处理多个 value channel。
+
+#### III. Conclusion
+
+再把之前的 framework 搬下来：
+$$
+\underbrace{\b M_k^{(h)}}_{d_m\times d_s}=\begin{cases}\underbrace{\bar{\b A}_k^{(h)}}_{d_m\times d_m}\underbrace{\b M_{k-1}^{(h)}}_{d_m\times d_s}\\\underbrace{\bar{\b A}_k^{(h)}}_{d_m\times d_s}\odot\underbrace{\b M_{k-1}^{(h)}}_{d_m\times d_s}\end{cases}+\begin{cases}\underbrace{\bar{\b B}_k^{(h)}}_{d_m}\underbrace{\b x_k^\top}_{d_s}\\\underbrace{\b B_k^{(h)}}_{d_m}(\underbrace{\b\Delta_k^{(h)}}_{d_s}\odot\underbrace{\b x_k}_{d_s})^\top\end{cases}
+\\\b y_k^{(h)}=\t{diag}(\underbrace{\b C_k^{(h)}}_{d_s\times d_m}\underbrace{\b M_k^{(h)}}_{d_m\times d_s})+\underbrace{\b D_k^{(h)}}_{d_s\times d_s}\underbrace{\b x_k}_{d_s}
+$$
+下表分析各模型对 $\b A$ 的处理方式：
+
+|  模型   |               系统                |                             形式                             |                            初始化                            |
+| :-----: | :-------------------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: |
+|   S4    |          可学习连续 LTI           |                         SSM 式，DPLR                         |                            HiPPO                             |
+|   S4D   |          可学习连续 LTI           |                        SSM 式，复对角                        |                      S4D-Inv / S4D-Lin                       |
+|   H3    | shift：固定离散<br />diag：同 S4D |                  shift：/<br />diag：同 S4D                  |                  shift：/<br />diag：同 S4D                  |
+| Mamba-1 |          可学习连续 LTI           |                         Hadamard 式                          | 「S4D Real Initialization」：$A_{i,j}^{(h)}=-i$；实际参数化 log |
+| Mamba-2 |          可学习连续 LTI           | 只有标量 $a^{(h)}$，SSM 下就是 $\b A^{(h)}=a^{(h)}\b I_{d_m}$，Hadamard 下就是 $\b A^{(h)}=a^{(h)}\b1_{d_m\times d_s}$ |         $a^{(h)}$ 在某范围内均匀采样；实际参数化 log         |
+
+下表分析对其它 SSM 部件的处理方式：
+
+|  模型   |                   $\b B$                    |                  $\b C$                  |           $\b D$            |
+| :-----: | :-----------------------------------------: | :--------------------------------------: | :-------------------------: |
+|   S4    |               可学习连续 LTI                |     可学习 LTI $\R^{d_s\times d_m}$      |    可学习 LTI $\R^{d_s}$    |
+|   S4D   | 连续 LTI，常固定 $\b B=\b1$ 并吸收到 $\b C$ |     可学习 LTI $\R^{d_s\times d_m}$      |    可学习 LTI $\R^{d_s}$    |
+| Mamba-1 |               可学习连续 LTV                |       可学习 LTV，在 $d_s$ 维共享        |    可学习 LTI $\R^{d_s}$    |
+| Mamba-2 |     可学习连续 LTV，GQA 式 head 间共享      | 可学习 LTV，$d_s$ 维共享 + GQA head 共享 | LTI，默认标量，支持向量配置 |
+
+下表分析对离散化的处理方式：
+
+|  模型   |                      $\Delta$                       |                         $\bar{\b A}$                         |                         $\bar{\b B}$                         |
+| :-----: | :-------------------------------------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: |
+|   S4    | 可学习 LTI 标量（为了共享 $\bar{\b A},\bar{\b B}$） |                            Tustin                            |                            Tustin                            |
+|   S4D   | 可学习 LTI 标量（为了共享 $\bar{\b A},\bar{\b B}$） |                         Tustin / ZOH                         |                         Tustin / ZOH                         |
+| Mamba-1 |                可学习 LTV $\R^{d_s}$                | 简化版：$\bar{\b A}_k^{(h)}=\exp(\b A_k^{(h)}\odot\b 1_{d_m}(\b\Delta_k^{(h)})^\top)$ | 简化版：$\b B_k^{(h)}(\b\Delta_k^{(h)}\odot\b x_k)^\top$ ，无 $\bar{\b B}$ |
+| Mamba-2 |                   可学习 LTV 标量                   | $\bar a_k^{(h)}=\exp(a^{(h)}\Delta_k^{(h)})$，之后使用 SSM 或 Hadamard | 简化版：$\b B_k^{(h)}(\Delta_k^{(h)}\b x_k)^\top$ ，无 $\bar{\b B}$ |
+
+从 S4/S4D 到 Mamba，控制论的数学被扔掉了；现在的 $\Delta$ 主要扮演输入相关的离散步长或 timescale 角色：当 $a<0$ 时，大 $\Delta$ 会让 $\bar{\b A}$ 接近 $0$，于是更关注当前内容；相反小 $\Delta$ 则更强调过去内容。在 $\bar{\b A}$ 的角色上，$a$ 和 $\Delta$ 的地位是相同的，不同在于 $\Delta$ 同时还管 $\bar{\b B}$。
+
+下表分析各模型对 SSM 的使用方式以及具体计算方法
+
+|  模型   |                           单层结构                           |       多层堆叠       |                           训练方法                           |
+| :-----: | :----------------------------------------------------------: | :------------------: | :----------------------------------------------------------: |
+|   S4    |         将 head 输出拼接后，过激活函数接 output proj         |       直接堆叠       | DPLR + Woodbury + Cauchy 求值得到 Krylov 序列的 DFT 结果，然后 FFT |
+|   S4D   |                             同上                             |       直接堆叠       |                  直接算 Krylov 序列然后FFT                   |
+|   H3    | 输入投影到 QKV，K 过 shift SSM 并通过外积与 V 绑定，整个过 diag SSM 后用 Q 读取并投影 | 搭配 FFN 与少量 attn |                             FFT                              |
+|  Hyena  |    用短程卷积生成初始值与门控，然后堆叠多次长程卷积与门控    |       搭配 FFN       |                  短卷积直接进行，长卷积 FFT                  |
+| Mamba-1 | 输入分别投影到 X 和 Z，前者过短程卷积后，生成 ΔBC 并跑 SSM；后者用于给 SSM 输出加门控，最后再过 output proj |       直接堆叠       |                       associative scan                       |
+| Mamba-2 | 输入直接生成 X、Z 和所有 ΔBC，之后 XBC 一起过短程卷积并跑 SSM + 门控 + output proj；允许启用一个额外的 gated MLP 支路，并在 output proj 前拼接回去 |       直接堆叠       |                    chunkwise parallelism                     |
+
+推理都可以直接递归式进行。
+
+### II. Linear Attention
+
+**Linear Attention** 则仍然从 attention 角度进行分析。形式化地，标准 attn 中
+$$
+\b y_i=\dfrac{\sum\exp(\ip{\b q_i,\b k_j}/\sqrt{d})\b v_j}{\sum\exp(\ip{\b q_i,\b k_j}/\sqrt d)}
+$$
+中有一个非线性项 $\exp(\ip{\b q_i,\b k_j}/\sqrt d)$ 将 QK 对绑定，导致必须显式遍历整个矩阵中的所有项。
+
+注意到 $\exp(\ip{\b q_i,\b k_j}/\sqrt d)$ 本质上也不过是一个相似性度量罢了；而说到相似性度量，就不得不提到 **kernel method**。于是选择映射 $\phi$，并希望 $\t{Sim}(\b q_i,\b k_j):=\ip{\phi(\b q_i),\phi(\b k_j)}$ 是一个好的相似性度量。
+
+此时即有展开式
+$$
+\b y_i=\dfrac{\phi(\b q_i)^\top\sum\phi(\b k_j)\b v_j^\top}{\phi(\b q_i)^\top\sum\phi(\b k_j)}
+$$
+则 $\sum\phi(\b k_j)\b v_j^\top$ 即是一个可以预先计算并复用的 $d_k\times d_v$ 矩阵。或者，如果在 SSM 语境中，它就是 **矩阵形状的记忆**，此时可以分别维护
+$$
+\b S_i=\b S_{i-1}+\phi(\b k_i)\b v_i^\top
+\\\b Z_i=\b Z_{i-1}+\phi(\b k_i)
+\\\b y_i=\dfrac{\phi(\b q_i)^\top\b S_i}{\phi(\b q_i)^\top\b Z_i}
+$$
+两个 SSM 实现线性注意力。
+
+上述描述是 linear attention 的一个具体的例子。下文中将使用一个更抽象的 framework：
+
+- $\b q_i\in\R^{d_q},\b k_i\in\R^{d_k},\b v_i\in\R^{d_v}$。特别地，广义来说，此处 **不要求** $d_q=d_k$，因为可以靠 $\phi_Q$ 和 $\phi_K$ 把它们统一拉到同一个空间 $\R^{d_\phi}$ 下做内积。不过一般而言不会这么干，而且现代 linear-attn 一般不用 $\phi$，就算用了也会保证是 shape-preserving 的。因此在讨论现代 linear-attn 时，会将其统一为 $d_{qk}$，并弃用 $d_\phi$ 这个 notation。
+- $\b S_i\in\R^{d_{qk}\times d_v}$。满足递推关系 $\b S_i=\c U_i(\b S_i^-,\b k_i,\b v_i)$，其中 $\b S_i^-=\c T_i(\b S_{i-1})$ 可以承担 SSM 中状态矩阵的语义。
+- 读取操作 $\b r_i=\c R(\b S_i,\b q_i)$，之后搭配可能的归一化或直连分量得到最终输出。
+
+#### I. Address Space
+
+本节将在 Hebbian-style 写入
+$$
+\b S_i=\b S_{i-1}+\phi(\b k_i)\b v_i^\top
+$$
+下进行。一个可行的理解方式是：
+
+- $(\b k_i,\b v_i)$ 的功能是向 **地址** 为 $\phi(\b k_i)$ 的地方，写入值 $\b v_i$。
+- $\b q_i$ 做的是取址 $\phi(\b q_i)$ 并读取其中的值。特别地，在 vanilla attention 语境下，$\b q$ 读取的值会落在所有 $\b v$ 张成的 **归一化组合凸壳** 上。
+
+因此，我们会在意以下几个问题：
+
+- $\b k$ 和 $\b q$ 分别写入和读取哪个地址，也就是 $\phi$ 具体的选取方案？
+    - 特别地，既然投影时的 $\b W_Q\neq\b W_K$，我们也没有理由非得对 $\b k,\b q$ 强制使用同一个 $\phi$。一个常见做法是区分 $\phi_Q$ 和 $\phi_K$；这虽然破坏了 Mercer 定理的形式，不一定是数学意义上的 kernel，但工程上仍然可能称之为 **kernelized attn**。
+- 期望读取到的信息。可能的选项包括：
+    - 近似 softmax；或者不再严格要求，允许改变模型偏好与相似度几何。
+    - 保留 / 不保留相似度的非负性。前者保证是凸组合，后者只是朴素的线性组合。
+    - 除以 / 不除以分母。前者保证归一化。
+
+------
+
+- **Performer FAVOR+**：目标是近似 softmax，有分母。
+    对于 $\b z\sim\c N(\b0,\b I)$，对于一切 $\b x$ 均有
+    $$
+    \E_{\b z}\exp(\b z^\top\b x)=\exp(\|\b x\|^2/2)
+    $$
+    因此有
+    $$
+    \exp(\b x^\top\b y)=\E_{\b z}\exp(\b z^\top\b x-\|\b x\|^2/2)\exp(\b z^\top\b y-\|\b y\|^2/2)
+    $$
+    取 $\psi_{\b z}(\b x)=\exp(\b z^\top\b x-\|\b x\|^2/2)$，对经 $d_{qk}^{-1/4}$ 缩放后的 $\b k$ 和 $\b q$ 使用同一个预采样的 $\b z$，即可得到一个一维的近似。由大数定律，i.i.d. 地采样 $d_\phi$ 个 $\b z_i$，并令
+    $$
+    \phi(\b x)=\dfrac1{\sqrt m}\bmat{\psi_{\b z_1}(\b x)\\\vdots\\\psi_{\b z_m}(\b x)}
+    $$
+    即可。
+    事实上为了降低方差，不会使用完全独立的随机特征，会使用一些技巧让特征更正交，以保证无偏的前提下降低方差。
+
+- **Based**：目标是近似 softmax，有分母。
+    使用指数的二阶 Taylor 展开：有
+    $$
+    \exp(\b q^\top\b k)\approx1+\b q^\top\b k+\dfrac12(\b q^\top\b k)^2
+    $$
+    用 kernel method 相关分析把它转成 Mercer 定理形式即可。此时的 $\phi$ 是一个特定的二次函数。
+    但有一个问题是该近似不管输入如何，总至少能获得 $1/2$ 的分数；长序列中，这会让真正相关 token 的权重被稀释。
+
+- **ReBased**：放弃近似 softmax，有分母。
+    把 Based 中特定的二次函数变成可学习的二次函数：
+    $$
+    \phi_Q(\b x)=(\b \gamma_Q\odot\t{Normalize}(\b x)+\b \beta_Q)^{\odot2}
+    $$
+    其中 $\odot2$ 意味着逐位平方。$\phi_K$ 同理，只不过独立维护一套 $\b\gamma_K,\b\beta_K$。
+    这样即允许模型调整各个坐标下的缩放，减少无关 token 的污染，并规避 Based 的底噪问题。
+
+- **Linear Transformer**：放弃逼近 softmax，有归一化。
+    直接使用 $\phi(\b x)=\t{ELU}(\b x)+1>0$ 作为特征。因为 ELU 内积比 softmax 更平滑，这往往会让注意力更模糊。
+
+以上的内容属于古早方法。如果看到现代做法，就会发现：
+
+- **RetNet** / **GLA**：$\phi=\t{Id}$；无分母。
+- **DeltaNet**：$\phi=\t{ELU}+1$ 或 SiLU；无分母。
+- **Mamba-2**（linear-attn 表述）：相似度可以为负；无分母。
+
+总之，现代做法中已经更倾向于用简单的 $\phi$，并抛弃归一化制度。和 SSM 的趋势一样，我们观测到一种 **移除继承下来的无关性质，并保留核心机制** 的现象。
+
+#### II. Positional Encoding
+
+在标准的
+$$
+\b S_i=\b S_{i-1}+\b k_i\b v_i^\top
+$$
+表述下，linear attn 和 vanilla attn 有一样的问题：$(\b k,\b v)$ 对一旦写入，就分不清写入时刻。
+
+一种做法是加上一个 **memory decay** 机制，例如
+$$
+\b S_i=a_i\b S_{i-1}+\b k_i\b v_i^\top
+$$
+这样通过记忆的衰减可以 **隐式** 地表达距离概念。这部分将在下一节处理。
+
+另一种方法就是和 vanilla attn 一样，**显式** 地整一个 positional embedding。
+
+- 首先，之前提到的 **RoPE** 不完全有效，主要是与 $\phi$ 的施加顺序：
+
+    - 如果先过 RoPE 再过 feature map，则 feature map 会破坏 RoPE 的旋转语义。
+    - 反之，如果先过 feature map 再过 RoPE，RoPE 会破坏 feature map 的正内积语义。
+    - 就算使用 identity feature，移除 softmax 后权重也可能为负且不再按行归一化，长程行为将更依赖 decay、Q/K normalization 与输出归一化。
+
+- 常见做法是在 RoPE 上叠加 decay 机制，例如 **XPos**。具体地，对于下标 $k$，除了周期项 $e^{\j k\omega_n}$，还有一个衰减项 $\gamma_n^k$。$\gamma_n$ 和 $\omega_n$ 是相关的：高频对应短上下文，因此 $\gamma_n$ 较靠近 $0$，衰减快；低频则靠近 $1$，衰减慢。
+    实际应用时，注意到衰减项的高次幂是不可计算的，因此更倾向于改造成递归形式
+    $$
+    (\b S_i)_n=(e^{\j\omega_n}\gamma_n)(\b S_{i-1})_n+(\b k_i)_n\b v_i^\top
+    $$
+    直接把衰减项挂在 memory 上。
+
+- **RetNet** 让衰减项是 head-wise 独立的，功能也差不多。
+
+- 这些做法本质上仍然是魔改 RoPE。还有一种特色做法是 **在进入 linear attn 前，先过一个短程 1D 因果卷积**，我们在 SSM 中已经见到过了。它会承担隐式注入位置信息的机能。
+
+- **RWKV** 在算当前 token 的 QKV 时，使用的 $\b x_i'=\b\alpha_i\odot\b x_i+(\b1-\b\alpha_i)\odot\b x_{i-1}$，按比例混合前一个 token 的特征，也是一种隐式的位置信息。这种做法被称作 **token shift**，而且允许 QKV 使用不同的 $\b\alpha$。
+
+特别地，XPos 和 RetNet 的方式仅适用于无 feature map 场景，而后几种更为通用。
+
+#### III. Memory Decay
+
+上一节中的 XPos 和 RetNet 通过 **不可学习的 memory decay** 承担位置编码职责。本节将考虑更一般的 memory decay，可以是 **可学习** 或 **input-dependent** 的。
+
+这个 decay 有 SSM 形式的
+$$
+\b S_i^-=\b A_i\b S_{i-1}
+$$
+或者逐位形式的
+$$
+\b S_i^-=\b G_i\odot\b S_{i-1}
+$$
+它们除了位置编码，更重要的能力是决定历史记忆保留多少。
+
+- 最简单是 **无遗忘**，直接有 $\b S_i^-=\b S_{i-1}$。理论上这对长期保留关键事实的任务友好，但实际上旧内容也会随着新信息不断涌入而被干扰或抹平。
+
+- 然后是 **RetNet 式** 的 **固定 decay** $\b S_i^-=\gamma\b S_{i-1}$。它可预测，稳定，利于并行，但有时太过死板。模型只能学到通过「调控不同 head 间混合比例」来控制当前 token 的保留率，无法干扰 head 内部的动力学。
+
+- 然后是 **动态标量**，也即 **Mamba-2 式** 的 $\alpha_i=\exp(a_i)$。**Gated DeltaNet** 同样使用标量调控遗忘。
+
+- 更细粒度的是 **逐通道 decay**。对于 $\b S_i\in\R^{d_{qk}\times d_v}$，decay 可以沿 key 轴作用，因此是一个向量 $\b\alpha_i\in\R^{d_{qk}}$，且有
+    $$
+    \b S_i^-=(\b\alpha_i\b 1_{d_v}^\top)\odot\b S_{i-1}
+    $$
+    **GLA**、**RWKV**（某些版本）和 **KDA** 都服从这种模式。
+    逐通道门比标量门更灵活，却也更难解释和约束。一个标量天然对应「当前 token 对历史的整体丢弃」；向量门则相当于每个通道拥有自己的数据相关记忆。它能减少不同记忆寿命之间的冲突，但会增加参数量，并可能让部分通道长期饱和在近 $0$ 或近 $1$ 的区域。
+
+- 进一步地，**HGRN** 会从整个网络的角度考虑 decay；它认为底层应该更关注局部信息，而上层更关注全局信息（这一点在 sparse attention 中也经常应用），于是让上下层的 gate weight 之间产生关联，给下层提供一个接近 $0$（更容易忘记）的 weight，而上层则接近 $1$。这是一种 **inductive bias**，并非总是更优的普世结论。
+
+gate weight 需要保证属于 $(0,1)$。这需要一些显式的参数化技巧，包括：
+
+- 朴素的 sigmoid，但是容易饱和。
+- SSM 离散化中来的 $\alpha_i=\exp(a_i\Delta_i)$，其中 $a_i<0,\Delta_i>0$。
+- **初始化** 时的状态格外重要，因为作为一个复杂动力学系统，设不好就会 vanish 或 explode，无法有效训练（因此 SSM 才需要那一堆花样百出的初始化方案）。一般根据希望的有效窗口长度，逆推实际初始化的值。
+
+#### IV. Write & Evict
+
+第一小节中有一个类比：Hebbian-Learning Style 的
+$$
+\b S_i=\b S_{i-1}+\phi(\b k_i)\b v_i^\top
+$$
+是往 $\phi(\b k_i)$ 的地址中写入 $\b v_i$ 的内容。
+
+然而因为不同地址之间的存储并非完全独立，比起覆盖式的「写入」，其实更应该看做是增量式的「更新」。
+
+具体有以下几种更新模式：
+
+- 增加 **标量或向量** 的 **写入强度** $\beta_i$：
+    $$
+    \b S_i=\b S_{i-1}^-+\beta_i\b k_i\b v_i^\top
+    $$
+    同样要求 $\beta_i\in(0,1)$，而且经常与遗忘强度 $\alpha_i$ 是耦合的；例如 **HGRN2** 中二者逐通道互补。
+
+- 允许写入强度依赖于 **该地址的已有存储值**，实现更精细的存储混合。
+    具体地，先读取出 $\hat{\b v}_i=(\b S_{i-1}^-)^\top\b k_i$，然后定义误差 $\b e_i=\b v_i-\hat{\b v}_i$，并只写入误差
+    $$
+    \b S_i=\b S_{i-1}^-+\beta_i\b k_i\b e_i^\top
+    $$
+    这样的结果是将已有存储值 $\hat{\b v}_i$ 与新的 $\b v_i$ 以 $\beta_i$ 为权重混合（假设 $\b k_i$ 经过归一化）：
+    $$
+    (\b S_i)^\top\b k_i=\hat{\b v}_i+\beta_i\|\b k_i\|^2\b e_i=(1-\beta_i)\hat{\b v}_i+\beta_i\b v_i
+    $$
+    这种方法在 **Gated DeltaNet** 中被使用。
+
+    另外有一套常见 notation 会使用转置状态 $(\b S\b k)\b k^\top$，这是纯粹记号差异（使用 $\b v\b k^\top$ 而不是 $\b k\b v^\top$），没有本质区别。
+    特别地，这一套方式符合在线学习的语义：认为模型对 $\b k_i$ 的预测是 $\hat{\b v}_i$，则在标准平方误差 $\dfrac12\|\b v_i-\hat{\b v}_i\|^2$ 意义下，以 $\beta_i$ 为步长做一步 GD 即得到 Gated DeltaNet 的更新式。
+
+    也因此，$\b S_i$ 有一个专有名称是 **fast weight matrix**：随着序列进行，快速变换的一个临时权重。
+
+总而言之，关于写入方面，主要考察的只有两个方面：
+
+- 要不要有写入强度？是标量还是向量？需要与遗忘强度耦合吗？
+- 写入的是真实 value $\b v_i$ 还是误差 $\b e_i$？
+
+#### V. Read
+
+本节考虑如何从状态 $\b S$ 中读取结果 $\b r$。形式化地，至少有以下几种模式：
+
+- 读取上一时刻状态 / 先读后写：有 $\b r_i=\b q_i^\top\b S_{i-1}$。适用于某些严格因果场景。
+- 读取当前时刻状态 / 先写后读：有 $\b r_i=\b q_i^\top\b S_i$。如 DeltaNet / KDA 等现代模型更倾向于这种模式。
+- 历史与当前输入分离读取：有 $\b r_i=\b q_i^\top(\b S_{i-1}+\b U\b k_i\b v_i^\top)$，其中 $\b U$ 被称作 **time-first bias**，只用于读取，不进入状态。更常见的做法是只作用于 $\b k$，写成 $\b r_i=\b q_i^\top(\b S_{i-1}+(\b u\odot\b k_i)\b v_i^\top)$ 的形式。在 RWKV 中使用，给「当前位置」提供一个额外的零延时响应。
+- 额外 direct 路径 $\b D\b x_i$ 或 $\b D\odot\b x_i$：和 SSM 中的语境相同，提供直连语义。
+
+#### VI. Normalization and Stability
+
+在 write 节我们已经看到，混合比例不仅取决于 $\beta_i$，还取决于 $\b k_i$ 的模长。这意味着我们一般需要对 QK 做一些归一化，以保证动力学符合预期。同时此时相似度也可以被解释为更稳定的 **cosine similarity**。
+
+另一方面，作为一个 SSM 式的递归模型，激活值 $\b S_i$ 的范数也是衡量算法稳定性的重要指标。在标准 Hebbian-style 更新下，有
+$$
+\|\b S_i\|_\t F\leq\|\b S_0\|_\t F+\sum_{j=1}^i\|\b k_j\|_2\|\b v_j\|_2
+$$
+说明更新本身并不能提供明确的上界；做一些 memory decay 倒是能显式提供约束。
+
+#### VII. Storage & Scaling
+
+状态 $\b S_i$ 的形状是 $d_{qk}\times d_v$，这也是单 head 需要的推理时状态。和 vanilla attention 一样，让多个头共享 KV 有助于减少状态量。
+
+按照 Hebbian learning 理论，固定 $d_{qk}\times d_v$ 的状态，能无干扰编码的独立 key 方向数是有限的，受限于状态的秩 $\min(d_{qk},d_v)$，甚至可能因为地址碰撞导致更少。因此，相比于 vanilla attn 常见的固定 64/128 的 head dim，linear attn 在需要 scaling 时则会考虑扩展 head dim。
+
+#### VIII. Other Components
+
+除了主线，linear attn 还可能搭配以下组件：
+
+- 预处理：**1D 因果卷积** 或 **token shift**。已经在第二小节介绍过。
+- output projection：vanilla attn 中也有，有时会搭配一个 **gating**（RWKV 中称为 **receptance**）。
+- 另一条旁路，一般是某些有限感受野的算子，提供一些局部高保真信号。
+
+以上大体描述了单个 block 的结构。
+
+实际架构中一般仅仅作为网络中的部分层，经常与其它结构混合：
+
+- 与 full-attn 层混合，提供更保真的信号；真正重要的信号可以由 full-attn 检索，linear attn 只要负责把它们正确传递即可，这个还是容易的。
+- 与 sparse-attn / SWA 混合，SWA 负责精确但短程的检索，linear attn 负责模糊但长程的检索。
+
+#### IX. Acceleration
+
+本节考虑怎么加速。
+
+首先仍然区分 train、prefill 和 decode 三种状态。其中 decode 是最简单的，因为这就是 linear attn 的核心优势：只用维护固定大小的 state，不需要维护完整的 KV\$。然后 train 和 prefill 的功能其实比较类似，大部分时候加速算法是相通的。
+
+和 Mamba-2 坚持要从 SSM 形式转成 linear attn 形式一样，写成带 causal mask 的 linear attn 形式虽然计算量并没有减少（甚至重新回到了平方级别），但提供了另一种思路，也即 **chunkwise parallelism**：块间串行，保证边界处传递的信息量是常数级别；块内并行，释放 GEMM kernel 和多卡并行的充分潜力。当然在 Mamba-1 中见到过的 **associative scan** 也并非不能用。
+
+但是以上两种并行方式均在状态矩阵满足特定标量或对角形式才真正高效。这在 Hebbian Style 写入时，确实是成立的；然而如果使用 Delta 式的写入方法，不管是 chunkwise parallelism 还是 associative scan，都要处理类似下式（暂时忽略 memory decay）的东西：
+$$
+\b S_i=\b S_{i-1}+\beta_i\b k_i(\b v_i-\b S_{i-1}^\top\b k_i)^\top
+\\=(\b I-\beta_i\b k_i\b k_i^\top)\b S_{i-1}+\beta_i\b k_i\b v_i^\top
+$$
+状态矩阵 $\b F_i:=\b I-\beta_i\b k_i\b k_i^\top$ 满足 DPLR 结构。但是与 S4 不同：S4 时满足 DPLR 的是连续场景，还需要额外的离散化，不过矩阵本身是 LTI 的；而此处直接是离散场景，但矩阵是 LTV 的。
+
+这种低秩结构在 $\|\b k_i\|=1$ 且 $\beta_i=2$ 时，是 Householder 矩阵；一般场合则可以看做是广义 Householder 矩阵。
+
+------
+
+定义辅助量
+$$
+\b P_n:=\b F_n\b F_{n-1}\dots\b F_1
+\\\b H_n:=\sum_{i=1}^n\b F_n\dots\b F_{i+1}\beta_i\b k_i\b v_i^\top
+$$
+则有
+$$
+\b S_n=\b P_n\b S_0+\b H_n
+$$
+但直接处理 $\b P$ 和 $\b H$ 是很昂贵的。
+
+作为广义 Householder 矩阵的积，$\b P_n$ 自然具有一些独到之处。声称：存在向量系数 $\b w_i\in\R^{d_{qk}}$ 和 $\b u_i\in\R^{d_v}$，使得
+$$
+\b P_n=\b I-\sum_{i=1}^n\b k_i\b w_i^\top
+\\\b H_n=\sum_{i=1}^n\b k_i\b u_i^\top
+$$
+且这批系数 **与具体的 $n$ 无关**。这被称作 **WY 形式**。
+
+于是我们可以转而求 $\b w$ 和 $\b u$。具体展开可得
+$$
+\b w_n=\beta_n\left(\b k_n-\sum_{i<n}\b w_i(\b k_i^\top\b k_n)\right)
+\\\b u_n=\beta_n\left(\b v_n-\sum_{i<n}\b u_i(\b k_i^\top\b k_n)\right)
+$$
+考虑一个长度为 $C$ 的 chunk，入口状态为 $\b S_0$。令 $\b K,\b W\in\R^{C\times d_{qk}}$、$\b V,\b U\in\R^{C\times d_v}$ 为 **按行堆叠** 的矩阵，$\b B:=\t{Diag}(\beta_1,\dots,\beta_C)$，$\b G:=\t{tril}(\b K\b K^\top,-1)$。
+
+> 这里的 tril 算子表示取下三角部分 (lower triangular)，而 $-1$ 表示取严格下三角。
+
+则上述递推式可以直接改写为矩阵形式
+$$
+(\b I+\b B\b G)\b W=\b B\b K
+\\(\b I+\b B\b G)\b U=\b B\b V
+$$
+于是求 $\b W$ 和 $\b U$ 变成了解方程问题。特别地，该方程满足特殊结构：因为 $\b G$ 是严格下三角矩阵，所以 $\b I+\b B\b G$ 是非严格下三角矩阵，因此这个矩阵方程是容易绕开 Gaussian Elimination 逐行代入求解的——但那样是串行的，就违背了我们做这一套分析的初衷了。更常见的做法是对 $\b I+\b B\b G$ 定制可并行的求逆算子。
+
+特别地，因为这个方程本身接近 **UT 分解** 的形式，所以整个方法全称为 **WY-UT 方法**。
+
+进一步，可以不重建出 $\b P$ 和 $\b H$，直接由 WY 格式一步到位得到输出。形式化地，有
+$$
+\b R:=\b U-\b W\b S_0\in\R^{C\times d_v}
+\\\b S_C=\b S_0+\b K^\top\b R
+$$
+特别地，如果把 $\b K$ 和 $\b R$ 在行上 truncate 到 $n$，则可以得到 $\b S_n$。采用先写后读模式，则有
+$$
+\b O=\b Q\b S_0+\t{tril}(\b Q\b K^\top)\b R\in\R^{C\times d_v}
+$$
+而先读后写则只需取严格下三角。
+
+于是整个计算流程为：
+
+- 求解矩阵 $(\b I+\b B\b G)\b W=\b B\b K$ 以及对应的 $\b U$，计算量是 $O(C^2(d_{qk}+d_v))$ 级别的。
+- 建立矩阵 $\b R$，计算量 $O(Cd_{qk}d_v)$。
+- 计算 $\b O$，计算量 $O(C^2(d_{qk}+d_v))$。
+
+如果再搭配标量 memory decay，那就无非是多了一些前缀积/区间积项，整体推导没有本质区别。逐通道 memory decay 失去了交换律，需要一些额外的分析，但结论是相近的。
+
+```mermaid
+graph LR
+A[QKV] -.递推：难以并行.-> B[O]
+A -.递推：难以并行.-> C[PH] -.-> B
+C <--WY 格式--> D[UW]
+A --下三角方程：容易并行--> D
+D --矩阵乘法：容易并行--> B
+```
+
+以上这一套分析仅适用于 chunkwise parallelism；associative scan 因为 WY 表示 **只能从递推得到，不能从结合律得到**，所以不适用。
+
+特别地，不论是 Delta 还是 Hebbian，在处理逐通道 memory decay 时都需要特殊技巧，因为不同通道的动态范围可能相差很多数量级。常见的做法是直接在 log-scale 下处理。
+
+#### X. Examples
+
+现在把现代论文表示为上述技巧的组合。
+
+|      模型       |                   位置编码 / memory decay                    |                           写入模式                           |    读取模式     |
+| :-------------: | :----------------------------------------------------------: | :----------------------------------------------------------: | :-------------: |
+|     RetNet      |           RetNet 式 RoPE + head-wise 固定标量衰减            |                  Hebbian Style，无写入强度                   |    先写后读     |
+|     RWKV-4      |        静态、逐通道的 token-shift 强度与 memory decay        | $\exp(\b k_i)\odot\b v_i$（因为此时其背景其实更接近 RNN，因此状态是向量而非矩阵），无写入强度 | time-first bias |
+|     RWKV-5      |        静态、逐通道的 token-shift 强度与 memory decay        |                  Hebbian Style，无写入强度                   | time-first bias |
+|     RWKV-6      |   input-variant、逐通道的 token-shift 强度与 memory decay    |                  Hebbian Style，无写入强度                   | time-first bias |
+|     RWKV-7      | 静态、逐通道的 token-shift 强度；input-variant、逐通道的 memory decay |                   Delta Style，无写入强度                    |    先写后读     |
+| Gated DeltaNet  |        短程因果卷积；input-variant、标量 memory decay        |                  Delta Style，标量写入强度                   |    先写后读     |
+|       KDA       |       短程因果卷积；input-variant、逐通道 memory decay       |                  Delta Style，标量写入强度                   |    先写后读     |
+|   TransNormer   | 第一层使用 RetNet 式 RoPE + head-wise 静态标量 decay；后续层只使用静态标量 decay |                  Hebbian Style，无写入强度                   |    先写后读     |
+|   MiniMax-01    |                        静态标量 decay                        |                  Hebbian Style，无写入强度                   |    先写后读     |
+
+特别地，上述模型通常都有 **output gating**。除了 RWKV-4 老古董以外，其它都 **不再维护分母**。部分模型对 QKV 过一些 Swish 或 SiLU 等常见激活函数，不过并非出于 kernel map 的目的。

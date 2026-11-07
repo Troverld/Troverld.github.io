@@ -1,0 +1,671 @@
+$$
+\newcommand{\c}{\mathcal}
+\newcommand{\b}{\boldsymbol}
+\newcommand{\t}{\text}
+\newcommand{\R}{\mathbb R}
+\newcommand{\cur}[1]{\left\{#1\right\}}
+$$
+
+本文系统性梳理 MoE 相关理论。
+
+### I. Framework
+
+将 batch 和 index 展平，只考虑单 shard 上的 $\b X\in\R^{T\times H}$ 输入。
+
+- $T$：该 layer 的输入 token 数。在单卡场景，一般是 $B\times S$。
+- $H$：每个 token 的 hidden size。
+- 其中的每个元素是 $\b x_t=\b X_{t:}\in\R^H$。
+
+只考虑 MoE 本体，不考虑 pre-norm 与 residual connection。
+
+- $N_\t{EP}$：EP group size。
+- $E$：routed expert 数。
+- $H_\t{RE}$：单个 routed expert 的 intermediate width。
+- $H_\t{latent}$：如果使用 Latent MoE，latent 的维数。
+- $H_\t{SE}$：shared expert（**只有一个**！部分 notation 中会保留一个 shared expert 数的概念，但这只是为了配置方便；在常见 setting 下，多个 shared expert **严格等效** 于一个 width 等于所有 shared expert width 之和的胖 expert）的 intermediate width。
+- $K$：每个 token 选择的 routed expert 数。总是满足 $1\leq K\leq E$。
+- $T^{(e)}$：第 $e$ 个 expert 实际收到的 assignment 数，在每次 pass 时都不同。
+
+流程如下：
+
+- 输入 $\b X\in\R^{T\times H}$。
+
+- 过一个投影得到 **raw router logits** $\b A\in\R^{T\times E}$。
+
+- $\b P=\phi(\b A)\in\R^{T\times E}$，其中 $\phi$ 常见做法包括：
+
+    - 在 expert 维度做 softmax。称作 **softmax router**。
+    - 直接对每个 logit 逐元素做 sigmoid。称作 **sigmoid router**。
+
+    $\b P$ 被称作 **unbiased router affinity**。本文使用前者。
+
+- $\b Q\in\R^{T\times E}$ 是实际用于 Top-K 的 score，被称作 **selection score**。
+
+    - 常规做法是直接令 $\b Q=\b P$。
+    - **aux-loss-free selection bias** 会引入不进入梯度的 **expert bias** $\b b\in\R^E$，并使用 $\b Q=\b P+\b1_T\b b^\top$。$\b b$ 具体的维护方式将在对应章节展开。
+
+- $\b J\in\R^{T\times K}$ 是对 $\b Q$ 做 Top-K 后保留的 expert indices。
+
+    - 特别地，这一套描述是 **先 activation 再 Top-K** 模式；也存在颠倒顺序，**先 Top-K 再 activation** 的做法。
+    - 使用先 Top-K + softmax 的模式能保证选中 expert 的 combine weights 是归一化的，也许更有解释性。
+    - 另一方面，Top-K 的顺序也会影响对 logit 的梯度，将在下面展开。
+
+- $\b G\in\R^{T\times K}$ 是对这些 expert 做的加权。常见计算方式如下：
+
+    - 先取出 combine score $\hat{\b P}_{t,i}=\b P_{t,\b J_{t,i}}$。
+
+    - 然后对其作 scaled normalization
+        $$
+        \b G_{t,i}=\gamma\dfrac{\hat{\b P}_{t,i}}{\left(\sum_{j=1}^K\hat{\b P}_{t,j}\right)^\rho}
+        $$
+        其中 $\rho=1$ 意味着严格归一化，而 $\rho=0$ 意味着不执行归一化。
+
+        特别地，当 $K=1,\rho=1$ 时，这会让 $\b G_{t,i}=\gamma$，完全截断 $\b P$ 对 $\b G$ 的贡献，通常是不合适的。此时一般取 $\rho=0$ 或其它归一化手段。
+
+    - 进一步，如果同时满足以下三条件：
+
+        - activation 使用 softmax。
+        - 使用先 activation 后 Top-K 模式。
+        - 未执行 $\rho=1$ 的严格归一化。
+
+    - 则此时不在 $\b J$ 中的 logit term 会通过 softmax 分母隐式得到梯度；反之，不在 $\b J$ 中的 logit 通过该路径得到的梯度严格为零。其它辅助损失仍可能提供梯度。
+
+- 按照 $\b J$ 对 token 进行 **permute**（单卡）/ **dispatch**（多卡）：对于 routed expert $e$，
+
+    - 其 assignment 集合为 $\c D^{(e)}\sube[T]\times[K]$，即所有发送给它的 token 集合。有 $\c D^{(e)}=\cur{(t,i)\mid\b J_{t,i}=e}$，且 $T^{(e)}=|\c D^{(e)}|$。如果考虑 EP，还要记录来自哪个 original rank 以便于回传，不过此处我们默认 $t$ 可以推断出这个信息。
+    - 固定一个局部 index map $\pi^{(e)}:\c D^{(e)}\to[T^{(e)}]$。
+    - **ragged input** $\b X^{(e)}\in\R^{T^{(e)}\times H}$。有 $\b X^{(e)}[\pi^{(e)}(t,j),:]=\b x_t$。
+    - 如果使用 Latent MoE，则 **在 dispatch 之前** 就先把 $\b x$ 降维到 $H_\t{latent}$ 维，此时 $\b X^{(e)}\in\R^{T^{(e)}\times H_\t{latent}}$。这样跨卡通讯量明显更少。
+    - dropless 模式下，$\sum_{e=1}^E T^{(e)}=TK$。如果考虑 EP，右侧要转为对各 rank 的 $T$ 求和的结果。
+    - 如果有 drop，则还有额外的 **accept mask** $\b M_{t,i}$ 表示 token $t$ 的第 $i$ 个 assignment 是否被接受；此时 $\c D^{(e)}=\cur{(t,i)\mid\b J_{t,i}=e\land\b M_{t,i}=1}$。
+
+- routed expert forward 得到 **ragged output** $\b O^{(e)}\in\R^{T^{(e)}\times H}$ 或 $\R^{T^{(e)}\times H_\t{latent}}$（如果使用 Latent MoE）。
+
+- 把 $\b O^{(e)}$ 拉回来，并以 $\b G$ 为权重加权求和得到 routed branch 输出
+    $$
+    \b R_{t,:}=\sum_{i=1}^K\b G_{t,i}\b O^{(\b J_{t,i})}[\pi^{(\b J_{t,i})}(t,i),:]
+    $$
+    则有 $\b R\in\R^{T\times H}$。
+    如果使用 Latent MoE，则拉回来后还需要升维，实际使用的公式是
+    $$
+    \b R_{t,:}=\sum_{i=1}^K\b G_{t,i}\b O^{(\b J_{t,i})}[\pi^{(\b J_{t,i})}(t,i),:]\b W_\uparrow
+    $$
+    如果有 drop，则未被 accept 的位置会被跳过。
+    
+- 过 shared forward 得到 $\b C\in\R^{T\times H}$。特别地，当 $H_\t{SE}=0$ 时，默认不启用 shared branch，有 $\b C=\b0$。
+
+- 最终输出为 $\b R+\b C\in\R^{T\times H}$。
+
+特别地，「Router」这个术语一定程度被混用了：
+
+- 狭义的 Router 仅指生成 raw router logits $\b A$ 的 proj。
+- 广义的 Router 还进一步包括 $\b P,\b Q,\b G$ 等 score 的生成乃至 Top-K。
+
+```mermaid
+graph TD
+b[b: aux-loss-free expert bias]
+b -.-> Q
+X[X: input] --proj--> A[A: raw router logits] --activation--> P[P: combine score] --> Q[Q: selection score] --TopK--> J[J: expert indices]
+J -."potential reorder".-> Q
+P --"selection + scaled normalization"--> G[G: combine weights]
+X --> Xd[Latent MoE DimDown]
+Xd --"permute/dispatch"--> Xe[X^e: ragged inputs]
+J --> M[M: accept mask] --> Xe
+Xe --routed expert forward-->Oe[O^e: ragged outputs]
+Oe --combine--> Od[Latent MoE DimUp] --> R[R: routed outputs]
+G --weighted sum--> R
+X --shared expert forward-->C[C: shared outputs]
+O[O: final output]
+C --sum--> O
+R --sum--> O
+subgraph inner-expert
+Xe
+Oe
+end
+
+subgraph "router (broad sense)"
+subgraph "router (narrow sense)"
+A
+end
+b
+P
+Q
+J
+G
+end
+
+classDef dashedNode stroke-dasharray: 5 5;
+class Xd dashedNode;
+class Od dashedNode;
+class c dashedNode;
+class M dashedNode;
+
+```
+
+### II. Universal Tricks
+
+本节列举现代 MoE 中成为「标配」的结论。几乎所有现代 MoE 都认可这些方法。
+
+#### I. Learnable Router and Top-K
+
+一个标配是可训练的 Router 并使用 Top-K。然而 Top-K 的具体 $K$ 值则并不确定，$1,2,4,8$ 甚至更多，不一而足。
+
+$K$ 的选择应该视具体 expert 数量和宽度、通信预算和带宽而定，是复杂的调优工程，没有具体定论。
+
+Top-K 的离散 indices $\b J$ 因为是整数，根本不会被 torch 追踪，故无法参与 BP。它在 Top-K 不跳变的稳定区域内是常规的选择，虽然无法考虑到边界处的跳变，不过是可以接受的近似。
+
+正如框架中提到，Top-K 有前置和后置两种模式；只有满足前文提到的所有条件时，未被选中的 logit 才会收到梯度。这同时表明，如果有一个 expert 出现了 starving，则它的 router 梯度也会相应很少，换言之很可能持续负载过低。这意味着经常需要一些显式的负载均衡工具。
+
+#### II. Combination and Gating
+
+上述框架中，对 ragged output 以 $\b G$ 为权重进行加权组合，得到 routed output。前文中展示的 scaled normalize 方法仅仅是一种可选项，至少还有其它备选项：
+
+- Top-K 后置且不重归一。（$\rho=0,\gamma=1$）
+- Top-K 后置并严格归一。（$\rho=1,\gamma=1$）
+- 重归一后乘常数。（$\rho=1$，$\gamma$ 是 **预设常数**，常见取值是 $2.5$）
+- 均匀平均。（直接取 $\b G_{t,i}=1/K$ 或 $1$）
+
+特别地，中间两种模式是如今比较主流的选择；最后一种均匀平均虽然看着简单，但一般只做 ablation，不是生产级实现。
+
+特别地，这个 $\gamma$ scaling 很重要，需要精密调试以避免 routed 被 shared 或 residual 淹没或反过来淹没对方。而且同样也不应照抄，改其它配置都会改变 $\gamma$ 的最佳取值。
+
+#### III. Narrower and More Experts Work
+
+在总参数量、激活参数量和运算量都近似不变时，可以同步调整 $H_\t{RE}$ 和 $K$ 得到很多相似配置。
+
+- 例如，$H_\t{RE}=16,E=128,K=8$ 的 setting 和 $H_\t{RE}=64,E=32,K=2$ 的 setting 下，routed experts 的参数、激活参数和计算量均完全相同，除了前者 router 更宽且 dispatcher 流量更多。
+
+在这种背景下，如第一个 setting 一般，用更多、更窄的细粒度 expert，**实践意义下几乎总能改善 performance**，但收益会递减，且切分过细时可能出现反转。
+
+这也是有一些 intuition 的：
+
+- 理论上来说，总是可以用多个窄 expert 组合出一个宽 expert 的功能；而窄 expert 还能带来更多自由度。
+- 减少单个宽 expert 不可分割的容量浪费。
+- 每个小 expert 的梯度独立维护，减少不同模式的梯度噪音。
+
+然而：
+
+- 过窄时单专家表达力有限；同时 GEMM 效率也会下降。
+- 如果 Top-K 没随着 expert 数一起上升（常见于固定激活量和运算量但总参数量上升的场景），则单 expert 收到的样本数会下降，梯度方差更大，而且 GEMM 同样变差（因为 token 维度变窄了）。
+- 如果 Top-K 随着 expert 数一起上升（常见于全固定的场景），则 router 宽度和 dispatcher 通信量等比例增加；虽然前者经常是可忽略的，但后者的 a2a 通讯还是比较重量级的。有一些缓解大 $K$ 时通信量的方法，将在后文详解。
+- Router 如果不够精细，则很难发挥出多 expert 展现的潜力，仍然有可能学到绑定某些 expert 的捷径，则名义上的自由度此时不会兑现。
+- 细化 expert 数带来的收益通常是递减的。
+
+判断何时达到 expert width 的 sweet spot 的信号：
+
+- 细粒度带来的收益已经低于额外方差带来的损害。
+- 专家输出高度相似。
+- Router 不再能维持高精度的路由能力。
+- MFU 迅速降低。
+- a2a 成为瓶颈。
+
+#### IV. Load Balancing
+
+正如前文所述，训 MoE 时 **负载均衡措施是必须的**，但具体采用哪种方式则另有说法。
+
+形式化地，负载均衡至少有五种不同的目的：
+
+- 防止某个专家死掉。死专家不仅训练样本不够，还会浪费模型容量。
+- 在 EP 时，让每个设备上所有专家收到的总 assignment 数目相近，避免被最慢设备拖住。
+- 让所有设备的通讯收发量接近平衡。
+- 让每个专家负载不超过固定 buffer 以方便存储和计算。
+- 允许某些 task-specific 或 request-specific 的负载不均衡，这样才真正体现了 MoE 的意义——全局均衡不意味着所有局部都均衡。
+
+下文将专门展开相关分析。
+
+#### V. Layer Placement Variants
+
+MoE 可以替换所有的 FFN，不过更常见的做法是与与部分 Dense 结合使用。
+
+- 有很多不同规模的 MoE 实践均使用全 MoE 模式。
+- 也有很多深层 MoE 会在前一层或几层用 Dense，后面层再上 MoE。这种模式被形象地称作 **Dense Stem**。
+- 还有部分模型会让 MoE 与 Dense 交替。
+
+特别地，低层用 Dense 是一个合理但非绝对的 Trick，它的 Intuition 包括：
+
+- 低层主要考虑一些 generic 的特征，多个 routed expert 的角色可能高度相似，此时复制多份略显冗余。
+- 低层语义的线性可分性弱，router 很难正确路由，而路由噪声与专家学习耦合导致冷启动闭环。
+- router 难路由还导致 auxiliary loss 难收敛。
+- 最低层的误差会在后续层中放大，影响整体训练。
+
+但以上分析并非绝对，也有很多全 MoE 模型训得很好。目前尚无通用结论。
+
+另一方面，Dense-MoE 交替也有一些好处，包括用 Dense 摊平 MoE 的 a2a 通讯，让 Dense 提供混合、缓解 expert 碎片化，减少推理延迟等。不过不如 Dense Stem 常见。
+
+#### VI. High-Level Design
+
+本节 Intuitive 地分析在设计并调优一个 MoE 模型时，一种可行且简单（？）的执行模式：
+
+- 一般按照 IsoFLOPs 为第一标准，首先确定目标计算量（在已知硬件的前提下，约等于目标训练时长）。
+- 然后按照经验选或搜一个合适的 **aspect ratio**（模型宽度 $H$ 与层数的比值；具体为什么选取这个作为 scale-invariant metric 也没啥定论），根据这个先确定具体层数和 $H$ 取值。
+- 随便选或抄一个合适的 MoE + attn 混合架构（假如实验的目标不是调整层间配比的话）。到现在为止，整个模型的地基就大体搭好了。
+- 确定并固定单 token 专家的 active width $H_\t{active}=KH_\t{RE}+H_\t{SE}$。至此除 router 外的激活值和计算量确定。
+- 在硬件上测试得到 $H_\t{RE}$ 的 GEMM sweet spot，然后确定 $K$ 和 $H_\t{SE}$。在事先确定并行方案的前提下，至此总通信量确定。
+- 做 expert scaling，调整 $E$ 也即 expert 数量直到合适。至此总参数量确定。
+- 如果强行把 $E$ 设得太大，可能会因为 a2a 太稀疏导致成为 communication bound，或模型塞不下导致不得不开大并行度，等等。此时可能反过来调整前面的若干事项，例如反过来改变架构或 Top-K 比例等等……
+- 还没完！你还需要调整合适的 peak lr rate、schedule style，甚至要对不同模块使用不同的 learning rate；如果发现在此条件下训练不足、没有 saturate 就更麻烦了，因为调整 step 数会直接影响总计算量……
+- 由此可见整个模型设置的变量实在太多了！
+
+### III. Specific Tricks
+
+本节讨论一些常见但止步于可选项的技巧。
+
+#### I. Architectures
+
+##### I. Shared Expert(s)
+
+多个 shared expert 在以下条件全部满足时，会等价于单个宽 FFN：
+
+- 接受同一个输入。
+- 激活函数相同。
+- 输出直接求和。
+
+常规的 MoE 满足这些条件。
+
+Shared expert 始终占贡献激活参数量。如果固定激活参数量，调大 shared width，势必以减少 routed width 为代价。
+
+- Shared 参数总是可以获得稠密（来自所有 token 的）梯度？
+    - 是的，它会被几乎所有 token 贡献梯度；而 routed expert 只会被路由到它的 token 更新。
+- 它能解决 router 冷启动问题？
+    - 部分，它能保证稠密路径先被优化，有一条始终稳定的传播路径，但无法直接对 router 提供信号。
+- 它是一种 routed 效果不好时的 fallback？
+    - 不是，它并没有对路由错误的检测，只是始终与 routed path 并行执行。
+- 它与 routed 有分工：shared 存公共知识，routed 存专业知识？
+    - 未充分证明。这是一种合理的 intuition，但目前并没有作出严格的归因。也许可以使用可解释性方法进行梳理。
+- 它能减少 routed 中的冗余？
+    - 未充分证明。也许可以使用专家相似度度量、专家合并/替换等手法进行检测。
+
+消融实验同时对它的应用有正面和负面报告：
+
+- DeepSeekMoE 发现不同 shared-routed 配比对 loss 影响在 1e-3 级别，微小且非单调。
+- DeepSeekMoE 后干预发现已训练模型强依赖于 shared——但这只能表明 shared expert 确实被委以重任，不能表明这样做一定正确。
+- OLMoE 反倒表明用 shared 不如不用，因此最终公布版本没有 shared。这表明 shared 并非普适收益。
+
+考虑部署账单：
+
+- Shared expert 接受的是规则大 batch，比起 routed 的 ragged batch 要高效；而且如果能对多个 shared expert 进行融合，还能使用更大的矩阵乘法，GEMM 算子更友好。
+- Decode 时可能成为固定瓶颈，尤其是如果 routed 使用 latent 模式的场合。
+
+##### II. Router Activation & Normalization
+
+我们之前已经看到，有 Top-K 前置/后置以及激活函数选择等种种设计思路。然而一个事实是，在 **不启用 aux-loss-free bias $\b b$ 时**，Top-K 选择与这些设计思路无关，等效于直接对 raw logit $\b A$ 求 Top-K——因为激活函数是保序的。
+
+在启用 bias 时，上述设计思路是有关的——因为它关系到 $\b b$ 到底以何比例混入 $\b A$（或其它权重）。不过因为本节的重点不在于 bias，所以这里我们先忽略，假装我们已经通过另一条独立的路径得到了 selection index $\b J$。
+
+那么此时由 raw logit $\b A$ 生成 combine weight $\b G$ 的可行方式有以下几种：
+
+- softmax + Top-K 后置：对 $\b A$ 进行 expert 轴的 softmax 得到 $\b P$，取下标 $\b J$ 即得 $\b G$。这里没有二次归一化——不然就和下一种方案等价了。
+- Top-K 前置 + softmax：先对 $\b A$ 取下标 $\b J$，再做 softmax。这保证能产出归一化的 weight。
+- sigmoid + Top-K：先过 sigmoid 再取下标 $\b J$（或者反过来，产出仍完全相同），最后再补归一化（也可以不补）。
+
+特别地，sigmoid 和 softmax 就算后面都加上归一化，二者的表现仍有些许不同：
+
+- 在所有 raw logit 很负时，$\sigma(x)\approx\exp(x)$，这意味着二者接近等价。
+- 在所有 raw logit 很正时，$\sigma(x)\approx1$，这意味着正 logit 之间的权重差会被压缩。
+- softmax 有平移不变性，而 sigmoid 没有。这意味着后者的绝对零点是有意义的，初始化时要格外在意。
+
+正如前文所述，上述三种方法中，只有第一种中 $\b J$ 以外的 logit 也能通过 softmax 得到梯度；此时权重竞争在全部 $E$ 个 expert 间展开。后两者的权重竞争烈度更低，分为 Top-K 竞争与集合内归一化竞争两部分。
+
+对于 router 稳定性，有以下重要指标：
+
+- normalization 前后的 entropy。
+- bias 相对主值的比例（假如启用 bias）。
+- selected term 的最小值、最大值和总和。
+- Top-K margin，也即 $K$ 和 $K+1$ term 的差。
+- raw logit 的方差与饱和比例；对 sigmoid 还需要监控均值、正值比例。
+
+##### III. Top-1 Routed Expert
+
+特别地，考虑一个特殊设计，也即 $K=1$ 场景。我们已经知道，此时如果对 $\b G$ 归一化，会导致 $\b G$ 完全无法给 router 提供梯度，因此不能归一化。
+
+比起传统 MoE，它更倾向于被解释为「shared 作为公共基线，routed 作为单一增量」，把更多的表达能力放到 shared 上。
+
+##### IV. Topology-Aware Routing
+
+真实部署 EP 时，我们会厌恶大量、随机的跨卡/跨节点通讯。因此，有些 Top-K 方案会额外贴近具体网络结构。
+
+例如，DeepSeek-V2 在获得 selection score $\b Q$ 后：
+
+- 先以 **GPU** 为单位，对其上所有 expert 的得分求 max 作为 GPU 得分，并对 GPU 先做一遍 Top-K。
+- 在挑选出具体的候选 GPU 后，只在 **其上持有的 expert** 集合内对 expert 做 Top-K。
+- 由此限制每个 token 只能访问少量卡，让 a2a dispatch 的通信量更低、更均匀，减少 fan-out。
+
+DeepSeek-V3 对 node aggregate 时是采用 Top-2 之和而不是 max，不过逻辑大同小异。
+
+- 如果多个高价值 expert 挤在同一个 GPU 内，则该 GPU 的得分会高，但组内竞争较大。
+- 如果高价值 expert 分散，则需要在第一遍 GPU Top-K 时即保留更多候选。
+- aux-loss-free bias 的影响可能外溢到整个 group。
+- **模型架构对具体拓扑是 aware 的**，这意味着换拓扑时需要设计精细的重映射策略，如果没能对齐，则会出现严重的水土不服。
+
+##### V. Latent MoE
+
+Latent MoE 于 dispatch 之前在 token 端降维，让单 token 向单 expert 发送的向量维数从 $H$ 变为 $H_\t{latent}$；同理，expert serve 过后，combine 回来后再升维回 $H$。
+
+Latent MoE 只与 routed expert 相关，router 与 shared expert 都可以且应该依赖完整的 embedding。
+
+升降维过程限制了 Jacobian 的秩；为了保证压缩不以损失任务质量为代价，需要保证足够的 $H_\t{latent}$，具体压缩比例视具体任务而定，经验值是 $\alpha:=H/H_\t{latent}=4$，但并非普适定理。
+
+有两种具体的将朴素 MoE 迁移到 Latent MoE 的方案：
+
+- MoE-eff：将 expert 总量 $E$ 扩大 $\alpha$ 倍，$K$ 不变，这样通信量和 routed expert 计算量均缩小 $\alpha$ 倍。
+- MoE-acc：$E$ 和 $K$ 均扩大 $\alpha$ 倍，这样预算不变。
+
+这两者都需要计算增大后的 router 开销、额外的上下投影开销，以及不可忽略的 shared path 开销。
+
+#### II. Load Balancing Tricks
+
+首先，所有的 Load Balancing Trick 都有一个作用域。常见的方案一般包括：
+
+- 每个 **sequence** 内部均衡。
+- 每个 **micro batch** 均衡。
+- 每个 **global batch** 均衡。
+
+一个大趋势是更强调 global batch 均衡，因为其能更强调 expert 分工。
+
+另一方面，均衡的目标也有不同尺度，如 node 均衡、GPU 均衡或 expert 均衡等。
+
+##### I. Classical Load Balancing Loss
+
+本节介绍使用显式的负载均衡 loss 的方法。
+
+定义
+$$
+\t{CV}(x_1,\dots,x_n)^2=\dfrac{\sum(x_i-\bar x)^2}{n\bar x^2}=\dfrac{n\sum x_i^2}{(\sum x_i)^2}-1
+$$
+容易发现有 $\t{CV}=\sigma/\mu$，其中 $\sigma$ 是标准差，$\mu$ 是均值。
+
+> [!TIP]
+>
+> 这里是除以 $1/n$ 的总体方差/标准差而不是除以 $1/(n-1)$ 的统计学方差。
+
+CV^2^ 具有以下性质：
+
+- scale-invariant。
+- 比起 CV 本身更平滑而且不用开根。
+- 工程实现简单。
+
+在均匀分布时，有 $\t{CV}^2=0$；在 one-hot 分布时，有 $\t{CV}^2=n-1$。这意味着可以通过 $n_\t{eff}=n/(1+\t{CV}^2)$ 得到一个 **等效样本数**。
+
+现在让我们把 CV 用于提供负载均衡 loss。
+
+- **Importance CV^2^**：把每个 expert 对所有 token 的 $\b G$ 求和，得到 $\cur{I_e}$，然后算它的 CV^2^。
+
+    - 只会对选中专家提供直接梯度。
+    - 均衡的是 **weight** 而不是 **token 数**。
+    - 是经典选择，但如今已不是默认方案。
+
+- **Load CV^2^**：注意到一个自然的选择是把每个 expert 收到的 token 数（也即 $|\c D^{(e)}|$）通过某种统计方式（比如说 CV^2^）然后 BP。然而问题是 $|\c D^{(e)}|$ 不可导。
+    所以解决方案是算 Top-K 时，给 logit 加一个噪声，然后计算每个 expert 在噪声影响下进入 Top-K 的次数期望。换言之，把 Hard Top-K 换成了一个更 soft 的版本。这样之后，对期望算 CV^2^。
+
+    - 因为算的是期望，未实际落入 Top-K 的专家也会收到梯度。
+    - 依赖外部噪声，同时算期望需要有正态分布的 CDF，计算实现复杂。早已退出主流选择。
+
+- **GShard**：令 $p_{t,:}$ 为第 $t$ 个 token 在所有 expert 上的某个归一化权重（来自 softmax 结果或 sigmoid affinity 归一化）。
+    定义 $c^{(e)}$ 为 expert $e$ 作为 **第一选择** 的次数，则 GShard 使用以下 loss：
+    $$
+    P^{(e)}:=\dfrac1T\sum_{t=1}^Tp_{t,e}
+    \\\c L_\t{GShard}\propto\sum_{e=1}^Ec^{(e)}P^{(e)}
+    $$
+    上述式子中只有 $P^{(e)}$ 是实数，其它东西全是不可 BP 的整数。
+
+- **Switch**：将 GShard 扩展的方式。
+    $$
+    \c L_\t{Switch}\propto\sum_{e=1}^E|\c D^{(e)}|P^{(e)}
+    $$
+
+    - 目前最通用的 baseline。
+    - 打压 **token 数** 和 **weight** 同时高的 expert。（显然，$P^{(e)}$ 直接与总 weight 相关）
+    - 也常被称作 f·P：f 表示 frequency——落入 Top-K 的频率；P 表示 probability。
+
+- **Sequence-wise f·P**：为了抑制单序列突发热点的选择，以序列为粒度对 f 与 P 统计，并跨序列平均。
+
+    - 更有助于 decode 时取得更均衡的效果。
+    - 代价是如果序列很短，则会有大方差；同时也可能强迫领域高度专一的序列被迫激活更多专家。
+    - 适合作为一个弱保险，获得 decode 时的轻度亲和。
+
+- **Device-wise** / **Communication-wise**：以设备或通信组为单位统计 f 与 P，更倾向于跨 rank 通信的均衡而不是 rank 内 expert 均衡。
+
+    - 更利好分布式训练/部署，而不完全是模型自身 performance。
+
+总结：如今最通用的模式是 f·P，包括以下成分：
+
+- 选择一批 token。
+- 它们有一个 selection index $\b J$ 和一个归一化权重 $p$。
+- 对 expert 或 expert 上的某种分组，计算组内平均落入其中的 $\b J$ 数以及平均 $p$。
+- 将二者求积（其中 frequency 被 stop-gradient）后，求平均并缩放。
+
+每一层的负载均衡 loss 被 aggregate（求和或求平均——二者仅差常数缩放关系）后，直接加到 LM loss 上。
+
+##### II. Aux-Loss-Free Bias
+
+本节考虑 bias $\b b$。前文中已经讲述了它使用的方式（被 stop-gradient 地加到 raw affinity $\b P$ 上，用于 Top-K）。
+
+其核心思想是把负载均衡从「显式优化目标」变为「反馈控制器」。当然，虽然它不直接提供梯度，但是它确实会通过改变 Top-K 结果的方式影响整个训练轨迹。
+
+形式化地，每一轮都有真实负载 $c_e=|\c D^{(e)}|$ 以及平均负载 $\bar c=TK/E$，计算 $e_i=\bar c-c_i$，则：
+
+- $e_i<0$：第 $i$ 个专家是过载的。
+- $e_i>0$：欠载。
+- $e_i=0$：恰好处于平均载荷。
+
+因此最简单的更新方式就是
+$$
+\b b\gets\b b+\gamma\t{sgn}(\b e)
+$$
+只看方向，不看大小。
+
+- bias 的更新时间是一般是 **每个 step 结束时**，也即和参数一同更新。就算使用 grad accumulation，也是在大 step 结束（以 global batch 为周期）时再更新。工程上以 `requires_grad = False` 的方式不进入 optimizer，并在 `no_grad` 状态手动更新。
+- 这对应着 **global batch** 粒度的平均。
+- 分布式同步时，必须保证所有 rank 的局部 bias 始终同步，避免副本的 bias 分叉。
+- 原始论文初始化直接取 $\b b=\b0_E$，因为是加性初始化。乘性初始化（对应需要 $\b b=\b1_E$）效果最终表明不如加性。
+- DeepSeek-V3 选择更新速度 $\gamma$ 为 $10^{-3}$，并在训练后期时取 $\gamma=0$，此时相当于冻结 bias 只训 backbone。
+- ckpt 中，bias 必须和模型一起存储。
+- 因为 bias 加减同一常数不改变 Top-K，所以工程上可以定期去均衡以改善数值稳定性。
+- 不需要周期性重置——因为 bias 是与模型深度耦合的。
+    - 正常断点续训就直接恢复旧 bias。
+    - 如果要重置优化器等，仍保留旧 bias。
+    - 末期稳定路由时也只是设 $\gamma=0$。
+    - 如果专家数量/索引/拓扑发生变化，优先把旧 bias 映射到新 bias。
+    - 数据分布明显变化时，优先保留原有 bias，同时压低更新速率，避免突然清零。
+
+##### III. Quantile Balancing
+
+Aux-Free Bias 的理论来源是 PID 和 Sign-SGD。另一条路则展开更精细的规划分析。
+
+定义分数矩阵 $\b P\in\R^{T\times E}$，分配矩阵 $\b X\in\cur{0,1}^{T\times E}$，则最优均衡分配可以写成以下规划问题：
+$$
+\max_\b X\sum p_{i,j}x_{i,j}
+$$
+满足：
+
+- $\sum_{j=1}^Ex_{i,j}=K$，每个 token 选择恰 $K$ 个 expert。
+- $\sum_{i=1}^mx_{i,j}=q=:TK/N$，负载均衡。
+
+虽然这看上去是经典的最优传输问题，但因为以下两个原因：
+
+- 「负载均衡」侧的约束不是严格的，只希望尽量遵守，违背了也不是不行。
+- 是整数规划（Monge 问题而不是 Kantorovich 问题）。
+
+所以就不考虑 Sinkhorn 等分析了。
+
+对这两个条件引入 Lagrange 对偶 $\b\alpha,\b\beta$：
+$$
+L(\b X,\b\alpha,\b\beta)=\sum p_{i,j}x_{i,j}+\sum\alpha_i(K-\sum x_{i,j})+\beta_j(q-\sum x_{i,j})
+$$
+则在对偶问题中，当 $\b\alpha,\b\beta$ 固定时，最优的 $\b X$ 为
+$$
+x_{i,j}^*=\begin{cases}
+1&(p_{i,j}-\beta_j>\alpha_i)
+\\0&(\t{otherwise})
+\end{cases}
+$$
+进一步：
+
+- 当 $\b\beta$ 已知时，$\alpha_i$ 只能调控选取 $p_{i,j}-\beta_j$ 的 Top 若干个。为了保证选出 Top-$K$，应取 $\alpha_i$ 为第 $K+1$ 大元素。
+- 同理，当 $\b\alpha$ 已知时，$\beta_j$ 是在选取 $p_{i,j}-\alpha_i$ 的 Top 若干个，取第 $q+1$ 大元素可以保证恰好负载均衡。
+
+理论上，通过反复迭代，$(\b\alpha,\b\beta)$ 会越来越近似最优解；但一个问题是，如果在当前 step 内强制均衡，会导致 Token 间出现隐式的信息泄露，是不好的。于是实际采用的手段是：
+
+- 当前 step 用上一 step 的 $\b\beta$ 正常前向-反向计算。
+- 在 step 结尾（global batch 跑完）后，再更新 $\b\beta$，只跑一轮 Coordinate Descent，将 $\b\beta$ 设为 $p_{i,j}-\alpha_i$ 的 $1-K/E$-分位数。也就是 **Quantile Balancing** 一名的由来。
+
+与 Aux-Free Bias 比较：
+
+|            |    Aux-Free Bias     |   Quantile Balancing   |
+| :--------: | :------------------: | :--------------------: |
+|  理论基础  |       PID 控制       |    最优传输 / 规划     |
+|  求解机制  |       迭代试探       |        一步估算        |
+| 超参敏感度 |   需精细调整学习率   |       无额外超参       |
+|    收敛    |          慢          |        一步收敛        |
+| 分布式代价 |   低（All-Reduce）   |    较低（直方图等）    |
+| 多专家场景 | 较差（容易冷启动挂） | 好（第一步开始即均衡） |
+
+#### III. Routing
+
+##### I. Router z-loss
+
+如果使用 softmax activation，则因为 softmax 的平移不变性，其 logits 可能整体起飞。所以解决方案是引入 Router z-loss，对 softmax 的 log partition function 最小化。形式化地，有
+$$
+\c L_z=\dfrac1T\sum_{t=1}^T\left[\log\sum_{e=1}^E\exp(z_{t,e})\right]^2
+$$
+
+##### II. Router Entropy Regularization
+
+还有一些 play with entropy 的辅助 loss。
+
+- 最大化 router entropy：能防止路径坍缩，鼓励探索，但系数过大时会让路由接近均匀分布，削弱分工。
+- 最小化 router entropy：能锐化分布，提高专家选择确定性，促进专业化，扩大 Top-K margin，但会过早锁定某些专家，过强时可能会导致负载不均衡。
+- 最大化 averaged router entropy：先对整个 batch 的概率求平均，再算 entropy。相当于一种软负载均衡，但不等于真正的 Top-K 结果。
+- 最大化 token 与 expert 的互信息。同时鼓励不同 token 的覆盖与单个 token 的专一。
+
+#### IV. Expert Serving
+
+Framework 中建立了一个纯粹逻辑的框架，假装 dispatcher 直接把 Top-K 一步到位发到 expert 端，假装 accept mask 是从不知道什么地方蹦出来的。而本节则会展开考虑具体的工程实践。
+
+在这里重申一遍关键 notation：
+
+- $T^{[r]}$ 是 rank $r$ 收到的总 logical request 数，计入 Top-K duplicate，考虑 drop 影响。
+- $T^{(e)}$ 是 expert $e$ 收到的总 request 数，考虑 drop 影响。
+- 总是有 $T^{[r]}=\sum_{e\in\t{experts}(r)}T^{(e)}$。
+
+##### I. Dispatcher
+
+以下是主流的 dispatcher 实现方法：
+
+- **assignment-expanded**：一个 token 会被物化完整的 $K$ 份，如果一个 rank 有多个 expert 进入该 token 的 Top-K，则会被重复传输多次；最终会自然得到 **expert-major** 格式，也即接收端已经按照 expert 将所有 token 分门别类。此时单 rank 收到的总 token 数即为 $T^{[r]}$。
+- **rank-coalesced**：不会物化完整 $K$ 份，如果一个 rank 有多个 expert 进入该 token 的 Top-K，则只会传一次，但附带多个 assignment 信息。此时单 rank 收到的 token 数可以少于 $T^{[r]}$。至于收到后是再展开还是保持原样，则视下一节具体消费情况而定。
+- **All-Gather**：token 方直接广播；rank 能接受全局所有的 hidden states，然后自行截留与本地 expert 相关的内容。代价是有许多额外通信量。
+
+特别地，在单 rank 时，前两种方法仍然有效：前者产出 permute 后的结果，而后者产出原始 token 序列。
+
+##### II. Drop or Dropless
+
+Expert 端经常会设置 per-rank 或 per-expert 的容量上限。这里的上限有两种经常被混淆的解释：
+
+- **速率约束**：单次 kernel launch 的 token 有限。此时的处理方法是 **Chunked/Wave Execution**，一次启动一批任务，剩下的等待这一批跑完后再被接收，以启动次数换峰值显存开销。可以发现，这并不是真正的 drop，只是有一些请求必须等待。
+- **数量约束**：整个 forward 给 rank/expert 设置的 quota 有限，如果超过 quota，则出现 **overflow**。
+
+到这里仍不必然 drop，可能有以下可能的应对方案：
+
+- **reroute**：将该 token 转投次优且有容量的 expert。
+- **assignment drop**：直接丢弃某一对 token-expert assignment。受影响的 token 的 expert mixing 产生变化，对应 accept mask $\b M_{t,i}$ 中某一项取 $0$，
+- **routed branch drop**：直接丢弃某个 token 在本层的全部 assignment，相当于让这个 token 的 routed output 为零，对应 accept mask $\b M_{t,i}$ 中某一行取 $0$。一般 shared path 仍然忠实执行。
+- 只有后两种是真正的 drop。
+
+可以看到，drop——如果发生——总是 expert-wise 或 layer-wise 级别的，不会从整个网络中移除该 token 的 forward。它和 **dropout** 尽管目的完全不同，但结果上对 forward 的影响是相似的。
+
+另一方面，drop 会导致缺少 serving 一致性，**单 token 的结果会依赖位于同一 batch 中的其它 token 是否占满槽位**，因此如今热度有所下降。
+
+只要设置数量约束，就算某次 forward 完全没有出现 drop，仍然是 **drop** 方法；而不设置就是 **dropless** 方法。
+
+##### III. Expert Input Formats
+
+现在考虑 expert 端接受的输入格式。本节只考虑逻辑上的输入格式，不考虑实际存储时内部是否碎片化、如何动态扩容——那些是内存管理干的活。我们认为如果申请了一个固定 shape 的 tensor 或一个类似 C++ `vector` 的变长结构，那么后端会自动处理这件事。
+
+而这些格式本质上只有两种：非 expert major 或 expert major。
+
+- 前者常见的只有 **Indexed Layout** 一种，此时每个 expert 手动从原始 token 序列 gather 它需要的内容。
+    - 优势：避免 Top-K 输入复制，避免物化完整的 expert-major tensor。
+    - 劣势：大量不连续 gather。gather 事实上仍需要展开 Top-K，因此并不能省计算。与传统 GEMM kernel 并不兼容。
+
+剩下的本质上都会转成 expert major，区别就是具体怎么组织各个 expert 之间的关系。
+
+- **固定容量**：预先设置一个所有 pass 都相同的固定容量上限 $C$，将 token 整理为 $[E,C,H]$ 的 expert-major 张量，不到上限的被 pad，到上限了就等下一个 wave（如果是 dropless）或直接 drop。
+    - 优势：地址固定，形状规则，GEMM 和 CUDA Graph 友好，没有碎片，expert 容易通过 offset 定位。而且 pad 不一定真的进入 GEMM 计算，可以通过变长 GEMM 处理。
+    - 劣势：负载不均时产生大量 pad。 
+- **动态最大容量**：找到所有 expert 本轮收到 token 数的上限 $C_\t{max}$，然后构造 $[E,C_\t{max},H]$ 的张量。这种方法的目标就是达到 **单 wave dropless**——$C_\t{max}$ 正是为了本轮所有 request 而设的。
+    - 优势：仍然可以使用规则 GEMM，且比长期预留 worst-case 容量更省。
+    - 劣势：计算量被热点 expert 放大，经常有较多 padding。每轮 tensor shape 不固定，需要先计算 max 才能知道，因此容易破坏 CUDA Graph。
+- **最坏容量**：提前预留该 rank 所有 expert 能收到的最多 token 量，相当于固定容量的一种极端场合。同理，目标是 **单 wave dropless**。
+    - 优势：base index 永久固定，不需要重新分配，永远不会 overflow。
+    - 劣势：内存大，在 expert 数量多时几乎不可用。一般只作为理论上界。
+
+以上这些方法都适用于 **Strided GEMM**，此时容易以常规矩阵的下标直接访问。下文中所有方法均不再要求所有 expert 持有形状相同的矩阵，也即 **ragged input**。
+
+一方面，对于单个 expert，有两种维护方案：
+
+- 维护无 padding 的 $[T^{(e)},H]$ token 矩阵；代价是存储碎片化。
+- 维护 pad 到 block 的 token 矩阵，有明确的 pad 上界，且与 tensor core 更容易对齐，碎片化更少；代价是有 pad。
+
+而另一方面，对于多个 expert 的组织方案，又有另一个维度：
+
+- **Packed**：将所有 token 按照 expert-major 堆叠为 $[T^{[r]},H]$（如果有 block padding，第一维可能更大；如果考虑速率约束，则第一维可能只取到速率上界）矩阵，每个 expert 处理的 token 通过 offset 定位为矩阵中的若干列。
+    - 优势：expert 连续，碎片化更少，且预处理排序/offset 的代价容易均摊。
+    - 劣势：需要维护每个 step 都变化的 offset。地址不固定，CUDA Graph 比较困难（但并非不可实现）。
+- **Independent**：每个 expert 维护的矩阵彼此独立。逻辑空间占用和 packed 场景相同，但因为底层内存申请是分块的，实际占用几乎总是更多。
+    - 优势：expert 可独立扩容。
+    - 劣势：容易碎片化和 pointer chasing。
+
+##### IV. GEMM Serving
+
+然后是具体的 GEMM 模式。不管是什么模式，总是有多个 GEMM 要同步执行的。然后有两个维度：
+
+- 第一个维度是不同 GEMM 问题的形状是否相同。如固定容量或按 block 处理的 ragged 模式下，形状可以是相同的。
+- 第二个维度是各个 GEMM 问题的输入输出地址是如何确定的：
+    - **Strided** 模式以固定步长确定每个问题，例如固定容量场景是在计算标准的 $[E,C,H]\times[E,H,H_\t{RE}]\to[E,C,H_\t{RE}]$ 矩阵乘法。显然这种模式强制要求所有 GEMM 的形状相同，不然就无法有固定 stride 了。
+    - **Offset** 模式通过基地址 + offset 的模式确定每个问题，也即 packed ragged。
+    - **Pointer-Array** 模式通过指针确定每个问题。 
+
+进一步，decode 时还有 **Masked** 模式，通过 mask 让 kernel 只关注新增部分。
+
+##### V. Conclusion
+
+目前最热门的方案基本上都是 dropless 的。packed ragged input 是最常见的，是否 pad 到 block 的模式均有。而 index 模式是另一种热度上升的、对高 Top-K 友好的模式；其它方案比较少见。
+
+上述组件之间是相互耦合的关系：
+
+- 核心是 expert 的格式。
+- Dispatch 的结果需要被强制转化为 expert format。
+- Dropless 且有速率限制时，就要使用 wave execution；drop 且 overflow 时，就要 drop 或 reroute。
+- Group GEMM kernel 具体选择的启动模式视具体 expert 格式而定。
+
+### IV. Frontier Tricks
+
+本节介绍一些比较前沿，但未得到广泛认可的技巧。
+
+#### I. UniPool
+
+让全深度共享 expert。这种东西已经见过很多次了，正如有人会全深度共享 KV head 一样。具体结构包括：
+
+- 每层 router 独立，负载均衡扩展到 pool 级别，允许不同层使用不同配比的专家。
+- 使用 **NormRouter** 把不同层的 router logit scale 归一化。
+
+但是和任何企图跨层共享的尝试一样，这玩意对 PP 很不友好。
+
+#### II. Dynamic Top-K
+
+之前的架构中，所有 $K$ 都是在架构中确定的；**ReMoE** 允许动态调整激活数，具体地不用 Top-K，只对 logits 用 ReLU，这样正值专家被激活，负值专家被跳过。引入额外惩罚，鼓励全局平均激活数接近 $K$。
+
+可以移除 Top-K 边界处的跳变，不被 softmax 竞争耦合，同时在整个 ReLU 正区间上都有连续梯度。但是训练早期其实接近 dense 激活，而且长期为负的专家也较难扭转。
+
+#### III. Extremely Micro Experts
+
+**PEER** 让专家窄至单神经元的 MLP，由两条长度为 $H$ 的向量组成；而专家数和激活专家数均极多。
+
+为了在百万级别的专家上求 Top-K，采用分层 Top-K：先在 $\sqrt n$ 个组中选 Top-K，然后对选中组内部候选合在一起再做 Top-K。
+
+代价是参数量很大，而且没法直接用朴素 GEMM kernel。
+
+#### IV. Sparse Upcycling
+
+把 dense checkpoint 的 FFN 替换为 MoE 的方法，正如 GQA/MQA 可以通过合并 MHA 得到一样。具体地，把 dense FFN 复制给 expert 作为 MoE 层的初始化，并继续训练。训练延续 dense checkpoint 所在位置的 schedule。

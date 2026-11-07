@@ -1,0 +1,855 @@
+$$
+\newcommand{\t}{\text}
+$$
+
+本文系统性梳理 LLM Agent 全流程。唯一视角只有模型参数 $\theta$ 的改变。
+
+## I. Stages
+
+### O. Before Everything
+
+在整个流程前，必须先训好 tokenizer，设置词表大小，确定模型架构。
+
+tokenizer 定下后，后续所有阶段都被它锁定。如果 agent 需要一些类似于 `<|tool_call|>`、`<|tool_result|>` 等特殊 token，有两种选择：
+
+- 直接在开始时即预留相应槽位。
+    - 虽然比如说 pretrain 阶段完全不存在这样的 token，因此 embedding 侧完全不会被直接训练；但通过 softmax，LM-Head 侧的 feature 能隐式地被校准，远离已学习的 feature。
+    - 需要注意的是，如果这些预留的槽位被泄露到训练语料中，那么可能会被垃圾数据污染，这是一个值得警惕的风险。
+- 在需要时再临时扩张词表。
+    - 如果随机初始化，很有可能与已有 feature 碰撞，因此更倾向于使用 **均值初始化**，缓解异常高 logit 现象。
+    - 进一步，还可以搭配小 lr + 冻结 backbone，先对新增词表做一个 warm-up。
+    - 需要注意的是，词表同样是一个 tensor，且一般会被 pad 至 2 的整数幂的倍数。如果临时扩张是在已有 pad 内部，那么风险很低；但是如果越过 pad，特别是在启用 vocabulary parallelism 的场合，会引发布局变化、重新切分、微小数值变化等问题，需要额外的操作。
+
+因此，提前预留几十个槽位，并在需要时再给它们赋以真实对应物，是最正确的做法。
+
+### I. Initialization
+
+全部参数按照具体初始化方式（早期的 He/Xavier，现代的 μP 等；不同模块有不同的初始化讲究）采样。
+
+### II. Pretrain
+
+- 输入格式：或长或短的 raw input 被切分/pad/拼接。
+    - 有一个技巧是 **packed input**，也就是把多个短文本塞到同一个序列中，中间做好分割。一般通过 attn mask 来屏蔽跨文本注意力，如 `transformer engine`、`flash attention` 等库也一般支持这种变长注意力模式。
+- 数据类型：
+    - 网页、代码、书籍、论文、数学，等等。也会包括高质量合成数据。
+    - 对于希望模型掌握的能力，要评估其性质：指令遵循、对话格式等可以靠 SFT；如 agentic 能力、通用推理能力、多语言能力等，如果有需要，则 **必须在 pretrain 就使用**。
+
+- Loss：纯粹 NTP。如果使用 MoE，还有负载均衡 loss / router-Z loss 等辅助 loss。
+- Loss Mask：除了 `<pad>` 外，全部贡献梯度。
+- Special Tokens：
+    - `<EOS>`：让模型学会何时停止。
+    - （可选）`<BOS>`：标记文档开头。
+    - （可选）**FIM-Tokens** `<fim_prefix>`、`<fim_suffix>`、`<fim_middle>`。具体技巧将在下文展开分析。
+- 得到结果：一个 LLM 领域的「World Model」，有充分的背景知识，但不了解具体的对话格式或者 tool call。
+- 能否跳过：
+    - 跳过后失去作为世界模型的泛化能力，而且也无法成为好的 meta 模型。
+    - 缺失的能力可以事后补（参见 CPT 章节），但效率不如 pretrain，而且工程上更复杂。
+    - 无法在 benchmark 上被察觉，特别是如果后训练阶段针对该 benchmark 专门处理过。
+
+#### FIM
+
+通过重排训练数据，让只能自回归生成的模型获取完形填空（fill-in-middle）能力。
+
+对一部分原始文档随机选择两个切点。有两种切割模式：
+
+- Token-Level：先 tokenize，再在 tokenizer 边界切割。优点是简单，可以使用预处理的 tokenized text；缺点是只覆盖边界上的缺口。
+- Character-Level：直接对原始文本切，再 tokenize。更符合真实编辑器逻辑，原论文更推荐，但需要更多的工程适配。
+
+此外，应用的方式也有两种：
+
+- Document-Level：直接对完整文档 FIM 后再 chunk / pack。缺点是长文本 chunk 可能会导致切分出的段落入不同 chunk，导致实际训练窗口中没有完整任务。
+- Context-Level：先 chunk，然后再在内部做 FIM。可以保证训练窗口中总是能收到完整任务，原论文更推荐。
+
+但是，有一个值得注意的细节：
+
+- Context-Level 的 chunk 本身是基于 tokenized text 的；如果与 Character-Level 结合，就需要 tokenize→chunk→decode→FIM→tokenize→组织为 PSM/SPM→截断或 pad，中间多一层解码-编码流程——因为 Character-Level FIM 很可能改变文本长度以及总体 tokenize 结果。
+
+切成 `prefix`、`middle`、`suffix` 三段，然后进行重排。有两种重排模式：
+
+- **PSM**：训练时输入 `<fim_prefix> P <fim_suffix> S <fim_middle> M <EOS>`，推理时输入 `<fim_prefix> P <fim_suffix> S <fim_middle>`，让模型生成 `M` 直到 `<EOS>`。
+- **SPM**：训练时输入 `<fim_prefix> <fim_suffix> S <fim_middle> P M <EOS>`，推理时输入 `<fim_prefix> <fim_suffix> S <fim_middle> P`。
+
+原论文推荐对重排后整个序列使用 NTP，能保证高 token utility，且不容易损伤普通自回归能力。把 prefix 和 suffix 当成上下文并 mask 掉是一种可行变体，但不是默认方法。
+
+SPM 对 KV\$ 更友好，因为新增的 middle 段落变为纯粹的 append，适合高频 IDE 补全场景。而 PSM 的 API 更直观通用。实际应用时常常等比例混用两者。
+
+目的：
+
+- 给模型提供光标补全与局部代码插入能力。
+- 对普通对话模型意义不大，而且在 agent 场景可以通过 tool call 绕过 FIM 进行编辑。
+- 与普通对话模型的接口有所冲突，因此推理时一般走另一套协议。
+
+**在 pretrain 阶段使用，可以在后训练继续使用但不必须**。
+
+- 是表征层面的全新「上下文拼接」能力，靠 SFT 很难补上。
+- 一旦学习到就很难遗忘。
+- 基本不会以牺牲其它能力为代价。
+
+### III. Midtrain
+
+- 前提：river-valley decomposition，WSD 中 decay 阶段贡献了很大一部分 loss 下降。
+- 现象（纯 empirical）：提高 decay 区的数据质量，可以显著优化这一效果。
+
+因此，「在 pretrain 末期换用更高质量的数据」这一行为，即称作 Midtrain。
+
+- 输入格式 / Loss / Loss Mask 等：完全同 Pretrain。
+- 特点：**必须从 lr 仍处于高位的状态开始**。已经完成 decay 的 ckpt 就永远失去了 midtraining 的窗口。
+- 不止适用于 WSD：
+    - WSD 本身可以享受免费的从 stable 开始的 midtrain。
+    - Cosine 也可以中途截断并开始 midtrain，但此时能享受的幅度更低。
+- 数据：
+    - 通用数据最好使用高质量的。
+    - 数学、推理、代码等在此阶段能有更高杠杆。
+    - 也可以与 **curriculum learning** 结合，在此阶段引入更复杂的数据，如 agent traj 等。
+
+- 能否跳过：
+    - 如果是自己训基座模型，则跳过是很可惜的：只要有高质量数据，则 midtrain 几乎可以无代价提高模型能力。
+    - 如果是从已有 ckpt 出发，那没办法，老老实实做 CPT/SFT 吧。
+
+### IV. Long Context Extension
+
+- 基本同 Pretrain。
+- RoPE 的基频通过 NTK / YaRN 等方法改写。改写的不是参数而是超参，但是需要数据让 attn 重新适配到新分布。
+- 数据类型：长文档，特意构造的长距离依赖样本。
+    - 因为 `<EOS>` 数量骤降，模型的终止倾向可能被稀释，需要特别注意。通过混入一部分 packed 短文档可以部分缓解。
+- 常见做法是分段扩展，例如 4K→32K→128K，而不是一步到位。
+- 能否跳过：
+    - **可以与上述 midtrain 或下述 CPT 融合**，不一定要独立成段；如果使用原生长文本，则可以跳过。
+    - 不扩展，则在超过预训练长度上限时会出现 **断崖式失效**。
+    - 如果只应用扩展机制但不进行相应训练，虽然能跑通长序列，但会降智，而且短文本 benchmark 无法检出。
+    - 可以随时补上，但不真正进行就无法利用长文本数据。
+
+
+### V. CPT
+
+**CPT**：Continual Pre-Training。
+
+- 被视作 **第二次 Pretrain**，是一种 **增量机制**；如果一开始就有全量数据，则应该直接在 pretrain 阶段纳入这部分数据，而不是在 CPT 亡羊补牢。
+
+- 使用 NTP loss，没有 prompt。
+
+- 数据来源：视具体要新增的能力而定。特别地，Agentic 场景下一般直接使用看着像 agent traj 的文档，例如
+
+    ```
+    Question: Who is Adam?
+    Thought: I need to search ...
+    Action: search("...")
+    Observation: ...
+    Thought: ...
+    Answer: Adam is not a person, but an optimizer...
+    ```
+
+    而具体构造方式包括：
+
+    - **FAS** / **HAS**：将在下文详解。
+    - 真实 rollout 轨迹——但是成本高。
+    - 从真实 PR/commit 中重建轨迹。
+
+- **Replay** 也即混入上一阶段的数据是必须的，为了防止灾难性遗忘。
+
+- 与 Midtrain 的核心区别在于此阶段几乎必然伴随着 **re-warmup**。
+
+- Loss Mask：**有一个关键抉择**。
+
+    - 除 `<pad>` 外全部贡献梯度。
+        - 理由：为了建立对 agent 任务的世界模型，允许让模型意识到「进行这样的操作大概率得到什么返回」，是有价值的先验。
+        - 代价：**模型学会编造 tool observation 的能力**。
+    - 对 `Observation` 段落 mask。
+        - 理由：避免模型编造。
+        - 代价：失去对行为的先验。
+
+    一般 CPT 都会在后期伴随其它更精细的对齐，所以这一阶段可以选择无 mask 模式；但必须有某个阶段显式压制编造 observation 的倾向。
+
+- Special Tokens：**同样需要抉择**。
+
+    - 让 `Question`、`Observation` 等词都是普通文本，与预训练更对齐，而且不过早锁定 chat 格式，允许后期换模板。代价是结构信号弱。
+    - 提前使用真实 token（具体 token 列表参见下一节），让它们获得更多训练量。代价是锁死模板。
+    - 混合，大部分用字面量，少量高质量数据使用真实 token。代价是两套格式共存可能导致模型混淆，因此不太推荐。
+
+- 因为仍然是一种 pretrain，训练量远大于后续阶段，因此若模板已经确定，推荐在这一阶段即启用真实 token。
+
+- 产出：预对齐的 agentic 基座，在免 SFT 的情况下产出格式大致合法的调用。
+
+- 能否跳过：
+
+    - 可以且常见，因为 CPT 是增量开发的选择。
+    - 如果要跳过的话，建议方案是把这部分数据一部分以 curriculum learning 的形式移到 pretrain 后期或 midtrain，另一部分进入 SFT。
+
+#### FAS / HAS
+
+**FAS** (First-order Action Synthesis)：
+
+- 只构造单步、局部 (**First-order**) 的数据。
+- 包括两种模式：
+    - **Planning Action**：训练模型的第一步决策——是调用某个特定工具还是直接回答。只涉及到第一个动作，不会执行也看不到反馈。
+    - **Reasoning Action**：训练模型在已经获得必要事实后，进行推理并给出最终答案的能力，相当于是链条的最后一步。
+- 数据来源：
+    - 静态知识（wiki、CommonCrawl）。
+    - 后训练中被丢弃的 traj。
+- 靠 **模型** 将原文转成可验证、索引清晰、简单的信息组，至少包括时间、来源和原始文体，还可以包括原文片段、URL 或文档 ID、抽取时间等。
+    - 独立的 **Judge 模型** 会负责验证清洗后的数据是否与原始材料一致，避免用于提取的模型编造、省略或重复。
+- 先选定用于出题的知识，再让 **模型** 看答案出题，包括事实检索、数值计算、多步推理、信息推断等，问题不能重复。
+- 如果是 Planning Action，则让 **规划模型** 给下一步动作，但需要独立 **复核**。
+- 如果是 Reasoning Action，则先让 **模型** 盲答，然后再提供必要知识后让其纠错，最后还要 **复核**。
+- 可以发现，全流程强烈依赖其它模型的数据处理。
+
+**HAS** (Higher-order Action Synthesis)：
+
+- 真实 traj 只能看到每一步决策，看不到这个决策背后的备选项。HAS 依靠 **模型** 显式补全可能的备选项。
+
+- 数据来源：SFT、rejection sampling 或 RL 阶段产出的真实轨迹。
+
+- 每条轨迹的信息可以概括为以下三类：
+
+    - 模型真实采取的动作。
+    - 该动作产生的真实结果。
+    - 整条轨迹最终是否成功（来自环境、标准答案、reward 或 **评测模型**）。
+
+- 让一个 **候选生成模型** 只看 traj 的每个前缀以及备选工具清单，草拟若干下一步可能的行为，包括原因以及具体动作。例如，直接猜、进行过于宽泛的搜索，等等。
+
+- 将所有备选项以及真实项放在一起，作为下一步的若干备选方案，但真实下一步已经内定——因为只有这一步被真实执行过。
+
+- 最终产出是一条添加备选项的 traj：
+
+    ```
+    Question: Who is Adam?
+    
+    Step 1 candidates:
+    
+    Option 1: Answer directly.
+    
+    Option 2: Search wikipedia.
+    
+    Option 3: Ask for further disambiguation.
+    
+    I will choose option 2.
+    
+    Observation: Adam is a well-known optimizer.
+    
+    Step 2 candidates:
+    
+    Option 1: Answer directly.
+    
+    Option 2: An optimizer is not a person, search again.
+    
+    ...
+    
+    Observation: Answer submitted.
+    
+    My decision is Incorrect.
+    ```
+
+- 失败轨迹也会被利用，但只会标注失败，不会标注（也很难准确归因）具体是哪一步导致失败。
+
+- **只有 HAS 能提供 step 级别的细粒度比较**，可以清晰地提供备选项之间的优劣关系——RL 的 reward 是 per-traj，per-step RL 比较少见。跳过则永久失去该能力。
+
+### VI. General SFT
+
+- 输入格式：第一次出现 **chat template**。常见模式如
+    ```
+    <im_start>System:
+    You are a helpful agent.<im_end>
+    <im_start>User:
+    Who is Adam?<im_end>
+    <im_start>Assistant:
+    Adam is the first person.<im_end>
+    ```
+    
+    允许多轮对话，每一轮的 assistant 段均计入 loss。
+    
+- Loss：标准 NTP。
+
+- Loss Mask：只有 assistant 部分贡献梯度。特别地，assistant 的开头 `<im_start>` 由框架提供，因此不能贡献梯度；而结尾 `<im_end>` 必须贡献梯度，以让模型学会停止。~~因为有 `<EOS>` 的经验，模型应当容易学会这一相似模式。~~其实更广泛接受的是因为 `<im_end>` 的功能是简单的，就算不类比也能简单学到。
+
+- 数据类型：合成指令-回答对；多轮对话；拒答样本；格式遵循样本；CoT 样本。
+
+- Special Tokens：
+
+    - `<im_start>`，标志每个 turn（不管是 `System`、`User` 还是 `Assistant`）的开始。由模板注入所以不贡献梯度。
+    - Role Token（`System`/`User`/`Assistant`），标志每个 turn 的类型，由模板注入所以不贡献梯度。**一般刻意设计为和正文中相应词共享 token id，这样既省 vocab，又可以复用正文中的 embedding——当然也有模型把它们也视作特殊 token，但不常见。**
+    - `<im_end>`，标志每个 turn 的结束。只有 assistant turn 结尾的贡献梯度。
+    - CoT token `<think>`、`</think>`，如果希望训 CoT 的话。总是贡献梯度，模型需要自己决定何时开始思考、何时结束思考。
+    - `<EOS>`。取决于是否希望模型自己进行全局终止，如果是多轮对话，通常只使用 `<im_end>` 表示单条消息结束。而且是否在这一阶段使用 `<EOS>` 也有待斟酌。
+
+- 产出：拥有通用对话能力的 chat bot。
+
+- 能否跳过：
+
+    - 可以跳过，但代价是模型永远失去通用对话能力，只会走 agent 流程。同时指令遵循能力更弱，而且难以学到拒绝行为。
+    - 更推荐的做法是与下一步合并为同一次 SFT，数据中同时混入通用与 agent 数据，效果接近且省一轮调参。
+    - 同 pretrain，只在 agent benchmark 上评测时，跳过本阶段的 toy agent 仍有可能取得高指标，但代价是通用能力丧失。
+
+
+### VII. Agentic SFT
+
+- 输入格式：带上 tool list 的多轮对话。
+    ```
+    <im_start>System:
+    You are a helpful agent equipped with the following tools:
+    
+    # Tools
+    
+    You are provided with functions within <tools></tools> XML tags:
+    
+    <tools>
+    {"type": "function", "function": {"name": "web_search", "description": "Search the Internet.", "parameters":{...}}}
+    ...
+    </tools>
+    
+    For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+    
+    <tool_call>
+    {"name":<function-name>, "arguments": <arg-json-object>}
+    </tool_call><im_end>
+    <im_start>User:
+    Who is Adam?<im_end>
+    <im_start>Assistant:
+    <think>
+    I need to search the Internet.
+    </think>
+    
+    <tool_call>
+    ...
+    </tool_call><im_end>
+    <im_start>User:
+    <tool_response>
+    Adam is a well-known optimizer.
+    </tool_response><im_end>
+    <im_start>Assistant:
+    <think>
+    The response is not pertinent. I need to search again.
+    </think>
+    
+    ...
+    
+    <im_start>Assistant:
+    <think>
+    I've gathered the required information. Now create a clean response.
+    </think>
+    
+    Adam is the first person.<im_end>
+    ```
+
+    - 协议可以支持并行 tool call 能力，具体展现方式可以是单个 `<tool_call>` 包裹多个 tool，也可以是一轮中出现多个 tool call block。
+    - 如果希望强制保证一轮只有一个 `<tool_call>` block，通常需要依赖外部框架，一般选择截断到第一个 block 等。
+    - 让 `User` 承载 tool response 是一种选择，其它约定例如增加 `Tool` role 等。前者会导致模型无法区分「用户输入」与「工具输出」，但模型也许可以复用一部分经验。
+    
+- Loss：标准 NTP。
+
+- Loss Mask：只有 assistant 部分贡献梯度；tool response（或称 tool observation）必须不贡献梯度，原因在 CPT 章节已经阐述过——避免模型编造 observation。
+
+- 数据来源：
+
+    - **强教师模型** 在 **真实环境** 中 rollout 结果，经过 verification。刻意包含「犯错并修正」的例子，这部分原理同 imitation learning。
+    - 这里的错误包括但不限于策略错误、格式错误、编译错误等。
+    - 必须做 **采样期屏蔽**，也即 rollout 时把 `<tool_response>` 等 token 的 logit 设为负无穷/强制截断，以避免混入幻觉。
+    - 必须混入通用数据以避免灾难性遗忘。
+
+- 产出：RL 的起点 policy，同时也是 DPO/GRPO 中的 **frozen reference model**。
+
+- Special Tokens：
+
+    - General SFT 中正常的 Special Tokens。
+    - `<tool_call>`/`</tool_call>`：必须贡献梯度，是本文的核心训练目标。
+    - `<tool_response>` / `</tool_response>`：因为不处于 assistant 中，所以必须屏蔽梯度。
+    - `submit`（可选）：只有显式输出 `submit` 才表示对话结束。是可选项，也可以选择在模型不 call tool 时自动结束。
+
+- 验收标准：不追求单一指标的提分，而是有作为 RL 阶段 rollout 起点的能力。具体地，必须有很高的格式合法概率，以及非零的 pass 率。
+
+- 能否跳过：
+
+    - 几乎不能，是全链条中最重要的一环，除非 CPT 阶段已经做的格外充分——但绝大部分模型做不到这一点。
+    - 跳过的损害：大量 rollout 因格式错误废弃；pass 率过低导致 RL 无法正常进行；无法成为正确的 KL 锚点。
+    - 但是，如果做过头，可能出现模式坍缩，导致 RL 阶段高度雷同无法进行。**是第一个过犹不及的阶段**——后续 BoN 或蒸馏，如果目标仍是接入 RL，也有相同需求。
+    - 给下一阶段交付的 ckpt 应当是多样性最高的，而不是最成功的。
+
+### VIII. On-policy BoN
+
+- 输入：
+    - 模型自己 on-policy rollout 的 traj，经过 verifier 过滤或 BoN。 
+    - rollout 必须做好屏蔽和停止判定。
+    - 可能导致回声式自我强化，需要做好去重。
+- Loss：标准 NTP。
+- Loss Mask & Special Tokens：同 SFT。
+- 相当于只保留正 advantage 且固定为 $1$ 的 GRPO。
+    - 删掉负反馈，意味着无法纠正坏习惯。
+    - 压平正反馈，意味着无法着重难任务。
+- 比起 GRPO，在高成功率环境浪费更少——但高成功率数据本来就没有多训的必要。
+- 没有 KL 锚点，可能累积漂移——当然也可以通过增加锚点项解决。
+- verifier 错误可能会被放大累积。
+- 可能导致多样性坍缩，GRPO 内部方差消失，与 SFT overtrain 有同样后果。
+- 能否跳过：
+    - 可以，因为它本身就是 GRPO 的廉价替代（完整 RL 成本可能比较高）、前置（放大成功率）或补充（固化 RL 发现的好策略）。
+    - 特别地，如果 SFT 交付的成功率过低，靠这个抬高成功率是好选择。 
+
+### IX. Distillation
+
+- 约束：需要一个和 student 词表完全相同，而且可以获得内部 logit 的 frozen teacher。
+
+- 输入：**靠 student 自己 rollout**。
+
+    - System Prompt 和第一轮的 User Prompt 是可以从数据集里获取的。
+    - 第一轮的 Agent Action 以及 Tool Call（如果搭好环境的话）也是可以自动 rollout 的。
+    - 但是如果第一轮结束后，希望 User 再次追加 Prompt，那就必须用一个 **Simulator Model** 来模拟 User。这就可能导致 sim2real gap，因为真实 user 的行为并非完全可建模。而且绝对不能用 student 自己当 User，不然会容易陷入回音室。
+    - rollout 必须做好屏蔽和停止判定。
+
+- Loss：每个 token 处 student 和 teacher 的 KL 散度。具体模式在下文详细展开。
+  
+- Loss Mask：同 SFT 阶段的 **assistant-only**。
+
+- Special Tokens：同 SFT 阶段。
+
+- 是否可跳过：
+
+    - 可，而且不会有明显影响。
+    - 如果 agent 有密集新知识（如 API 接口、领域事实）需要从 teacher 处蒸馏，推荐加入这一阶段。
+    - 但会把 student 拉向 teacher，收窄多样性，有可能复现 SFT overtrain 的问题。
+
+#### Logit Distillation
+
+$$
+\sum_{t\notin\t{detached}}\t{KL}(\pi_\t{teacher}(\cdot\mid x_{<t})\|\pi_\theta(\cdot\mid x_{<t}))
+$$
+
+每个位置提供完整的 $V$ 维监督，而不是 NTP 的单个 one-hot 监督。$\pi_\t{teacher}$ 是 teacher 看 student 给出的打分。
+
+上述 Forward KL 通过 mode covering 可以保证多样性，Reverse KL 通过 mode seeking 能让行为更果断，选哪个都有一定道理，但不应该是无意识的默认。
+
+一般只存储 Top-K 并做重归一化，以节省空间开销。但是 Top-K 可能会把 special token 扔掉，如果要想靠蒸馏学习何时终止，要么开大 $K$ 要么始终保留 special token。
+
+算 KL 时，师生必须使用同一个温度以保证对齐。
+
+理论上可以支持 off-policy。
+
+#### Sampled Distillation
+
+必须使用 reverse KL，而且不枚举词表，用 student 实际采样的 token 做单样本 Monte-Carlo 估计，具体式子为
+$$
+\sum_{t\notin\t{detached}}\log\dfrac{\pi_\theta(x_t\mid x_{<t})}{\pi_\t{teacher}(x_t\mid x_{<t})}
+$$
+此时不需要存完整的 Top-K logit，而且可以复用 RL infra，整体更接近 RL 模式。
+
+Logit 模式下，每一项的 loss 都是非负的；然而 Sampled 模式下，虽然期望仍然是完整的 KL，但每一项的具体取值则可以为负，这不是 bug。
+
+强制要求 on-policy + reverse KL 以保证 MC 的合法性。
+
+### X. DPO
+
+- 输入：prompt 配一对回答。通常是单轮的，因为多轮很难找到成对轨迹。
+    - 这一对回答必须遵循严格相同的渲染格式，否则模型容易找到这个 shortcut。
+    - 进一步，如果负例都是短样本，模型可能会把「停止」本身当成坏信号。解决方案是屏蔽 `<im_end>` 或作长度归一化。
+- Loss：DPO Loss。
+- Loss Mask：同 SFT 阶段的 **assistant-only**。
+- Special Tokens：同 SFT 阶段。
+- 梯度方向：**抬高正例，压低负例**。第一次主动（而不是通过归一化隐式）产生负信号。
+- 是否可跳过：
+    - 经常且推荐被跳过，因为 DPO 的 off-policy 既是优势（无需 rollout）也是劣势（会出现偏移，因为失败模式高度依赖当前策略）。
+    - 有些过时了，只在没条件搭环境跑真实 rollout 时可以作为低成本替代。如果做了下一阶段 GRPO 则完全可以跳过。
+
+### XI. Agentic RL
+
+- 输入：
+
+    - 结构同 Agentic SFT，只不过靠模型自己 rollout。
+    - 对同一个 init prompt，采样 $G$（通常取 $8$ 或 $16$，也可能大到 $64$）个独立轨迹。
+    - rollout 时需要做好屏蔽和停止判定。
+
+- Loss：
+
+    - 依靠 **verifier** 获取 reward，通常是二元的通过/未通过。per-traj 标量，无中间态。
+    - 使用 GRPO 或其它等效 loss。
+
+- Loss Mask & Special Token：同 SFT 阶段。
+
+- 梯度方向：$A>0$ 的 traj 抬升，$A<0$ 的压制。
+
+- 只更新当前 policy，没有 critic。MoE 场景有时甚至要冻结 router 以避免抖动。
+
+- 如果效果不佳，最重要的参数检查应该是 **成功率** 而不是 $G$。
+
+    - 成功率过低应该回头做 BoN / SFT / 蒸馏提升成功率。
+    - 成功率过高应该选择一些更难任务。
+    - 成功率适当，则 $G$ 不需要很夸张，理论上就应该有好效果。
+
+- 能否跳过：
+
+    - 可以，而且因为门槛高，低成本 agent 项目事实上会跳过。
+
+    - 如果跳过且未使用 DPO，则全程得不到负梯度，具体表现为：
+
+        - 只靠 imitation learning (SFT) 几乎不能超越 teacher。
+        - 无法改掉坏习惯。
+        - 无法发现新策略。
+
+        最终导致长程任务差距显著。
+
+    - 可以用 BoN 作为低成本替代。
+
+    - 很容易导致负收益——没做好的 RL 不如不做。
+
+### XII. Safety Alignment
+
+- 没有新方法，是功能性环节。
+- 有 SFT 或 RL 两种路径：
+    - SFT 就混拒答样本。
+    - RL 就把「获取审批」「拒绝回答」等行为写进 reward。
+- Special Token：通常无新增。有些模式会新增 `<refusal>` token 以便于下游拦截。
+- 拒答样本中的 `<im_end>` 也需要贡献梯度，以防止模型在拒答后还继续输出。
+- 通常放在最后，因为 RL 可能会尝试绕开约束。
+- 能否跳过：
+    - 可以，甚至跳过后模型能力反倒可能上升，但代价是失去约束。
+    - 另一条可选的约束路径是在 scaffold 层隔离。
+    - 过度执行可能会导致过度拒答，因此必须混入正向数据集。
+
+### XIII. Model Averaging & Annealing
+
+- 把多个 ckpt 的权重直接加权平均，然后再补少量高质量数据（**退火**）。
+- 如果高质量数据是通用的，则走全贡献；agentic 数据则走 assistant-only。mask 必须 per-sample 独立选择。
+- 如果不同 ckpt 的词表不一致（在不同时期做过词表扩充），则会出问题。
+    - 进一步，必须假设它们相差不过大，处于同一个 loss basin 中，平均才you
+
+- 成本极低，能有效降低方差，但并非必须。
+
+## II. Analysis
+
+### I. Order
+
+执行顺序：首先区分三种不同的顺序要求——
+
+- 硬序：几乎不可交换，交换会导致某一项无法运行或静默失效。
+- 软序：理论上可交换，但顺序影响质量。
+- 自由：真正可交换。
+
+硬序一共有以下几条：
+
+- 必须先 initialize 后进行其它一切阶段。
+- 必须先 pretrain 获得基座后，再进行后续阶段。
+- 一旦 pretrain 开始衰减，midtrain 的窗口就永久关闭了。
+- 只有先在词表中准备好（预训练预留或额外扩展），相应 special token 才能被使用、训练。
+- 必须 Agentic SFT 得到能跑通 agent loop、成功率非零的 policy 后，才能跑蒸馏/BoN/GRPO 等需要 on-policy rollout 的方法。
+- 必须 Agentic SFT 得到 ref policy 后，才能跑 DPO/GRPO 等需要 ref 的方法。
+
+软序有以下几条：
+
+- 一般应当先 RL 后对齐。可行的缓解手段是在 RL 中显式添加安全项以防止绕过。
+- GRPO 与 BoN 的顺序选择要视具体目的而定：目的是抬升成功率提供起点则先 BoN，目的是固化已有策略则先 GRPO。
+- DPO 一般在 BoN 之后进行，因为 BoN 会绕过 DPO 在旧分布上的压制。
+- 蒸馏一般在 GRPO 之前进行，因为蒸馏会收窄多样性，压制 RL 的探索性行为。
+
+自由有以下几条：
+
+- 通用与 Agentic SFT：二者想拆就拆，想合并就合并，且合并更推荐。
+- 模型的合并与退火：都是可选项。
+- midtrain、长文本、CPT 三阶段的关系：
+    - 「长文本数据」本身往往就是高质量精选数据，因此其完全可以与 midtrain 或 CPT 合并。长文本扩展一般分多轮进行，而 Midtrain / CPT 也可以同样与分轮长文本结合。
+    - Midtrain 与 CPT 的核心区别：Midtrain 没有 re-warmup，而 CPT 有。
+    - 如果在 Midtrain 阶段就使用了 CPT 数据，那么 CPT 完全可以跳过。这样做还规避了 CPT 灾难性遗忘的风险。
+
+
+```mermaid
+graph LR
+classDef dashedNode stroke-dasharray: 5 5;
+1[初始化]
+2["预训练 | midtrain"]
+3["CPT"]
+class 3 dashedNode;
+4[通用/Agentic SFT]
+subgraph posttrain
+5[蒸馏]
+6[BoN]
+7[DPO]
+8[GRPO]
+end
+9[对齐]
+10[合并/退火]
+ref[冻结参考]
+1 --> 2 --> 3 --> 4
+4 --> posttrain --> 9 --> 10
+4 --> ref
+ref --> 7
+ref --> 8
+6 --"拉高成功率"--> 8
+8 --"固化成功经验"--> 6
+
+```
+
+### II. Budget
+
+本节考虑每一部分常见的训练预算。
+
+首先开宗明义：一个核心的指标是训练 token 数 $D$ 与总参数量 $N$ 的比值 **TPP** (tokens per parameter)。$D$ 和 $N$ 都是自变量，而 TPP 是因变量。
+
+> 一个问题是 MoE 场合 TPP 到底是相对总参还是激活参。一般更多报告的是总参 TPP，但读报告时要具体问题具体分析。
+
+然后有若干设计选择：
+
+- **compute optimal**：在 IsoFLOPs 意义下最小化 train loss 的选择。此时 TPP 一般在 20 附近。
+- **overtrain**：通过给模型提供超过 Chinchilla Optimal 的数据，让小模型跑出和更大模型相近的指标，以训练时额外算力置换推理时的高效。
+- **wallclock optimal**：在 IsoFLOPs 下最小化训练时长的选择。此时 TPP 一般高于 20，因为更多数据支持更高的 critical bsz，并行上限更高。
+
+本节将考虑前二者。
+
+Adam 因为有归一化所以单步对参数 RMS 的影响是 $O(\eta)$，跑 $S$ 步的总影响在 $O(\eta\sqrt S)$（假设每一步均独立随机）到 $O(\eta S)$（假设每一步更新方向重合）之间。
+
+而 Muon 单步的更新量是 $O(\eta/\sqrt{\max(A,B)})$，其中 $A,B$ 是矩阵的边长。**Moonlight-Muon** 为输入 $\eta$ 乘以这个系数修正，以便于直接迁移 Adam 的超参设置。
+
+> 因此 Muon 的常见 pretrain lr 有两个经典尺度：一个是 Moonlight 下与 Adam 匹配的 1e-4\~5e-4，另一个是 raw Muon 常见的 1e-2\~1e-1，介于二者之间的 1e-3 级别只在 **参数量和数据均很小**（TPP\~20，O(1B) 参数）时可能出现。
+
+以下默认考虑 Adam 或与之对齐的 Moonlight-Muon。总之 $\eta\sqrt S$ 是一个可用于判断的指标——但是其误差太大了（能差到 $\sqrt S$ 级别），因此更倾向于通过其 **比值** 进行跨阶段比较。
+
+> 另一方面，$\eta\sqrt S$——权重 RMS **增量** 的指标——必须相对于基础 RMS 值判断。μP 只保证激活值 RMS 不退化，权重 RMS 值仍会缩放。不过鉴于 $\eta$ 和权重 RMS 都会与模型宽度挂钩，可以认为二者的趋势部分抵消，仍使用 $\eta\sqrt S$ 为指标。
+
+还有一个问题是直接代入 peak lr 是否合适。事实上常见 scheduler 对 effective lr 的影响相当于一个 0.5\~1.0 的缩放，误差并不大。
+
+在作出种种限定后，可以看一下典型的跨阶段 $\eta\sqrt S$ 指标：
+
+- 预训练阶段为 0.1 \~ 0.3，也即对随机初始化进行激进的完全覆写。
+- Midtrain 阶段视不同 decay 长度，有 O(1e-3) - O(1e-1) 等不同级别。
+- 长上下文扩展为 O(1e-4)，且需要混入短文本防止遗忘。
+- CPT 被视作「第二次 pretrain」，能高至 5e-2，也即半个预训练。
+- SFT 为 O(1e-4)，通过规范交互格式以展现预训练阶段的基座能力。过大会离开 SFT 应有的地位，产生过拟合、遗忘等问题。
+- DPO / GRPO 等为 O(1e-5)，扰动更小，防止塌陷。
+
+再次强调，这些绝对数值意义不大，更重要的是它们的相对比值。
+
+现在展开分析每个阶段的结果。
+
+#### I. Pretrain
+
+以 token 数统计的 gbs：一般在 1M 至 100M 级别。过小时 GEMM kernel 无法充分使用、计算难以掩盖通讯；过大时几乎一定超过 critical bsz。
+
+- 看 batch size 必须要区分统计口径：是 token 数还是 sequence 数？是 gbs 还是 mbs？
+- 虽然有些跑题，但在 GRPO 阶段，一个额外要区分的口径是 prompt 数或 traj 数——后者是前者的 $G$ 倍。
+
+Peak lr：5e-5\~5e-4，更宽的模型 peak lr 应该相应减少（μP law）。
+
+End lr：peak 的 1%-10%。WSD 一般 end lr 会比 cosine 更低。
+
+预训练步数：1e4\~3e6。
+
+- 若 TPP 固定且 scale 参数量，则预训练步数一般相应上升；TPP = 20 且 O(1B) 的小模型可以只有 O(1e4) steps。
+- 另一种常见方案是将步数恒定为例如 O(1e6) 级别，随着参数量 scale 相应调小 TPP。
+
+Warmup Ratio：总步数的 0.1%\~1%，但需要保证下限（例如 500 步）。
+
+Gradient Clipping：公开配方几乎总是选择 $1.0$。
+
+|     N      |  D   |   TPP    | B (tokens) |   S   | peak lr | $\eta\sqrt S$ |
+| :--------: | :--: | :------: | :--------: | :---: | :-----: | :-----------: |
+|  1B dense  |  2T  |   2000   |     2M     |  1M   |  5e-4   |      0.4      |
+|  8B dense  | 15T  |   2000   |     4M     |  4M   |  3e-4   |      0.4      |
+| 70B dense  | 15T  |   200    |     8M     |  2M   | 1.5e-4  |      0.2      |
+| 400B dense | 16T  |    40    |    16M     |  1M   |  8e-5   |     0.08      |
+|  700B/40B  | 15T  | 20 / 400 |    60M     | 0.25M | 2.2e-4  |     0.11      |
+
+以上是 overtrain ladder 的一批常见参数表。
+
+- $D$ 几乎不变，因为大模型再 overtrain 就开销太大了。
+- 理论上 critical bsz 和 optimal bsz 都只与 $D$ 相关，实际上 bsz 还受到具体并行硬件影响，大模型场景会为了保证并行度（optimal wallclock）而使用更高的 $B$。
+- $S$ 在 1e6 附近浮动，peak lr 在 1e-4 附近，而且随着模型变大还会适当减小。
+- $\eta\sqrt S$ 符合 O(1e-1) 的常见指标。
+
+|     N      |  D   | TPP  | B (tokens) |  S   | peak lr | $\eta\sqrt S$ |
+| :--------: | :--: | :--: | :--------: | :--: | :-----: | :-----------: |
+|  1B dense  | 20B  |  20  |    0.5M    | 40k  |  5e-4   |      0.1      |
+|  8B dense  | 200B |  25  |     1M     | 100k |  3e-4   |      0.1      |
+| 70B dense  |  1T  |  14  |     2M     | 0.5M |  1e-4   |     0.07      |
+| 400B dense |  8T  |  20  |     4M     |  2M  |  1e-4   |      0.1      |
+
+以上是 Chinchilla optimal 附近的一批常见参数表。
+
+- $D$ 随着 $N$ 同步 scale。
+- bsz 随着 $D$ 一同 scale，但因为 scale 速率不如 $D$，则 $S$ 也会升高。
+- peak lr 适当调小，最终指标仍符合 O(1e-1)。
+
+#### II. Midtrain
+
+首先至少有三种不同风格：
+
+- pretrain 用 WSD，做一个大 midtrain，peak lr 同 pretrain 为 O(1e-4)，步数约占 10%，总 $\eta\sqrt S$ 能高至 O(1e-1)。
+- pretrain 用 cosine，先 decay 一段后做一个小 midtrain，peak lr 为 O(1e-5)，步数约 3%，总 $\eta\sqrt S$ 为 O(1e-3)。
+- 只在最后象征性做几步，收益很可疑。
+
+end lr：0 或 initial 的 10%。
+
+scheduler：理论最优是 1-sqrt，最常用的是 linear。
+
+Re-warmup：**红线，绝对不使用，用了就不是 midtrain**。
+
+Replay：一般 30%-50%。
+
+bsz：因为本质上是 pretrain 的后期，所以不变。因此上述「步数占比」同时也是「token 数占比」。
+
+#### III. 长文本
+
+首先其不一定存在，因为经常融进 midtrain、CPT 或原生长文本。
+
+lr：3e-5 级别，而且经常不 decay。
+
+Token 量：预训练的 1%-5%，分段进行。
+
+扩展序列长度要同时按比例减少 batch 中的 \#seq，以保证 \#token 不变。
+
+#### IV. CPT
+
+Token 量：作为第二次预训练，需要有一定规模。
+
+Replay（混入通用数据）比例：看 shift 程度，如果 gap 小可以 5%，gap 较大时可以达到 25%；不混会导致灾难性遗忘。
+
+Re-warmup：一般要使用，但可能加剧灾难性遗忘，所以必须与 replay 结合使用；模型越大，抗遗忘性能越强。
+
+Peak lr：Pretrain peak 的 20%-100%，O(1e-2) - O(1e-1) 级别。
+
+End lr：3% - 10%。
+
+#### V. SFT
+
+peak lr：5e-6\~3e-5 级别。
+
+end lr：一般 decay 到 0。
+
+warmup：用不用都有说法，用则不超过 10%。
+
+step：数百到数千均有，没啥定论。
+
+bsz：64\~256 seq。
+
+epochs：通过上述信息反推，个位到百位均有可能，但一般都大于 $1$。
+
+大模型的 SFT 一般更不稳定。
+
+#### VI. Distillation
+
+peak lr：类似 SFT 或略低。
+
+#### VII. DPO
+
+peak lr：5e-7 级别。
+
+end lr：一般线性到 0。
+
+warmup：一般 10%。
+
+step：1k 左右。
+
+epochs：1\~3。
+
+#### VIII. GRPO
+
+**配置几乎已经固化。**
+
+peak lr：1e-6，不 decay。
+
+warmup：有，但一般较短。
+
+ref KL β：0 或 1e-3。
+
+$G$：8\~64。
+
+bsz (prompts)：128\~512。
+
+bsz (trajs)：2k\~32k，可以通过 $\#\t{traj}=\#\t{prompt}\times G$ 计算。
+
+steps：1e2\~1e3。
+
+#### IX. Considerations
+
+-  lr schedule 相关问题：
+
+    - pretrain：有 warmup 和 decay，但不会 decay 到 0。
+    - midtrain：直接截断并继承 pretrain lr，无 warmup，会 decay，但不会 decay 到 0。
+    - CPT：需要 warmup，会 decay，但不会 decay 到 0。
+    - SFT：会 warmup，重新设置 peak lr，会 decay 到 0。
+    - DPO：会 warmup，重新设置 peak lr，会 decay 到 0。
+    - GRPO：少量 warmup，不 decay。
+
+- Optimizer State 是否应该继承？
+
+    - midtrain 一般继承；但是如果同时搭配长文本扩展，attn 某些参数的梯度会突变，需要注意。
+    - CPT 则一般是冷启动所以没法继承。
+    - SFT / RL 不继承。
+
+- 是 multi-epoch 还是 one-pass？
+
+    - epoch 数是因变量而不是自变量。
+    - 不过它同时也是一个好指标：
+        - 预训练时一般至多训 4 epochs，而且收益会不断衰减。**小子集的 upsample** 要格外小心，重复过多可能导致显著退化。
+        - SFT 时有使用 2\~4 epochs 的，有使用 100+ 的，但中间地带的文献证据较少。
+
+- 如何归一化：
+
+    - batch 中所有未屏蔽 token 的 loss 归一化。最正确的归一化方法。
+    - 先对每个 seq 归一化，然后再跨 traj 归一化。此时短序列中的 token 会过度加权。
+    - loss 只对未屏蔽 token 计算，但是分母仍然是完整 shape。
+
+    这其中，**只有第一种是正确的**——后两种都是常见错误。
+
+- Grad Clip：不看绝对值，而看触发率。稳态触发率应该 <1%，这样才是真正的保险绳，否则就变成隐式的 lr 缩放了。
+
+
+### III. Conclusion
+
+Loss：有以下四种格式
+
+- 标准 NTP。
+
+- Top-K 蒸馏式
+    $$
+    \sum_{t\notin\t{detached}}\t{KL}(\pi_\t{teacher}(\cdot\mid x_{<t})\|\pi_\theta(\cdot\mid x_{<t}))
+    $$
+    当然也可以使用 reverse KL，或者用 MC 采样代替完整 KL。
+    
+- DPO 式
+    $$
+    \sigma\left(\beta\log\dfrac{\pi_\theta(y_w\mid x)}{\pi_\t{ref}(y_w\mid x)}-\beta\log\dfrac{\pi_\theta(y_l\mid x)}{\pi_\t{ref}(y_l\mid x)}\right)
+    $$
+
+- GRPO 式
+    $$
+    J=\mathbb E\left[\t{avg}\sum_{i=1}^G\sum_{t=1}^{|y_i|}\min(\rho_{i,t}A,\t{clip}(\rho_{i,t},1\pm\epsilon)A)-\beta\t D_\t{KL}(\pi_\theta\|\pi_\t{ref})\right]
+    $$
+    其中 $\t{avg}$ 是某种平均算符，GRPO 中是 seq + batch 两级平均，DAPO 是 batch 直接平均。
+
+归一化：如上一节所述，有以下三种格式
+
+- 未屏蔽 batch 归一化。
+- 未屏蔽 batch + seq 归一化。
+- 整体 batch 归一化。
+
+Loss Mask：
+
+- Full 模式：全部贡献梯度。
+- Generated 模式：只有模型自身生成段落贡献梯度。
+    - 通用问答对场景，只有回答段贡献梯度。
+    - Agentic 场景，只有 `Assistant` 部分贡献梯度，system prompt、user input 和 tool observation 都不贡献梯度。
+    - 开头的 `<think>` 或 `<im_start>` 等 token 由框架注入，不贡献。
+    - 结尾的 `<im_end>` 或 `<EOS>` 由模型自己决策，必须贡献。
+
+
+另外，有一个决策是是否屏蔽历史 CoT 段落：有一些框架为了节省上下文，不会让 CoT 进入 context，下一轮对话中不会再看到之前的 CoT。不过这个是具体技巧，不属于主轴。
+
+数据来源：
+
+- 通用数据集。
+- off-policy 数据。
+    - 具体细分来源可能是 teacher demonstration、合成或 rejection sampling 得到，但总之不是当前模型自己 rollout 的。
+- on-policy 数据。
+- Agentic 场景还有单轮/多轮的区别。
+
+特别地，不管是 student rollout 还是 teacher rollout，都需要做好屏蔽和终止判定。
+
+|         阶段         |   Loss   |       Mask       |     数据      | 表征移动 |
+| :------------------: | :------: | :--------------: | :-----------: | :------: |
+|        预训练        |   NTP    |       Full       |     通用      |   100%   |
+|       midtrain       |   NTP    |       Full       |     通用      |  1%-10%  |
+|        长文本        |   NTP    |       Full       |     通用      |    1%    |
+|     Agentic CPT      |   NTP    | Full / Generated |  Off-Policy   |   50%    |
+|     General SFT      |   NTP    |    Generated     |     通用      |   0.1%   |
+|     Agentic SFT      |   NTP    |    Generated     |  Off-Policy   |   0.1%   |
+|    On-Policy BoN     |   NTP    |    Generated     |   On-Policy   |  0.01%   |
+|  Logit Distillation  |    KL    |    Generated     | On/Off-Policy |  0.01%   |
+| Sampled Distillation |    KL    |    Generated     |   On-Policy   |  0.01%   |
+|         DPO          |   DPO    |    Generated     |  Off-Policy   |  0.01%   |
+|         GRPO         |   GRPO   |    Generated     |   On-Policy   |  0.01%   |
+|      Alignment       | NTP / RL |        -         |       -       |  0.01%   |
+

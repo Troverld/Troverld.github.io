@@ -1,0 +1,1281 @@
+$$
+\newcommand{\b}{\boldsymbol}
+\newcommand{\cur}[1]{\left\{#1\right\}}
+\newcommand{\d}{\mathrm d}
+\newcommand{\ip}[1]{\left\langle#1\right\rangle}
+\newcommand{\t}{\text}
+\newcommand{\c}{\mathcal}
+\newcommand{\mpc}{\mathbin{\square}}
+\newcommand{\p}{\partial}
+\newcommand{\vare}{\varepsilon}
+\newcommand{\E}{\mathop{\mathbb E}}
+\newcommand{\P}{\mathop{\mathbb P}}
+\newcommand{\R}{\mathbb R}
+\newcommand{\bmat}[1]{\begin{bmatrix}#1\end{bmatrix}}
+\newcommand{\mat}[1]{\begin{matrix}#1\end{matrix}}
+\newcommand{\st}{\t{ s.t. }}
+$$
+
+### O. Notation
+
+来点记号。
+
+本文默认，对于矩阵 $\b A$，其行向量记作 $\b a_i^\top$，列向量记作 $\b A_i$。当然 $\b A_i$ 有时也会指「$\cur{\b A_i}$ 矩阵序列中的第 $i$ 个」，不过应当是容易区分的。
+
+本文一般使用 `\mathcal` 表示集合/空间等。
+
+本文默认讨论实空间，用 $\top$ 表示转置。
+
+本文不会严格按照课程顺序组织，而是会打散重排。
+
+一些常见拓扑记号：
+
+- $\t{int}(\c S)$：内部。
+- $\t{cl}(\c S)$ 或 $\bar{\c S}$：闭包。
+- $\t{bd}(\c S)$ 或 $\p\c S$：边界。
+- $\t{relint}(\c S)$：相对内部。
+
+一些常见函数记号：
+
+- $\t{dom}(f)$：有效定义域，排除取值为无穷处。
+- $\t{epi}(f)$：上图 $\cur{(\b x,t)\mid f(\b x)\leq t}$。
+- $\t{hypo}(f)$：下图 $\cur{(\b x,t)\mid f(\b x)\geq t}$。
+- $\t{graph}(f)$：图像 $\cur{(\b x,t)\mid f(\b x)=t}$。
+
+常见函数：
+
+- Indicator Function $I_\c S(\b x)=\begin{cases}0&(\b x\in\c S)\\+\infty&(\b x\notin\c S)\end{cases}$。
+- Legendre-Fenchel Duality $f^*(\b y)=\sup_\b x\cur{\ip{\b x,\b y}-f(\b x)}$。
+
+常见集合：
+
+- 超平面：$\cur{\b x\mid\ip{\b a,\b x}=b}$。
+- 闭半空间：$\cur{\b x\mid\ip{\b a,\b x}\leq b}$ 或 $\cur{\b x\mid\ip{\b a,\b x}\geq b}$。
+- 水平集：$\cur{\b x\mid f(\b x)=c}$。
+- 次水平集：$\cur{\b x\mid f(\b x)\leq c}$。
+
+### I. Combinations
+
+矩阵 $\b A$ 的列向量构成一有限点集 $\c S$。其各种组合：
+
+- 线性组合：任意系数。对应的概念是子空间和线性变换。记号是 $\t{span}(\c S)$。
+- 凸组合：非负归一化系数。对应的概念是凸集和仿射映射（如果严格保凸组合）或凸映射（如果只要求不等式）。记号是 $\t{conv}(\c S)$。
+- 凸锥组合：非负系数。对应的概念是凸锥。记号是 $\t{cone}(\c S)$。
+- 仿射组合：归一化系数。对应的概念是仿射集和仿射变换。记号是 $\t{aff}(\c S)$。
+- 锥组合：one-hot 非负系数。对应的概念是锥，不过一般会直接使用 $\c S$ 中元素的非负标量缩放进行刻画。
+
+以上是内部刻画 (Vertex Representation, **V-Rep**)。此外还存在外部刻画 (Half-Space Representation, **H-Rep**)。
+
+- 线性组合：$\cur{\b x\mid\b B\b x=\b0}$，其中 $\b B$ 是 $\b A$ 列空间正交补的一组基。
+- 凸组合：$\cur{\b x\mid\b B\b x\geq\b d}$ 且有界。
+- 凸锥组合：$\cur{\b x\mid\b B\b x\geq\b0}$。
+- 仿射组合：$\cur{\b x\mid\b B\b x=\b d}$。
+- 特别地，因为 H-Rep 只能刻画闭凸集，因此锥不存在 H-rep。
+
+而在判定时，只需分别验证两点的组合封闭性即可。
+
+Carathéodory 定理：在 $d$ 维母空间下，
+
+- 线性：最多只需 $d$ 个生成元的线性组合。事实上这个基可以是全局一致的，而且维数只与线性子空间的维数相关。
+- 仿射：最多只需 $d+1$ 个生成元的仿射组合。事实上这个基可以是全局一致的，而且维数只与线性子空间的维数相关。
+- 凸锥：最多只需 $d$ 个生成元的锥组合。这个基可能不是全局一致的。
+- 凸集：最多只需 $d+1$ 个生成元的凸组合。这个基可能不是全局一致的。
+
+也因此，凸锥和凸集不一定能找到有限的生成集 $\c S$ 使得 $\c K=\t{cone}(\c S)$ 或 $\c K=\t{conv}(\c S)$。
+
+齐次超平面分割（寻找 $\b x$ 使得对于一切 $\b y\in\c K(\c S)$ 均有 $\ip{\b x,\b y}\geq0$）：
+
+- 线性：当且仅当 $\b A^\top\b x=\b0$，也即所有生成元处取值为零，此时整个子空间均属于该超平面。
+- 仿射：当且仅当存在 $\alpha\geq0$ 使得 $\b A^\top\b x=\alpha\b1$，也即所有生成元处取值相等且在超平面的正确侧。
+- 凸集/凸锥/锥：当且仅当 $\b A^\top\b x\geq\b0$，也即所有生成元均在超平面的正确侧。
+
+仿射超平面分割（寻找 $\b x$ 使得对于一切 $\b y\in\c K(\c S)$ 均有 $\ip{\b x,\b y}\geq c$）：
+
+- 线性：当且仅当 $\b A^\top\b x=\b0$ 且 $c\leq0$，因为子空间在线性泛函下的值域只有两种可能——$\cur{\b0}$（如果 $\b x$ 与其正交）或 $\R$（如果不正交）。
+- 仿射：当且仅当存在 $\alpha\geq c$ 使得 $\b A^\top\b x=\alpha\b1$。
+- 凸集：当且仅当 $\b A^\top\b x\geq c\b1$。
+- 凸锥/锥：当且仅当 $\b A^\top\b x\geq\b0$ 且 $c\leq0$。
+
+闭性：
+
+|          | 有限生成 | 有限维无限生成 | 无限维无限生成 |
+| :------: | :------: | :------------: | :------------: |
+| 线性组合 |    闭    |       闭       |     未必闭     |
+| 仿射组合 |    闭    |       闭       |     未必闭     |
+|  凸组合  |    紧    |     未必闭     |     未必闭     |
+| 凸锥组合 |    闭    |     未必闭     |     未必闭     |
+
+- 特别地，有限生成凸包的紧性可以直接由概率单纯形的紧性 + $\b x\mapsto\b A\b x$ 的连续性证明。
+- 特别地，有限生成凸锥组合的闭性不能这么证（因为锥系数集合不紧），所以需要使用 **凸锥 Carathéodory 定理** 先转成独立生成元，证明每个线性无关凸锥的闭性，然后大锥是所有小锥（有限个）的并，因此也是闭的。
+
+超平面分割定理：
+
+- 闭凸集和单点总能严格分割。
+- 闭凸集与紧凸集总能严格分割（二者的 Minkowski 差是闭凸集）。
+- 闭凸集之间不一定能严格分割：反例例如 $\cur{(x,0)}$ 与 $\cur{(x,y)\mid x>0,y>1,xy\geq1}$。
+
+分离定理：
+
+- 线性：存在超平面包含子空间但不包含外部点。
+- 仿射：存在仿射超平面包含仿射空间但不包含外部点。
+- 凸锥：Farkas 引理，存在齐次超平面严格分离外部点与凸锥。
+- 凸集：超平面分离定理，存在仿射超平面分离外部点与凸集。
+
+反之，这四种集合因为都是闭凸集，所以边界可以唯一由相应的测试超平面确定。
+
+对偶理论：
+
+- 线性：对偶是正交补。
+- 锥：对偶是对偶锥 $\c K^*=\cur{\b y\mid\ip{\b y,\b x}\geq0,\forall \b x\in\c K}$，也即全体齐次分割超平面的法向量。
+    - 对偶锥必然是凸锥。
+    - 双对偶定理：锥的双对偶是其弱闭凸包。
+
+- 凸集：对偶是 **极集** (polar set) $\c C^\circ=\cur{\b y\mid\ip{\b y,\b x}\leq1,\forall\b x\in\c C}$。
+    - 双极定理：双极集是包含原始凸集和原点的最小弱闭凸包。
+
+
+关于映射的封闭性：
+
+- 线性：关于线性映射的像和原像保持。
+- 仿射：关于线性/仿射映射的像和原像保持。
+- 凸集：关于线性/仿射映射的像和原像保持。
+- 凸锥：关于线性映射的像和原像保持。
+- 全都不关于凸映射保持，因为凸映射本身依赖于不等关系。
+
+定义：一个集合 $\c C$ 的 **相对内点** 为
+$$
+\t{relint}(\c C)=\cur{x\in\c C\mid\c B(x,r)\cap\t{aff}(\c C)\sube\c C\t{ for some }r>0}
+$$
+
+> 「相对」意味着只考虑仿射集所处的低维空间。
+
+- 相对内点对于线性和仿射子空间就是其本身，对于非空凸集和凸锥恒非空。
+
+### II. Convex Functions
+
+定义：$f$ 是凸函数，如果其定义域是凸集，且对于一切 $\b x,\b y$ 和 $t\in(0,1)$ 均有
+$$
+f((1-t)\b x+t\b y)\leq(1-t)f(\b x)+tf(\b y)
+$$
+特别地，$f$ 的值域并不一定是 $\R$，只要是能定义偏序关系的线性空间均可，常见的其它方案包括向量或对称半正定矩阵等——只不过这几个就不太好进行次梯度相关分析了。
+
+定义：$\b g$ 被称为函数 $f$ 在 $\b x$ 处的 **次梯度** (subgradient)，如果它是 epigraph 的支撑超平面的 Riesz 向量：
+$$
+f(\b z)\geq f(\b x)+\ip{\b g,\b z-\b x}
+$$
+定义：$\b x$ 处全体次梯度构成 $\b x$ 的 **次微分** (subdifferential)，记作 $\p f(\b x)$。
+
+定理：凸函数处处存在次梯度。因为凸函数的 epigraph 是凸集，而凸集有支撑超平面定理。
+
+定理：如果凸函数在某处可微，则 $\p f(\b x)=\cur{\nabla f(\b x)}$。
+
+凸性的若干等价表述：
+
+- 零阶形式：$f(t\b x+(1-t)\b y)\leq tf(\b x)+(1-t)f(\b y)$。
+- 一阶形式：
+    - Taylor 展开形式：$f(\b y)\geq f(\b x)+\ip{\nabla f(\b x),\b y-\b x}$。
+        - 不可微场景等价于处处存在次梯度。
+    - **单调性**（梯度增量与位移方向相近）：$\ip{\nabla f(\b y)-\nabla f(\b x),\b y-\b x}\geq0$。
+        - 不可微场景等价于次梯度具有单调性。
+- 二阶形式：$\nabla^2 f(\b x)\succeq\b0$。
+
+Jensen 不等式：对于凸函数 $f$ 和定义域上的随机变量 $\b x$，$\E f(\b x)\geq f(\E\b x)$。
+
+定义：称 $\b x$ 是全局 $\vare$-次优的，如果 $f(\b x)\leq f(\b x^*)+\vare$。称其是局部最优的，如果存在某个 $R>0$ 使得其在 $R$-邻域内是最优的。
+
+凸函数场合刻画极值点的若干等价条件：
+
+- 局部最优。
+- 全局最优。
+- 梯度下切：$\ip{\nabla f(\b x^*),\b y-\b x^*}\geq0$ 对全体 $\b y$ 均成立。
+    - 不可微场景：$\ip{\p f(\b x^*),\b y-\b x^*}\geq0$ 对全体 $\b y$ 均成立。
+    - $\t{dom}(f)=\R^n$ 场景：$\nabla f(\b x^*)=\b0$。
+
+凸性关于以下变换保持：
+
+- 有限个凸函数的非负系数组合。
+- 定义域侧复合仿射变换。
+- 逐点 max/sup。
+
+### III. Optimization Framework
+
+定义：优化问题的一种较为通用的框架是
+$$
+\inf f_0(\b x)
+\\\st f_i(\b x)\leq0
+\\h_i(\b x)=0
+$$
+其定义域为
+$$
+\c D=\left(\bigcap\t{dom}f_i\right)\cap\left(\bigcap\t{dom}h_i\right)
+$$
+如果在 min/inf 等下面只写 $\b x$，则默认省略 $\b x\in\c D$。
+
+**可行解** 为 $\c D$ 中满足所有约束的元素。所有这样的元素构成 **可行集**，本文中记作 $\c F$。
+
+**严格可行解** 为 $\c D$ 中所有不等式约束均严格、等式约束均取等的元素。
+
+一般用 $\b x^*$ 表示最优解，$p^*$ 表示最优值。最优解不一定存在（如果最优值是通过确界得到的）。
+
+------
+
+更一般地，这个框架不仅适用于全序的标量约束，还适用于 **锥序**。对于闭凸锥 $\c K$，定义 $\b x\preceq_\c K\b y\iff\b y-\b x\in\c K$，则有相应的 **锥优化** 框架
+$$
+\inf f_0(\b x)
+\\\st\b F_i(\b x)\preceq_\c K\b0
+\\h_i(\b x)=0
+$$
+典型的例子是 SDP，此时 $\c K$ 即为半正定锥。
+
+下文除了专门涉及到锥优化以外，默认使用常规框架。
+
+------
+
+定义：一个特殊的优化框架是 **凸优化**。此时：
+
+- 所有的 $f_i$ 都是凸函数。
+- 所有的 $h_i$ 都是仿射函数。
+
+于是可以写成
+$$
+\inf f_0(\b x)
+\\\st f_i(\b x)\leq0
+\\\b A\b x=\b b
+$$
+
+### IV. Lagrangian Duality
+
+对于常规优化框架，可定义 **Lagrange 乘子** $\b\lambda,\b\mu$ 以及 **Lagrangian**
+$$
+L(\b x,\b\lambda,\b\mu)=f_0(\b x)+\sum\lambda_i f_i(\b x)+\sum\mu_ih_i(\b x)
+$$
+则原问题等价于
+$$
+\min_{\b x\in\c D}\max_{\b\lambda\geq\b0,\b\mu}L(\b x,\b\lambda,\b\mu)
+$$
+**Lagrange 对偶** 就是换序后的
+$$
+g(\b\lambda,\b\mu):=\min_{\b x\in\c D}L(\b x,\b\lambda,\b\mu)
+\\d^*=\max_{\b\lambda\geq\b0,\b\mu}g(\b\lambda,\b\mu)
+$$
+一般用 $\b\lambda^*,\b\mu^*$ 表示对偶问题的最优解，$d^*$ 表示对偶问题的最优值。和原问题一样，对偶问题的最优解也是不一定取得到的。
+
+------
+
+对于锥优化，$\lambda_i\geq0$ 可以相应地被翻译为 $\b\lambda_i\succeq_{\c K^*}\b0$，其中 $\c K^*$ 是 $\c K$ 的对偶锥。于是问题变为
+$$
+L(\b x,\b\Lambda,\b\mu)=f_0(\b x)+\sum\ip{\b\lambda_i,\b F_i(\b x)}+\sum\mu_ih_i(\b x)
+$$
+此时 Lagrange 对偶同样良定义。
+
+------
+
+弱对偶也即 $d^*\leq p^*$ 总是成立。
+
+> 首先对于一切 $\b x\in\c D,\b\lambda\geq\b0,\b\mu$ 总有 $L(\b x,\b\lambda,\b\mu)\leq f_0(\b x)$。
+>
+> 另一方面，必有
+> $$
+> \min_{\b x\in\c D}L(\b x,\b\lambda,\b\mu)\leq \min_{\b x\in\c F}L(\b x,\b\lambda,\b\mu)
+> $$
+> 于是有
+> $$
+> \max_{\b\lambda\geq\b0,\b\mu}\min_{\b x\in\c D}L(\b x,\b\lambda,\b\mu)\leq\max_{\b\lambda\geq\b0,\b\mu}\min_{\b x\in\c F}L(\b x,\b\lambda,\b\mu)
+> \\\leq\max_{\b\lambda\geq\b0,\b\mu}\min_{\b x\in\c F}f_0(\b x)
+> \\=\min_{\b x\in\c F}f_0(\b x)
+> $$
+
+强对偶也即 $d^*=p^*$ 不一定成立。有很多相关的充分条件。
+
+**Slater 条件**：在凸优化场景，若存在定义域的相对内点是严格可行解，则强对偶成立。特别地，对于仿射的不等式约束，严格可行解允许取等。
+
+它的证明同样基于超平面分割定理。因为本质上是 Rockafellar 对偶的应用，故具体证明放到下一节展开。
+
+**KKT 条件**：对于 $(\b x^*,\b\lambda^*,\b\mu^*)$ 三元组，以下条件合称 KKT 条件：
+
+- $f_i(\b x^*)\leq0,h_i(\b x^*)=0,\b\lambda^*\geq\b0$。（$\b x^*$ 是原问题可行解，$\b\lambda^*,\b\mu^*$ 是对偶问题可行解）。
+- $\lambda_i^*f_i(\b x^*)=0$（互补松弛）
+- $\nabla f_0(\b x^*)+\sum\lambda_i^*\nabla f_i(\b x^*)+\sum\mu_i^*\nabla h_i(\b x^*)=\b0$。
+
+则有以下性质：
+
+- 如果最优解 $\b x^*$ 存在（不一定严格可行），且问题是凸优化、满足 $\p p(\b0)\neq\varnothing$（例如 Slater 条件），则存在与其满足 KKT 条件的 Lagrange 乘子 $\b\lambda^*,\b\mu^*$，且它们是对偶最优解。
+- 如果 $\b x^*,\b\lambda^*,\b\mu^*$ 是最优解，且强对偶成立，就算不是凸优化，它们也满足 KKT 条件。
+- 如果 KKT 条件成立，且问题是凸优化，则 $\b x^*,\b\lambda^*,\b\mu^*$ 是最优解，且强对偶成立。
+
+其中，第一条的描述本身就是 Rockafellar 对偶意义下的，因此放到下一节。后两条现在即可证明。
+
+> 第二条：
+>
+> 由强对偶，首先有
+> $$
+> f(\b x^*)=g(\b\lambda^*,\b\mu^*)
+> $$
+> 由可行性，有
+> $$
+> g(\b\lambda^*,\b\mu^*)\leq L(\b x^*,\b\lambda^*,\b\mu^*)\leq f(\b x^*)
+> $$
+> 于是中间等于两边，有
+> $$
+> \sum\lambda_i^*f_i(\b x^*)=0
+> $$
+> 且每一项单独非正（$\b\lambda^*\geq\b0,f_i(\b x^*)\leq0$），于是每一项均为零。
+>
+> 另一方面，$\b x^*$ 是 $L(\cdot,\b\lambda^*,\b\mu^*)$ 的全局最小值，则必然满足零梯度条件。
+
+> 第三条：
+> 
+> 因为 $\b\lambda^*\geq\b0$，所以 $L(\cdot,\b\lambda^*,\b\mu^*)$ 是凸函数，且 $\nabla L_\b x(\b x^*,\b\lambda^*,\b\mu^*)=\b0$，则 $\b x^*$ 必然是 $L(\cdot,\b\lambda^*,\b\mu^*)$ 的全局最小值点，也即 $g(\b\lambda^*,\b\mu^*)=L(\b x^*,\b\lambda^*,\b\mu^*)$。
+> 
+> 另一方面，因为 $\sum\lambda_i^*f_i(\b x^*)=0$，且由原始和对偶可行性，所以有 $f(\b x^*)=L(\b x^*,\b\lambda^*,\b\mu^*)$，因此强对偶成立，且双方均是最优。
+
+### V. Rockafellar Pertubation Duality
+
+一套比 Lagrangian Duality 更本质的理论。
+
+框架：对于无约束的 $f(\b x)$，引入扰动参数 $\b u\in\R^m$，构造一族函数 $\Phi(\b x,\b u)$，且满足嵌入性质 $\Phi(\b x,\b 0)=f(\b x)$。
+
+定义
+$$
+p(\b u)=\inf_\b x\Phi(\b x,\b u)
+$$
+则 $p(\b0)$ 就是原问题的最优值 $p^*$。
+
+> 读者应当学会分辨何时 $p^*$ 指的是原问题的最优值，何时指的是 $p$ 的 Legendre-Fenchel 共轭。
+
+现在对 $\Phi$ 求联合 Legendre-Fenchel 共轭，也即
+$$
+\Phi^*(\b y,\b v):=\sup_{\b x,\b u}\cur{\ip{\b x,\b y}+\ip{\b u,\b v}-\Phi(\b x,\b u)}
+\\p^*(\b v):=\sup_\b u\cur{\ip{\b u,\b v}-p(\b u)}
+\\=\sup_{\b x,\b u}\cur{\ip{\b u,\b v}-\Phi(\b x,\b u)}=\Phi^*(\b0,\b v)
+\\p^{**}(\b0)=\sup_\b v\cur{\ip{\b v,\b0}-p^*(\b v)}=\sup_\b v\cur{-\Phi^*(\b0,\b v)}\leq p(\b0)
+$$
+即有弱对偶性
+$$
+\sup_\b v\cur{-\Phi^*(\b0,\b v)}=\sup_\b v\inf_{\b x,\b u}\cur{-(\ip{\b u,\b v}-\Phi(\b x,\b u))}
+\\=\sup_\b v\inf_{\b x}\cur{-\Psi(\b x,\b v)}\leq p(\b0)
+$$
+其中 $\Psi(\b x,\b v)=\sup_\b u\cur{\ip{\b u,\b v}-\Phi(\b x,\b u)}$ 是第二维的 Fenchel 共轭。
+
+------
+
+有很多常见的对偶都可以被看做是 Rockafellar 对偶的特例。
+
+- Lagrange 对偶：把标准型
+    $$
+    \inf f_0(\b x)
+    \\\st f_i(\b x)\leq0
+    \\h_i(\b x)=0
+    $$
+    用 Indicator Function 改写为无约束形式的
+    $$
+    f(\b x)=f_0(\b x)+\sum I_\cur{f_i(\b x)\leq0}+\sum I_\cur{h_i(\b x)=0}
+    $$
+    然后构造扰动族
+    $$
+    \Phi(\b x,\b u,\b v)=f_0(\b x)+\sum I_\cur{f_i(\b x)\leq u_i}+\sum I_\cur{h_i(\b x)=v_i}
+    $$
+    则
+    $$
+    \Psi(\b x,\b\lambda',\b\mu')=\sup_{\b u,\b v}\ip{\b\lambda',\b u}+\ip{\b\mu',\b v}-\Phi(\b x,\b u,\b v)
+    \\=\sup_{\mat{f_i(\b x)\leq u_i\\h_i(\b x)=v_i}}\ip{\b\lambda',\b u}+\ip{\b\mu',\b v}-f_0(\b x)
+    $$
+    只有 $\b\lambda'\leq\b0$ 结果才有界，此时最优解即有 $f_i(\b x)=u_i$，$h_i(\b x)=v_i$。故令
+    $$
+    L(\b x,\b\lambda,\b\mu)=-\Psi(\b x,-\b\lambda,-\b\mu)
+    $$
+    则有
+    $$
+    \sup_{\b\lambda\geq\b0,\b\mu}\inf_\b xL(\b x,\b\lambda,\b\mu)\leq p^*
+    $$
+
+- 和的 Fenchel 共轭，如 $(f+g\circ\b A)^*$，其中 $\b A$ 是线性映射。
+    原问题是
+    $$
+    (f+g\circ\b A)^*(\b x')=\sup_\b x\cur{\ip{\b x,\b x'}-f(\b x)-g(\b A\b x)}
+    \\=-\inf_\b x\cur{f(\b x)+g(\b A\b x)-\ip{\b x,\b x'}}
+    $$
+    构造扰动为水平平移
+    $$
+    \Phi(\b x,\b u)=f(\b x)+g(\b A\b x+\b u)-\ip{\b x,\b x'}
+    $$
+    则有
+    $$
+    \Psi(\b x,\b v)=\sup_{\b u}\cur{\ip{\b u,\b v}-f(\b x)-g(\b A\b x+\b u)+\ip{\b x,\b x'}}
+    \\=\sup_{\b u'}\cur{\ip{\b u'-\b A\b x,\b v}-f(\b x)-g(\b u')+\ip{\b x,\b x'}}
+    \\=\sup_{\b u'}\cur{\ip{\b u',\b v}-f(\b x)-g(\b u')+\ip{\b x,\b x'-\b A^\top\b v}}
+    \\=\ip{\b x,\b x'-\b A^\top\b v}-f(\b x)+g^*(\b v)
+    $$
+    于是有
+    $$
+    \\(f+g\circ\b A)^*(\b x')\leq\inf_\b v\sup_\b x\Psi(\b x,\b v)
+    \\=\inf_\b v\sup_\b x\cur{\ip{\b x,\b x'-\b A^\top\b v}-f(\b x)+g^*(\b v)}
+    \\=\inf_\b v\cur{f^*(\b x'-\b A^\top\b v)+g^*(\b v)}
+    $$
+    使用 $(\min,+)$ 卷积
+    $$
+    (f\mpc g)(z)=\inf_{x+y=z}\cur{f(x)+g(y)}
+    $$
+    以及 push-forward 语言
+    $$
+    (f_\sharp g)(x)=\inf\cur{g(y)\mid f(y)=x}
+    $$
+    即可得到 **Fenchel-Rockafellar 下卷积定理**：
+    $$
+    (f+g\circ\b A)^*\leq f^*\mpc(\b A^\top)_\sharp g^*
+    $$
+    在适当的场合取等（强对偶）。
+    在 $\b A=\b I$ 时，它是更传统的格式：$(f+g)^*=f^*\mpc g^*$。事实上，由关系 $(g\circ \b A)^*=(\b A^\top)_\sharp g^*$ 可以反过来推导得到含复合的形式，由此得到更通用的
+    $$
+    \left(\sum f_i\circ\b A_i\right)^*=(\b A_1^\top)_\sharp f_1^*\mpc\dots\mpc(\b A_n^\top)_\sharp f_n^*
+    $$
+
+> 和测度论中的语言不同，测度论的 push-forward 是对 $f(y)=x$ 的 $g(y)$ 求和，而此处因为在讨论 min,+ 代数（**热带代数**）所以换成 inf。
+
+------
+
+现在证明 Rockafellar 对偶的强对偶性。
+
+定理：只要 $\p p(\b0)$ 非空，强对偶即成立，且其中任意元素即为对偶最优解。
+
+> 对于 $\b v\in\p p(\b0)$，按照次梯度的定义是
+> $$
+> p(\b u)\geq p(\b 0)+\ip{\b u,\b v}
+> $$
+> 即有
+> $$
+> \Phi(\b x,\b u)\geq p(\b u)\geq p^*+\ip{\b u,\b v}
+> \\\Psi(\b x,\b v)=\sup_\b u\cur{\ip{\b u,\b v}-\Phi(\b x,\b u)}\leq-p^*
+> \\\inf_{\b x}\cur{-\Psi(\b x,\b v)}\geq p^*
+> \\\sup_\b v\inf_{\b x}\cur{-\Psi(\b x,\b v)}\geq p^*
+> $$
+> 于是强对偶成立，且易知 $\b v$ 取极值。
+
+定理：只要 $\b 0$ 是 $\t{dom}(p)$ 的相对内点，则 $\p p(\b0)$ 非空，强对偶成立。
+
+> 定义
+> $$
+> \c A=\t{epi}(p)
+> \\\c B=\cur{(\b0,s)\mid s<p^*}
+> $$
+>
+> > 另一种常见定义是
+> > $$
+> > \c A'=\cur{(\b u,t)\mid\exists\b x\in\c D,\Phi(\b x,\b u)\leq t}
+> > $$
+> > $\c A$ 比 $\c A'$ 更大，包含了下确界。因此，有 $(\b0,p^*)\in\c A$，但在下确界取不到时，则不属于后者。
+> >
+> > 实际上使用哪种定义并没有区别。
+>
+> 二者显然不交。只要选取的 $\Phi$ 满足联合凸性，则 $\c A$ 是凸集，存在超平面 $(\b\lambda,\nu)$ 弱分离二者，满足
+> $$
+> \ip{\b u,\b\lambda}+t\nu\geq\alpha&(\forall(\b u,t)\in\c A)
+> \\s\nu\leq\alpha&(\forall(\b0,s)\in\c B)
+> $$
+> 现在分析该超平面的性质。
+>
+> - 因为 $s$ 无下界，所以 $\nu\geq0$。
+> - 因为 $s\uparrow p^*$，且 $(\b0,p^*)\in\c A$，所以 $\alpha=\nu p^*$。
+>
+> 现在假如进一步 $\b0$ 是 $\t{dom}(p)$ 的相对内点，则可以在 $\c Z=\t{aff}(\t{dom}(p))$ 中做分离；而因为 $\b0\in\t{dom}(p)$，则 $\c Z$ 是线性的。
+>
+> - 如果 $\nu=0$，则 $\ip{\b u,\b\lambda}\geq0,\forall\b u\in\t{dom}(p)$。然而 $\b0$ 是相对内点，所以对于一切 $\b h\in\c Z$，存在充分小的 $\vare>0$ 使得 $\pm\vare\b h\in\t{dom}(p)$，这意味着 $\ip{\b h,\b\lambda}=0$，$\b\lambda$ 在 $\c Z$ 上为 $\b0$，超平面退化，不合法。
+>
+> - 于是必须 $\nu>0$，除以 $\nu$ 归一化，令 $\b v=-\b \lambda/\nu$ 则有
+>     $$
+>     \ip{\b u,\b\lambda}+t\nu\geq\alpha&(\b u\in\t{dom}(p),t\geq p(\b u))
+>     \\\ip{\b u,\b\lambda}+p(\b u)\nu\geq p(\b0)\nu
+>     \\p(\b u)\geq p(\b 0)+\ip{\b u,\b v}
+>     $$
+>
+> 于是 $\b v\in\p p(\b0)$。
+
+具体到凸优化场景，则 $\b0$ 是相对内点当且仅当全体非仿射的约束 $f_i(\b x)\leq0$ 都是严格的。于是 Slater 条件可以给出 $\p p(\b0)$ 的非空保障。
+
+于是现在可以补齐 KKT 条件的第一条：$\p p(\b0)$ 保障 $(\b x^*,\b\lambda^*,\b\mu^*)$ 存在且强对偶成立，于是由第二条即证。
+
+> 特别地，$(\b\lambda^*,\b\mu^*)$ 一定存在，但 $\b x^*$ 则不一定。因此 KKT 的第一条才会显式要求 $\b x^*$ 存在。
+
+### VI. Polyhedron
+
+现在回到更具体的线性规划。线性规划的可行域被称作 **多面体** (polyhedron)，而其目标为求出其上 **线性泛函** 的极值。
+
+**一般型** (general form) 的多面体使用以下五种可能的边界条件刻画：
+
+- $\ip{\b a_i,\b x}\geq b_i$。
+- $\ip{\b a_i,\b x}\leq b_i$。
+- $\ip{\b a_i,\b x}=b_i$。
+- $x_j\geq0$。
+- $x_j\leq0$。
+
+不等号必须允许取等，以保证多面体的闭性：有闭性就能保证极值有界时，极值点必存在。
+
+五种边界条件还是太复杂了。可以简单整理为以下两种格式：
+
+- $\b A\b x\geq\b b$。这种格式不会引入新变量，仅仅是把 $\R^n$ 上区域做了一个 rephrase，可以很轻松从上述五条得出，此时仍然保证 $\b x\in\R^n$。被称为 **canonical form** 或 **不等式型** (inequality form)。
+- $\b A\b x=\b b\land\b x\geq\b0$，被称为 **标准型** (standard form)。一般要求标准型的 $\b A$ 的行线性无关——显然可以通过消元来移除行上的重复约束。于是，有 $\b A\in\R^{m\times n}$ 其中 $m\leq n$。
+
+多面体的 **顶点** / **极点** (vertex / extreme point) 的等价定义：
+
+- 不能写成另外两点凸组合的点。
+- 在某个线性泛函意义下取严格最值的点。
+- **基本可行解**。
+
+对于 $\R^n$ 中一个点，一条约束在此处是活跃的，如果它取等。不论是不等式型还是标准型都可以有此定义。
+
+定义：**基本解** 为：
+
+- 在不等式型/一般型下，所有等式约束均活跃，且有恰好 $n$ 条线性无关活跃约束。
+    - 这一组线性无关活跃约束即为一组 **基** (base)，可以唯一确定基本解。
+    - 基必然对应一个基本解，然而一个基本解可以有多个基。
+    - 有超过 $n$ 条活跃约束时，称为 **退化** (degenerate) 解。
+
+- 在标准型下，满足 $\b A\b x=\b b$ 的有至多 $m$ 个非零坐标，且它们的列向量彼此线性无关。
+    - 这是判定型描述——满足该条件的必然是基本解；但是如果其非零坐标数不足 $m$ 个，需要搭配额外列向量凑到大小为 $m$ 的 **基**。
+    - 基必然对应一个基本解，然而一个基本解可以有多个基。
+    - 有少于 $m$ 个非零坐标时，称为 **退化** (degenerate) 解。
+
+
+而 **基本可行解** 就是属于可行域的基本解。
+
+> 等价性的证明：
+>
+> - 如果一个点能写成其它两点的凸组合，则任意线性泛函都不能在这两点上同时取更小值，于是 (2)->(1)。
+> - 如果活跃约束不张成全空间，沿着与所有活跃约束均正交的方向能在不触碰全体活跃约束的前提下获取小扰动，于是 (1)->(3)。
+> - 如果存在活跃约束基，则考虑不等式型下的全体 $\ip{\b a_i,\b x}\geq b_i$ 约束，将基的全体 $\b a_i$ 求和即得线性泛函的 Riesz 表示向量 $\b c$，则任何非基本可行解都意味着某个基约束的放松，也即在 $\b c$ 意义下严格劣于 $\b x$。于是 (3)->(2)。
+
+基本可行解是一个纯粹几何性质——与坐标系/表达方式无关的性质，因为显然极点是一个纯粹几何性质。然而「是否退化」则不然。
+
+存在极点的若干等价条件：
+
+- 存在极点/顶点/基本可行解。
+- 不「contain a line」，也即不包含任何仿射直线。
+- 存在基。
+
+> - 有 BFS 显然就有基。
+> - 有基，则从多面体内任意点出发，不断重复：
+>     - 若这个点是 BFS，停止。
+>     - 否则找到与所有活跃约束正交的方向，则因为有基所以该正交方向必然与至少一个非活跃约束不正交，于是沿该正交方向反向前进，即可在保所有活跃约束的前提下走到边界，也即多一个活跃约束。
+> - 包含仿射直线当且仅当所有约束只能位于该直线的正交方向，当且仅当不满秩即不存在基。
+> - 特别地，以上是不等式型的描述；标准型天然不包含仿射直线。
+
+推论：有界多面体必然存在极点。
+
+定义：对于多面体（不妨认为是不等式型 $\b A\b x\geq\b b$）中的某一点 $\b x$，定义 **回收锥** (recession cone) 包含所有可以无限延长的方向，也即
+$$
+\cur{\b d\mid\b A(\b x+\lambda\b d)\geq\b b,\forall\lambda\geq0}
+$$
+容易发现回收锥与具体的 $\b x$ 无关，即为 $\b A\b d\geq\b0$ 的全体 $\b d$；标准型下则是 $\b A\b d=\b0\land\b d\geq\b0$ 的 $\b d$。
+
+定义：凸集的 **极子集** (extreme set) 是满足以下条件的子集：
+
+- 是非空凸集。
+- 若能写成两点的凸组合，则它们必须全部属于该极子集。
+
+特别地，极点是单点极子集的例子。
+
+性质：极子集的交/并仍是极子集。
+
+在多面体的场合，其极子集只有两种典型成员：
+
+- 极点 $\b x_i$。
+- **极射线**：回收锥的 1D 无界极子集，也即 $\cur{\theta\b w_i\mid\theta\geq0}$。也可以看做是回收锥的一组生成元。
+
+这两种成员通过并集和凸包可以刻画全体极子集。形式化地，有 **resolution theorem**：存在极点的多面体中，所有点都可以写成所有极点 $\cur{\b x_i}$ 的凸组合 + 所有极射线 $\cur{\b w_i}$ 的凸锥组合：
+$$
+\cur{\sum\lambda_i\b x_i+\sum\theta_i\b w_i\mid\lambda_i\geq0,\theta_i\geq0,\sum\lambda_i=1}
+$$
+换言之，多面体 = 有界凸集与回收锥的 Minkowski 和。（搭配 Carathéodory 定理，也即可以写成合计不超过 $n+1$ 个极点/极射线）
+
+推论（**Minkowski 定理**）：有界多面体中所有点都可以表示为极值点的凸组合。（搭配 Carathéodory 定理，也即可以写成 $n+1$ 个极值点的凸组合）。
+
+### VII. LP Duality
+
+LP 对偶有好几种推导方式。第一种是基于 Lagrange Duality 的：例如标准型
+$$
+\min\ip{\b c,\b x}
+\\\st\b A\b x=\b b
+\\\b x\geq\b0
+$$
+引入对偶 $\b y$，有
+$$
+g(\b y)=\min_{\b x\geq\b0}\ip{\b c,\b x}+\b y^\top(\b b-\b A\b x)
+\\=\ip{\b y,\b b}+\min_{\b x\geq\b0}\ip{\b c-\b A^\top\b y,\b x}
+\\=\ip{\b y,\b b}+\begin{cases}0&(\b c\geq\b A^\top\b y)\\-\infty&(\t{otherwise})\end{cases}
+$$
+所以对偶就是不等式型
+$$
+\max\ip{\b b,\b y}
+\\\st\b A^\top\b y\leq\b c
+$$
+
+------
+
+还可以用下卷积定理得到相同的结果。具体地，考虑 Indicator Function $I_\c S(\b x)=\begin{cases}0&(\b x\in\c S)\\+\infty&(\b x\notin\c S)\end{cases}$，则线性规划的约束可以用 Indicator Function 替换。下卷积定理展开时，需要涉及到原始线性泛函的 Fenchel 对偶，以及 Indicator Function 的对偶 $I_\c S^*(\b y)=\sup_{\b x\in\c S}\ip{\b x,\b y}$。
+
+首先考虑单约束 $\ip{\b a,\b x}\geq b$ 的对偶。
+$$
+I_\cur{\ip{\b a,\b x}\geq b}^*=(I_\cur{x\geq b}\circ\ip{\b a,\cdot})^*
+\\=\b a_\sharp(by+I_\cur{y\leq0})
+\\=\inf_y\cur{by+I_\cur{y\leq0}\mid \b z= y\b a}
+\\=\begin{cases}by&(\exists y\leq0\t{ s.t. }\b z=y\b a)\\+\infty&(\t{otherwise})\end{cases}
+$$
+也即，其对偶只在 $\b a$ 的反向上有限。同理，$\ip{\b a,\b x}\leq b$ 的约束只在 $\b a$ 的方向上有限；$\ip{\b a,\b x}=b$ 的指示函数是这两者的和，共轭就是它们共轭的卷积，在整个 $\b a$ 张成的线性子空间上均有限。
+
+> 从这个例子可以看出，原空间中是约束越多、越强，则可行位置越少，因为值有限的位置关于加法是求交；然而对偶空间中则恰恰相反，因为它关于下卷积是求 Minkowski 和。
+
+进一步，考虑不等式型下一批约束，写成 $\b A\b x\geq\b b$ 的形式，则其对偶是每一行约束的卷积，只在行向量的非正系数线性组合上有限。于是引入辅助量 $\b y\leq\b0$ 表示行向量的系数，可知
+$$
+I_\cur{\b A\b x\geq\b b}^*(\b z)=\inf_\b y\ip{\b b,\b y}+I_\cur{\b z=\b A^\top\b y}+I_\cur{\b y\leq\b0}
+$$
+然后再考虑 $\ip{\b c,\cdot}$ 的共轭。有 $\ip{\b c,\cdot}^*(\b z)=\sup_\b x\ip{\b z,\b x}-\ip{\b c,\b x}=I_\cur{\b z=\b c}$。
+
+于是不等式型下即需求上述二者的卷积，有
+$$
+(\ip{\b c,\b x}+I_\cur{\b A\b x\geq\b b})^*(\b 0)=\inf_\b y\ip{\b b,\b y}+I_\cur{\b y\leq\b0}+I_\cur{\b A^\top\b y=-\b c}
+\\=-\max_{\b y}\cur{\ip{\b b,\b y}-I_\cur{\b y\geq\b0}-I_\cur{\b A^\top\b y=\b c}}
+$$
+由 $\inf f=-f^*(0)$ 的恒等式，有
+$$
+\min_{\b A\b x\geq\b b}\ip{\b c,\b x}=\max_{\b y\geq\b0,\b A^\top\b y=\b c}\ip{\b b,\b y}
+$$
+标准型的 $\b A\b x=\b b$ 约束的推理是类似的；$\b x\geq\b0$ 则有
+$$
+I_\cur{\b x\geq\b 0}^*=I_\cur{\b z\leq\b0}
+$$
+卷积的时候即允许超出一些，得到
+$$
+(\ip{\b c,\b x}+I_\cur{\b A\b x=\b b}+I_\cur{\b x\geq\b0})^*(\b 0)=\inf_\b y\ip{\b b,\b y}+I_\cur{\b A^\top\b y\geq-\b c}
+\\=-\max\cur{\ip{\b b,\b y}-I_\cur{\b A^\top\b y\leq\b c}}
+$$
+------
+
+不论哪种，都可以得到如下翻译字典
+
+- $\min\ip{\b c,\b x}\implies\max\ip{\b b,\b y}$：转而讨论卷积时各来源贡献的线性组合系数。
+- $\ip{\b a_i,\b x}\geq b_i\implies y_i\geq0$：本来要有负系数，取反后变正了。
+- $\ip{\b a_i,\b x}\leq b_i\implies y_i\leq0$。
+- $\ip{\b a_i,\b x}=b_i\implies y_i\t{ is free}$：原问题约束越多，对偶问题约束越少。
+- $x_i\geq0\implies\ip{\b A_i,\b y}\leq c_i$：取共轭后得到负系数，意味着可以适当超出，再取反后得到 $\leq$。
+- $x_i\leq0\implies\ip{\b A_i,\b y}\geq c_i$。
+- $x_i\t{ is free}\implies\ip{\b A_i,\b y}=c_i$。
+
+------
+
+只要原问题和对偶问题均可解，则 LP 的强对偶是必然成立的，因为其所有限制都是仿射的，Slater 性质默认成立。不过也可以仅对 LP 本身进行证明。
+
+问题默认是
+$$
+\min_{\b A\b x=\b b,\b x\geq\b0}\ip{\b c,\b x}\implies\max_{\b A^\top\b y\leq\b c}\ip{\b b,\b y}
+$$
+首先简单说明弱对偶。
+$$
+\b A\b x=\b b\implies\b y^\top\b A\b x=\b y^\top\b b
+\\\b A^\top\b y\leq\b c\land\b x\geq\b 0\implies\b x^\top\b A^\top\b y\leq\b x^\top\b c
+$$
+于是 $\ip{\b y,\b b}\leq\ip{\b x,\b c}$ 这个关系对于一切可行域中的 $(\b x,\b y)$ 均成立，因此自然关于左侧最大值和右侧最小值成立。
+
+然后说明强对偶。这需要使用 **Farkas 引理** 的推论：如果所有满足 $\b A^\top\b y\geq\b0$ 的线性泛函 $\b y$ 都有 $\ip{\b y,\b b}\geq0$，则 $\b b$ 属于凸锥。
+
+> 对于原问题最优解 $\b x^*$，令 $I$ 是取零下标集合，则任意修正 $\b d$ 如果满足 $\b A\b d=\b0$ 且 $\b d\geq_I\b 0$ 其中 $\geq_I$ 意味着在下标 $I$ 上成立，则必须有 $\ip{\b c,\b d}\geq0$。
+>
+> 把 $\b A\b d=\b0$ 拆成 $\b A\b d\geq\b0$ 且 $-\b A\b d\geq\b0$，于是由 Farkas 定理，$\b c$ 可以被写成 $\b A$ 行向量的线性组合叠加 $I$ 上的非负松弛，也即
+> $$
+> \b c=\b A^\top\b y+\sum_{i\in I}s_i\b e_i
+> \\\ip{\b y,\b b}=\sum y_ib_i=\sum y_i\ip{\b a_i,\b x^*}
+> \\=\ip{\b c-\sum_{i\in I}s_i\b e_i,\b x^*}
+> \\=\ip{\b c,\b x^*}
+> $$
+> 于是 $(\b x^*,\b y)$ 即为一对极值点对。
+
+另外有 **互补松弛** 性质：对于极值点对 $(\b x^*,\b y^*)$，必有
+$$
+y_i^*(\ip{\b a_i,\b x^*}-b_i)=0
+\\(c_j-\ip{\b A_j,\b y^*})x_j^*=0
+$$
+- 特别地，这两个条件本质等价，因为极值点对 $\ip{\b x^*,\b c}=\ip{\b y^*,\b b}$。
+
+反之，满足互补松弛性质的可行点对必然是极值点。
+
+上述证明还需要一个额外的拆分。如果是从不等式型到标准型，还能有更简单的形式：
+$$
+\min_{\b A\b x\geq\b b}\ip{\b c,\b x}\implies\max_{\b A^\top\b y=\b c,\b y\geq\b0}\ip{\b b,\b y}
+$$
+
+> 对于原问题最优解 $\b x^*$，令 $I$ 是活跃约束集合，则任意修正 $\b d$ 如果满足 $\b A\b d\geq_I\b 0$ 其中 $\geq_I$ 意味着在下标 $I$ 上成立，则必须有 $\ip{\b c,\b d}\geq0$。于是由 Farkas 定理，$\b c$ 可以被写成 $I$ 中约束的非负线性组合，也即
+> $$
+> \b c=\sum_{i\in I}y_i\b a_i
+> $$
+> 现在把 $I$ 以外的 $y_i$ 统统赋零得到 $\b y$，则有
+> $$
+> \b A^\top\b y=\sum y_i\b a_i=\sum_{i\in I}y_i\b a_i=\b c
+> \\\ip{\b y,\b b}=\sum y_ib_i=\sum_{i\in I} y_ib_i=\sum_{i\in I}y_i\ip{\b a_i,\b x^*}=\ip{\b c,\b x^*}
+> $$
+> 于是 $(\b x^*,\b y)$ 即为一对极值点对。
+
+------
+
+另一个强对偶性的例子是 **von Neumann min-max 定理**。满足以下条件时：
+
+- 零和博弈。这意味着可以用唯一的效用函数 $f(x,y)$ 描述，一方最大化它，而另一方最小化它。
+- 有限状态。这意味着 $f$ 可以写成表格形式的有限矩阵 $\b A$。
+- 允许混合策略。
+
+此时则有
+$$
+\max_{\b x\in\Delta_n}\min_{\b y\in\Delta_m}\b x^\top\b A\b y=\min_{\b y\in\Delta_m}\max_{\b x\in\Delta_n}\b x^\top\b A\b y=(\b x^*)^\top\b A\b y^*
+$$
+其中 $(\b x^*,\b y^*)$ 是 Nash 均衡。
+
+> 首先，如果 $\b x$ 固定，则 $\b y$ 显然选纯策略即可，于是有
+> $$
+> \max_{\b x\in\Delta_n}\min_{\b y\in\Delta_m}\b x^\top\b A\b y=\max_{\b x\in\Delta_n}\min_{i=1}^m\b x^\top\b A\b e_i
+> \\=\max_{\b x\in\Delta_n}\min_{i=1}^m\ip{\b x,\b A_i}
+> $$
+> 那么问题可以被写成 LP 形式：
+> $$
+> \max_{t\in\R,\b x\in\R^n} t
+> \\\st t-\ip{\b A_i,\b x}\leq0&(1\leq i\leq m)
+> \\\sum x_i=1
+> \\\b x\geq\b0
+> $$
+> 考虑它的对偶。每个 $t-\ip{\b A_i,\b x}\leq0$ 变为对偶变量 $y_i$，$\sum x_i=1$ 变为对偶变量 $s$，则有
+> $$
+> \min_{s\in\R,\b y\in\R^m}s
+> \\\t{s.t. }s-\ip{\b a_i,\b y}\geq 0&(1\leq i\leq n)
+> \\\sum y_i=1
+> \\\b y\geq\b0
+> $$
+> 这刚好是 $\b y$ 固定时 $\b x$ 选纯策略后写成 LP 的形式。由强对偶即证。
+
+### VIII. More abot LP
+
+原问题能取到无穷小意味着对偶问题可行集为空；对偶问题能取到无穷大意味着原问题可行集为空。这两条均只需弱对偶即可。但反之不亦然：
+
+- 强对偶成立时，原问题不可行，对偶可能取到无穷大，也可能不可行。
+- 如果强对偶不成立，则原问题不可行，对偶可能是无穷大、有限值、不可行。
+
+标准型 $\b A\b x=\b b\land\b x\geq\b0$ 有解当且仅当 $\b b$ 属于 $\b A$ 的列凸锥，于是才会使用 Farkas 引理：无解当且仅当存在齐次超平面分割 $\t{cone}(\b A)$ 与 $\b b$。
+
+> 这个 certification 同样适用于 SDP 场景。
+
+反之，不等式型 $\b A\b x\geq\b b$ 有解当且仅当 $\b b$ 为顶点的 **正交锥** $\cur{\b y\mid\b y\geq\b b}$ 与 $\b A$ 的列空间有交。而无解时使用超平面分割需要谨慎：此处应当发现二者的差仍是多面体进而有闭性，才能严格分割二者。于是得到无解当且仅当存在 $\b y\geq\b0$ 满足 $\ip{\b b,\b y}>0$ 但 $\b A^\top\b y=\b0$。
+
+> 然而在 SDP 场景，如果在讨论 $\sum x_i\b A_i\succeq\b B$ 是否有界，则二者的差不是闭集，所以此处的证明不成立。
+
+证明强对偶时，标准型下，极值点 $\b x^*$ 处的增量 $\b d$ 在活跃约束上必须非负，$\ip{\b c,\b d}\geq0$ 且 $\b A\b d=\b0$，于是逆用不等式型即可。
+
+而不等式型下，极值点处的增量 $\b d$ 在活跃约束上必须 $\b A\b d\geq\b0$ 且 $\ip{\b c,\b d}\geq0$，于是逆用标准型即可。
+
+以下所有性质本质上都基于超平面分割定理。
+
+- Farkas 引理。
+- LP 强对偶。
+- Slater/KKT。
+
+以下所有性质本质上都基于基本可行解的等价表述：
+
+- Carathéodory 定理。
+
+LP 的场合，已知 $\b x^*$ 求 $\b y^*$ 或反过来，只能通过互补松弛条件进行，并不是只需解线性方程组即可。
+
+凸优化且 Slater 性质成立的场景，已知 $\b x^*$ 求 $\b\lambda^*,\b\mu^*$ 或反过来，只能通过 KKT 条件进行。
+
+### IX. SDP
+
+定义：矩阵的 **Frobenius 内积** 为
+$$
+\ip{\b A,\b B}=\t{tr}(\b A^\top\b B)=\sum_{i,j}A_{i,j}B_{i,j}
+$$
+则 SDP 的 **标准型** 为
+$$
+\min\ip{\b C,\b X}
+\\\st\ip{\b A_i,\b X}=b_i&(i=1,\dots, n)
+\\\b X\succeq\b0
+$$
+求对偶，会得到 **不等式型** 为
+$$
+\max\ip{\b b,\b x}
+\\\st\sum x_i\b A_i\preceq\b C
+$$
+
+但 SDP 的强对偶并不总是成立，原因上一节已经简单提及——Farkas 引理的不适用于 SDP。
+
+------
+
+一个例子是 **矩问题** (moment problems)。对于实随机变量 $X$，我们希望在给定其 $0\sim 2n$ 阶矩的上下界 $\mu_k\leq\E X^k\leq\nu_k$ 的前提下，求出其在一个不超过 $2n$ 次的多项式 $p(x)=\sum_{i=0}^{2n}c_ix^i$ 意义下的最值。
+
+也即，令 $x_i=\E X^i$，则优化问题变为
+$$
+\min/\max\ip{\b x,\b c}
+\\\st\b\mu\leq\b x\leq\b\nu
+$$
+矩问题一般使用 Hankel 矩阵刻画。形式化地，定义
+$$
+\b H(x_0,\dots,x_{2n})=\bmat{x_0&x_1&\dots&x_n\\x_1&x_2&\dots&x_{n+1}\\\vdots&\vdots&\ddots&\vdots\\x_n&x_{n+1}&\dots&x_{2n}}
+$$
+则二次型
+$$
+\b y^\top\b H(\b x)\b y=\sum_{i,j=0}^ny_iy_jx_{i+j}=\E\left[\left(\sum_{i=0}^ny_iX^i\right)^2\right]\geq0
+$$
+所以这个 **矩矩阵** (moment matrix) 是半正定的。
+
+另一方面，有 **截断 Hamburger 定理**：
+
+- 对于实数序列 $\cur{x_{2n}}$，若 $x_0=1$（概率归一化），则以下条件等价：
+    - 存在实随机变量 $X$ 使得 $x_i=\E X^i$。
+    - $\b H(\b x)\succ\b0$ 或 $\b H(\b x)\succeq\b0$ 且 $\t{rank}(\b H_n(\b x))=\t{rank}(\b H_{n-1}(\b x))$。
+    - 存在 $x_{2n+1},x_{2n+2}$ 使得 $\b H_{n+1}(\b x_{0:2n+2})\succeq\b0$。 
+- 特别地，这个定理是 Choquet 型，凸包的极值点是全体 Dirac 分布。
+
+于是矩问题变为 SDP
+$$
+\min/\max\ip{\b x,\b c}
+\\\st\b\mu\leq\b x\leq\b\nu
+\\\b H_{n+1}(\b x_{0:2n+2})\succeq\b0
+$$
+
+------
+
+松弛后的 **最大割** 也可以用 SDP 建模。形式化地，朴素的最大割是一个整数规划问题
+$$
+\max\dfrac12\sum_{(u,v)\in\c E}(1-x_ux_v)
+\\\st x_i\in\cur{-1,1}
+$$
+整数规划不好，考虑松弛。但是松弛也不是随便松的，例如有一种松弛是考虑到 $x_ux_v\geq|x_u+x_v|-1$，故有
+$$
+\max\dfrac12\sum_{e\in\c E}(1-z_e)
+\\\st z_{(u,v)}\geq|x_u+x_v|-1
+\\x_i\in[-1,1]
+$$
+然而这个松弛有 $x_u=0,z_e=-1$ 的平凡极大值，所以并非理想的松弛方案。
+
+所以考虑另一种松弛。把 $x_u$ 从 $\pm1$（一维单位向量）升维到 $n$ 维单位向量 $\b x_u\in\c S^{n-1}$，然后问题变为
+$$
+\max\dfrac12\sum_{(u,v)\in\c E}(1-\ip{\b x_u,\b x_v})
+\\\st \b x_i\in\c S^{n-1}
+$$
+这个问题有一个等价形式：令 $\b A$ 为邻接矩阵，$X_{u,v}=\ip{\b x_u,\b x_v}$ 为 **Gram 矩阵**，则新问题变为
+$$
+\min\ip{\b X,\b A}
+\\\st\b X\succeq\b0,X_{i,i}=1
+$$
+这是一个 SDP 问题。求出 Gram 矩阵后，可以通过分解方法还原出原始的 $\cur{\b x_u}$ 列。将其转化为原始问题可以依靠随机投影并四舍五入：随机 $\b w$ 并取 $\c A=\cur{i\mid\ip{\b x_i,\b w}\geq0}$。
+
+随机投影是足够优秀的：
+$$
+\E[\t{cut}(\c A)]=\sum_{(u,v)\in\c E}\P[\b w\t{ separates }\b x_u,\b x_v]
+\\=\sum_{(u,v)\in\c E}\arccos\ip{\b x_u,\b x_v}/\pi
+\\\geq\sum_{(u,v)\in\c E}\dfrac\beta\pi(1-\ip{\b x_u,\b x_v})
+$$
+其中 $\beta=\min\dfrac{\arccos x}{1-x}\approx1.38$。于是随机投影一定能给出 $0.878$ 倍最优解（当然需要 MC 采样）。
+
+### X. Binary Searches
+
+问题：凸集上凸函数的极值。
+
+定义：集合边界点处的 **支撑超平面** 是让其成为非严格极值点的线性泛函定义的超平面。
+
+**支撑超平面定理**：非空凸集的所有边界点都存在支撑超平面。
+
+> 如果该凸集有非空内部，则对其内部与该边界点用分离超平面定理即可。
+>
+> 否则该凸集必然属于一个更低维的仿射超平面，也即支撑超平面。
+
+本节统一框架是一个二分式方法：
+
+- 某一时刻，可能存在比已探测过的所有点更优的位置，构成大凸集的一个子集。
+- 探测该子集中某一点，获取其次梯度，则次梯度能帮忙排除掉半个子集，依次缩小候选集合。
+
+------
+
+**重心法** 的每一步均选择候选集合的重心。
+
+- 令第 $t$ 步在讨论的集合是 $\c X_t$，初始 $\c X_0=\c X$。
+- 先求重心 $\b o_t$，然后求重心处次梯度，根据其扔掉半个候选集，得到 $\c X_{t+1}$。
+- 最终输出 $\min f(\b o_t)$。
+
+则令 $f$ 在 $\c X$ 上的极差为 $V=\max f-\min f$，有
+$$
+f(\b x_t)-\min_{\b x\in\c X}f(\b x)\leq V(1-1/e)^{t/n}
+$$
+
+> 这个系数来自 **Grünbaum 不等式**：对于凸集，在重心处任切一刀，更小的那一侧的体积占比至少是 $1/e$。这也是选择重心为探测点的原因。
+>
+> - 特别地，这个 Grünbaum 不等式其实是一种 concentration inequality。
+>
+> 于是有
+> $$
+> \t{vol}(\c X_t)\leq(1-1/e)^t\t{vol}(\c X)
+> $$
+> 下一步就是把体积关系翻译为极差关系。
+>
+> 从 $\b x^*$ 到集合中其它所有点的差不超过 $V$；把整个集合缩放 $\vare$ 倍，令 $\c X_\vare=\cur{(1-\vare)\b x^*+\vare\b x\mid\b x\in\c X}$，则差不超过 $\vare V$。如果我们发现 $\c X_t$ 无法完整包含 $\c X_\vare$，则意味着 $\c X\setminus\c X_t$——已探测过的部分——包含了误差不超过 $\vare V$ 的点。
+>
+> 当 $\vare>(1-1/e)^{t/n}$ 时，有 $\t{vol}(\c X_\vare)>\t{vol}(\c X_t)$，于是可以找到 $\b x_\vare\in\c X_\vare\setminus\c X_t$。
+>
+> 最后一步就是找到这个 $\b x_\vare$ 到底是在哪一步被探出。$\b x_\vare\in\c X_0\downarrow\c X_t\not\ni\b x_\vare$，必然存在 $s<t$ 使得 $\b x_\vare\in\c X_s,\b x_\vare\notin\c X_{s+1}$。此时即有
+> $$
+> f(\b o_s)\leq f(\b x_\vare)\leq f(\b x^*)+\vare V
+> $$
+
+重心法的缺点在于需要显式计算重心，这并不容易。替代方法是 **椭球法**，把待探测区域用椭球包裹，切分也放到椭球中心进行。
+
+定义：**椭球体** 通过中心 $\b c$ 和对称正定的形状 $\b H$ 定义
+$$
+\c E=\cur{\b x:(\b x-\b c)^\top\b H^{-1}(\b x-\b c)\leq1}
+$$
+换言之是 $\b H$ 引导的拓扑意义下的单位球。其体积是 $n$ 维单位球的 $\sqrt{\det\b H}$ 倍。
+
+引理：椭球体从中心任切一刀，两侧都可以用一个体积占比至多 $1/e^{1/2n}$ 的椭球体完美包含，而且该包裹椭球体的中心与形状都可以通过原始椭球体以及切割方向，显式写出公式。
+
+于是有 **椭球法**：
+
+- 初始选择一个大椭球 $\c E_0(\b c_0,\b H_0)\supe\c X$。一般可以选择一个充分大的球，也即 $\b H_0=R^2\b I$。
+- 在 $\b c_t$ 处求次梯度。如果次梯度只在 $\c X$ 上良定义或函数只在 $\c X$ 内有凸性且 $\b c_t\notin\c X$，则转而求一个分割超平面。
+- 分割 $\c E_t$ 并得到 $\c E_{t+1}$ 包裹其中可能存在更优值的一侧。
+- 最终输出 $\min\cur{f(\b c_t)\mid\b c_t\in\c X}$。
+
+当 $t\geq2n^2\log(R/r)$ 时，它的收敛率是
+$$
+f(\b x_t)-\min_{\b x\in\c X}f(\b x)\leq\dfrac{VR}r\exp(-t/2n^2)
+$$
+其中 $R$ 是初始化的 $\c E_0$ 半径，$r$ 是 $\c X$ 内接球的半径。
+
+> 特别地，注意到这个结果很像集中不等式。事实上有一种基于 Bayesian Regression 的解释，椭球对应着一个 Gaussian Belief，其体积就是 Gaussian 的熵。
+
+### XI. Descents
+
+下降法的通用框架：
+
+- 当前处于 $\b x_t$。
+- 按照某种策略拍脑袋得到一个 $\Delta\b x_t$。
+- 按照某种策略拍脑袋得到一个 $\eta_t$。
+- $\b x_{t+1}=\b x_t+\eta_t\Delta\b x_t$。
+
+能被称作「下降」，则希望有 $\ip{\nabla f(\b x_t),\Delta\b x_t}<0$。
+
+$\eta_t$ 怎么选？贪心选择自然是整个 $\eta_t>0$ 线上的最优值，但这个最优值不好求。更常见的做法是 **Armijo 回溯线搜索**：
+
+- 选择阈值 $\alpha\in(0,1)$ 和步长 $\beta\in(0,1)$。
+
+- 初始 $\eta=1$。
+
+- 只要与一阶近似的差距超过阈值，也即满足
+    $$
+    f(\b x+\eta\Delta\b x)>f(\b x)+\alpha\ip{\nabla f(\b x),\eta\Delta\b x}
+    $$
+    就不断令 $\eta\gets\beta\eta$。
+
+- $\alpha$ 越小越能容忍差距，最终终止步长越大。
+
+------
+
+一阶的梯度下降就是 $\Delta\b x_t=-\nabla f(\b x_t)$ 的梯度下降。
+
+二阶条件也即取近似
+$$
+f(\b x+\b v)\approx f(\b x)+\ip{\nabla f(\b x),\b v}+\dfrac12\b v^\top\nabla^2f(\b x)\b v
+$$
+则最优方向为
+$$
+\Delta\b x=-\nabla^2 f(\b x)^{-1}\nabla f(\b x)
+$$
+也即 Newton 法。其停止条件是下降幅度足够小，也即
+$$
+\ip{\nabla f(\b x),\Delta\b x}=-\nabla f(\b x)^\top\nabla^2 f(\b x)^{-1}\nabla f(\b x)=:-\lambda^2
+$$
+不足某阈值，例如 $\lambda^2/2\leq\vare$。
+
+> 此处的 $\lambda(\b x)$ 称作 **Newton Decrement**。
+>
+> 另一种刻画是：对于一切向量 $\b g$ 和正定矩阵 $\b H$，均有
+> $$
+> -\ip{\b v,\b g}\leq\|\b H^{-1/2}\b g\|\|\b H^{1/2}\b v\|
+> \\-\dfrac{\ip{\b v,\b g}}{\sqrt{\b v^\top\b H\b v}}\leq\|\b H^{-1/2}\b g\|=\sqrt{\b g^\top\b H^{-1}\b g}
+> $$
+> 而且由 Cauchy 不等式，其在 $\b v,\b g$ 共线时取等。于是有
+> $$
+> \lambda(\b x)=\sup_{\b v\neq\b0}-\dfrac{\ip{\nabla f(\b x),\b v}}{\sqrt{\b v^\top\nabla^2f(\b x)\b v}}
+> $$
+
+------
+
+Newton 法的收敛性分析依赖强凸性和 Lipschitz 连续性，而这两个东西都与坐标系选取相关。但是，Newton 迭代路径是有 **仿射不变性** 的，因此有必要使用一些仿射不变的分析方法。
+
+定义：**自和谐** (self-concordant) 函数是满足以下条件的函数：
+$$
+|f'''(x)|\leq2f''(x)^{3/2}
+$$
+而高维的场合就是所有的 1D 投影都是 self-concordant 的。容易发现这个定义确实是仿射不变的。
+
+这是一个三阶条件。它的若干等价刻画：
+
+- 三阶条件：$|\nabla^3 f(\b x)[\b h,\b h,\b h]|\leq2|\nabla^2f(\b x)[\b h,\b h]|^{3/2}$，其中：
+
+    - 左右两侧都是协变张量（高阶导数）与对应的逆变张量（方向向量）的收缩，最终得到坐标不变的标量。
+
+- 二阶条件：对于一切 $\b x,\b h$，都有 $r=\sqrt{\b h^\top\nabla^2f(\b x)\b h}$ 使得
+    $$
+    (1-r)^2\nabla^2f(\b x)\preceq\nabla^2 f(\b x+\b h)\preceq\dfrac1{(1-r)^2}\nabla^2 f(\b x)
+    $$
+
+    - 三阶到二阶：
+        $$
+        \b x_t:=\b x+t\b h
+        \\\b H_t:=\nabla^2f(\b x_t)
+        \\q(t):=\sqrt{\b h^\top\b H_t\b h}
+        \\q(0)=:r
+        \\|\dot q(t)|=\dfrac{|\nabla^3 f(\b x_t)[\b h,\b h,\b h]|}{2q(t)}\leq\dfrac{2q(t)^3}{2q(t)}=q(t)^2
+        \\\left|\dfrac{\d}{\d t}\dfrac1{q(t)}\right|\leq1
+        \\\dfrac1{q(t)}\geq\dfrac1{q(0)}-t=\dfrac1r-t\implies q(t)\leq\dfrac r{1-tr}
+        \\\dfrac1{q(t)}\leq\dfrac1{q(0)}+t=\dfrac1r+t\implies q(t)\geq\dfrac r{1+tr}
+        $$
+        于是 1D 的场合，就有
+        $$
+        \dfrac{r^2}{(1+tr)^2}\leq q(t)^2\leq\dfrac{r^2}{(1-tr)^2}
+        \\\dfrac{f''(0)}{(1+t\sqrt{f''(0)})^2}\leq f''(t)\leq\dfrac{f''(0)}{(1-t\sqrt{f''(0)})^2}
+        $$
+        然而，高维的场合，上述分析只在沿 $\b h$ 方向上成立；要处理任意方向 $\b v$，需要用一些不等式放缩，最终得到的二阶条件的下界是更松的前述形式。
+
+    - 二阶到三阶：求微分即可。
+
+- 一阶条件：记 $\omega(r)=r-\log(1+r)$，$\omega_*(r)=-r-\log(1-r)$，则有
+    $$
+    \omega(r)\leq f(\b x+\b h)-f(\b x)-\ip{\nabla f(\b x),\b h}\leq\omega_*(r)
+    $$
+
+    - 这里的 $r$ 同二阶条件。
+    - 注意，一阶推导只需方向曲率即可，所以下界才是 $r-\log(1+r)$ 而不是 $r-\log(1-r)$。
+
+最常见也是应用最广的自和谐函数类是 **log-barrier functions**，也即
+$$
+\Phi(\b x)=-\sum\ln(-f_i(\b x))
+$$
+它有如下性质：
+
+- feasible set 满足全体 $f_i(\b x)<0$。
+- 从内部逼近任何边界时，均趋于 $+\infty$。
+- 是对 indicator function 的光滑逼近。
+
+不同约束会导出不同 log-barrier function 类：
+
+- $\b x\geq\b0\implies\Phi(\b x)=-\sum\ln(x_i)$。
+- $\b A\b x\leq\b b\implies\Phi(\b x)=-\sum\ln(b_i-\ip{\b a_i,\b x})$。
+- $\b X\succeq\b0\implies\Phi(\b x)=-\ln\det(\b X)$。
+
+以上这几种特定的约束导出的 log-barrier function 都是 self-concordant 的。但对于一般的约束，log-barrier 不一定是 self-concordant 的。
+
+定理：当 $\alpha\in(0,1/2)$ 时，self-concordant 函数上的 Newton 迭代可以设置阈值 $\lambda_0=\min(1/4,\dfrac{1-2\alpha}2)$，它划分了整个迭代过程：
+
+- 当 $\lambda(\b x)>\lambda_0$ 时，它处于 **Damped Phase**。此时：
+    - 线搜索可能产出 $\eta<1$。
+    - 就算 $\eta<1$，仍然可以保证每步函数值至少下降 $\gamma:=\alpha\beta\dfrac{\lambda_0^2}{1+\lambda_0}$。
+    - 故此阶段至多迭代 $[f(\b x_0)-f(\b x^*)]/\gamma$ 步。
+- 当 $\lambda(\b x)\leq\lambda_0$ 时，它处于 **Quadratic Convergent Phase**。此时：
+    - 线搜索总是选择 $\eta=1$。
+    - 可以证明二次收敛：$2\lambda(\b x_{k+1})\leq(2\lambda(\b x_k))^2$。
+    - 故此阶段达到目标精度 $\vare$ 的步数是 $O(\log\log\vare^{-1})$。
+
+> 从一阶形式出发：
+> $$
+> \omega(r)\leq f(\b x+\b h)-f(\b x)-\ip{\nabla f(\b x),\b h}\leq\omega_*(r)
+> $$
+> 其中 $r=\sqrt{\b h^\top\nabla^2f(\b x)\b h}$。
+>
+> 线搜索只关注 1D 值，于是令 $g(t)=f(\b x+t\b h)$，则下界侧给出
+> $$
+> t\ddot g(0)^{1/2}-\log(1+t\ddot g(0)^{1/2})\leq g(t)-g(0)-t\dot g(0)
+> \\g(t)\geq g(0)+t\dot g(0)+t\ddot g(0)^{1/2}-\log(1+t\ddot g(0)^{1/2})
+> $$
+> 而上界侧给出
+> $$
+> g(t)\leq g(0)+t\dot g(0)-t\ddot g(0)^{1/2}-\log(1-t\ddot g(0)^{1/2})
+> $$
+>
+> ------
+>
+> 当 $\b h=-\nabla^2f(\b x)^{-1}\nabla f(\b x)$ 时，此时可以代入 $\dot g(0)=-\lambda(\b x)^2,\ddot g(0)=\lambda(\b x)^2$，得到
+> $$
+> g(t)\leq g(0)-t\lambda(\b x)^2-t\lambda(\b x)-\log(1-t\lambda(\b x))
+> $$
+> 此时选取 $t^*=1/(1+\lambda(\b x))$ 可知
+> $$
+> g(t^*)\leq g(0)-\lambda(\b x)+\log(1+\lambda(\b x))
+> $$
+> Taylor 展开可知 $-x+\log(1+x)\leq-\dfrac{x^2}{2(1+x)}$，于是当 $\alpha\leq1/2$ 时，有
+> $$
+> g(t^*)\leq f(\b x)-\alpha\dfrac{\lambda(\b x)^2}{1+\lambda(\b x)}=f(\b x)-\alpha\lambda(\b x)^2t^*
+> $$
+> 这直接保证了 $t^*$ 会被线搜索接受。因为线搜索的步长为 $\beta$，所以其最终给出的 $\eta\geq\beta t^*$，于是一个界是
+> $$
+> f(\b x_{k+1})-f(\b x_k)\leq-\alpha\beta\dfrac{\lambda(\b x)^2}{1+\lambda(\b x)}
+> $$
+>
+> ------
+>
+> 另一方面，再回到
+> $$
+> g(t)\leq g(0)-t\lambda(\b x)^2-t\lambda(\b x)-\log(1-t\lambda(\b x))
+> $$
+> 代入 $t=1$，有
+> $$
+> g(1)\leq g(0)-\lambda(\b x)^2-\lambda(\b x)-\log(1-\lambda(\b x))
+> $$
+> 由 Taylor 展开，对于 $0\leq x\leq 0.81$，有 $-x-\log(1-x)\leq\dfrac12x^2+x^3$，因此
+> $$
+> g(1)\leq g(0)-\dfrac12\lambda(\b x)^2+\lambda(\b x)^3
+> $$
+> 只要 $\lambda(\b x)\leq(1-2\alpha)/2$，就有
+> $$
+> g(1)\leq g(0)-\alpha\lambda(\b x)^2
+> $$
+> 于是此时给出 $\eta=1$。此时有 $\b x_{k+1}=\b x_k-\nabla^2f(\b x)^{-1}\nabla f(\b x)$。
+>
+> 由 self-concordance 的二阶性质，有
+> $$
+> (1-r)^2\nabla^2f(\b x)\preceq\nabla^2 f(\b x+\b h)\preceq\dfrac1{(1-r)^2}\nabla^2 f(\b x)
+> $$
+> 其中 $r=\sqrt{\b h^\top\nabla^2f(\b x)\b h}$。代入 $\b h=-\nabla^2f(\b x)^{-1}\nabla f(\b x)$，可知 $r=\lambda(\b x)$。
+>
+> 不妨认为通过仿射变换让 $\nabla^2f(\b x)=\b I$，此时即有
+> $$
+> \lambda(\b x+\b h)\leq\dfrac{\|\nabla f(\b x+\b h)\|}{1-\lambda(\b x)}
+> $$
+> 通过对中间进行一些积分操作，可以得到
+> $$
+> \lambda(\b x+\b h)\leq\dfrac{\lambda(\b x)^2}{(1-\lambda(\b x))^2}
+> $$
+> 于是当 $\lambda(\b x_k)\leq1/4$ 时，此时会有 $2\lambda(\b x_{k+1})\leq(2\lambda(\b x_k))^2$。
+>
+> ------
+>
+> 综上：
+>
+> - 对于 $\alpha\leq1/2$，一个界是
+>     $$
+>     f(\b x_{k+1})-f(\b x_k)\leq-\alpha\beta\dfrac{\lambda(\b x)^2}{1+\lambda(\b x)}
+>     $$
+>
+> - 对于 $\lambda(\b x)\leq\min(1/4,(1-2\alpha)/2)$，另一个界是
+>     $$
+>     2\lambda(\b x_{k+1})\leq(2\lambda(\b x_k))^2
+>     $$
+>
+> 于是可以选取阈值 $\lambda_0$。当 $\lambda(\b x)>\lambda_0$ 时，每一步的下降至少为 $\alpha\beta\dfrac{\lambda_0^2}{1+\lambda_0}$，也即线性收敛；当 $\lambda(\b x)\leq\lambda_0$ 时，是二次收敛。
+>
+> ------
+>
+> 最后一个问题：初始差值 $f(\b x_0)-f(\b x^*)$ 是否有界？取 $\b h=\b x^*-\b x$ 并考虑线搜索 $g(t)=f(\b x+t\b h)$，二阶形式：
+> $$
+> g(t)\geq g(0)-\dot g(0)\ddot g(0)^{-1/2}+\log(1+\dot g(0)\ddot g(0)^{-1/2})
+> $$
+> $\lambda(\b x)$ 的等价形式：
+> $$
+> \lambda(\b x)=\sup_{\b v\neq\b0}-\dfrac{\ip{\nabla f(\b x),\b v}}{\sqrt{\b v^\top\nabla^2f(\b x)\b v}}
+> $$
+> 于是沿 $\b h$ 方向有 $\lambda(\b x)\geq-\dot g(0)\ddot g(0)^{-1/2}$，故
+> $$
+> g(t)\geq g(0)+\lambda(\b x)+\log(1-\lambda(\b x))
+> $$
+> 代入 $g(1)=f(\b x^*)$，于是
+> $$
+> f(\b x)-f(\b x^*)\leq-\lambda(\b x)-\log(1-\lambda(\b x))
+> $$
+> 由 Taylor 展开，右式在 $\lambda\leq0.68$ 时，被 $\lambda^2$ 所 bound。于是可知：当 $\lambda\leq0.68$ 时，对于 self-concordant 的 $f$，有
+> $$
+> f(\b x)-f(\b x^*)\leq\lambda(\b x)^2
+> $$
+
+------
+
+self-concordant 的定义是 $|\nabla^3 f(\b x)[\b h,\b h,\b h]|\leq2|\nabla^2f(\b x)[\b h,\b h]|^{3/2}$。如果把这个 $2$ 换成别的系数呢？例如若定义 $g(\b x)=f(\b x)/k^2$，则这个 $2$ 会变成 $2k$，此时即为 $2k$-self-concordant。
+
+> Newton 迭代关于定义域的仿射变换不变，但是此处是值域上的变换。
+
+$2k$-self-concordant 可以通过乘以 $k^2$ 划归到标准 self-concordant，而且容易发现这个缩放不改变 Newton 方向。于是 Newton 法到达二次收敛域的迭代次数是 $O(k^2\Delta)$ 的，其中 $\Delta$ 是初始 gap $f(\b x_0)-f(\b x^*)$。
+
+------
+
+以上讨论无约束 Newton 法。带上约束怎么办？
+
+等式约束 $\b A\b x=\b b$：
+
+可以直接换元，切换为无约束优化问题——但换元需要求 $\ker\b A$ 的基，有时比较困难。
+
+也可以稍微修改一下 Newton 迭代的过程。形式化地，只要初始点 $\b x_0$ 可行，那么每一步的 $\Delta\b x$ 满足 $\b A\Delta\b x=\b0$ 即可。考虑到 Newton 迭代是用二阶近似推出的，因此受限问题可以写作
+$$
+\min_\b hf(\b x)+\ip{\nabla f(\b x),\b h}+\dfrac12\b h^\top\nabla^2f(\b x)\b h
+\\\st\b A\b h=\b0
+$$
+Lagrange 函数是
+$$
+f(\b x)+\ip{\nabla f(\b x),\b h}+\dfrac12\b h^\top\nabla^2f(\b x)\b h+\b w^\top\b A\b h
+$$
+KKT 条件给出
+$$
+\nabla f(\b x)+\nabla^2f(\b x)\b h+\b A^\top\b w=\b0
+\\\b A\b h=\b0
+$$
+写成矩阵就是
+$$
+\bmat{\nabla^2f(\b x)&\b A^\top\\\b A&\b0}\bmat{\b h\\\b w}=\bmat{-\nabla f(\b x)\\\b0}
+$$
+于是解这个方程解出 $\b h$ 即可。
+
+它也可以看做是局部 Hessian 定义的度量下，Newton 更新到可行域里的最优投影。
+
+------
+
+不等式约束 $f_i(\b x)\leq0$：
+
+可以用 indicator function 写成
+$$
+\min_\b xf_0(\b x)+\sum I_-(f_i(\b x))
+$$
+然后用 log-barrier function 松弛为
+$$
+\arg\min_\b xf_0(\b x)+\sum-\dfrac1t\log(-f_i(\b x))
+\\=\arg\min_\b x tf_0(\b x)-\sum\log(-f_i(\b x))
+$$
+显然 $t$ 越大，松弛影响越小，松弛后问题的最优解越接近真实最优解。
+
+> 由前文，此处的不等式约束应该是 LP 或 SDP 等，这样 log-barrier 才能保证是 self-concordant 的；一般的约束不能纳入这一框架。
+
+搭配上等式约束 $\b A\b x=\b b$，考虑 Lagrange 乘子法，则松弛问题的最优解存在相应的乘子 $\b\mu$ 满足 KKT 条件
+$$
+t\nabla f_0(\b x^{(t)})-\sum\dfrac1{f_i(\b x^{(t)})}\nabla f_i(\b x^{(t)})+\b A^\top\b\mu=\b0
+$$
+定义
+$$
+\lambda^{(t)}_i=-\dfrac1{tf_i(\b x^{(t)})},\b\mu^{(t)}=\b\mu/t
+$$
+则有
+$$
+\nabla f_0(\b x^{(t)})+\sum\lambda_i^{(t)}\nabla f_i(\b x^{(t)})+\b A^\top\b\mu^{(t)}=\b0
+$$
+而这恰好是原问题在同时引入不等式和等式约束后的 Lagrange 驻点——但不满足完整的 KKT 条件，因为 KKT 要求互补松弛 $\lambda_i^{(t)}f_i(\b x^{(t)})=0$，但我们的构造中其为 $-1/t$。
+
+虽然 $(\b x^{(t)},\b\lambda^{(t)},\b\mu^{(t)})$ 并非原问题的 KKT 最优解，但在固定乘子为 $\b\lambda^{(t)}$ 和 $\b\mu^{(t)}$ 时，$\b x^{(t)}$ 确实是这个切片问题的最优解。于是有：
+$$
+f_0(\b x^{(t)})+\sum\lambda_i^{(t)}f_i(\b x^{(t)})
+\\=f_0(\b x^{(t)})-\sum\dfrac1{tf_i(\b x^{(t)})}f_i(\b x^{(t)})
+\\=f_0(\b x^{(t)})-n/t
+\\=L(\b x^{(t)},\b\lambda^{(t)},\b\mu^{(t)})\leq L(\b z,\b\lambda^{(t)},\b\mu^{(t)})&(\b z\t{ is feasible})
+\\=f_0(\b z)+\sum\lambda^{(t)}_if_i(\b z)
+\\\leq f_0(\b z)&(f_i(\b z)\leq0,\lambda_i^{(t)}>0)
+$$
+因此 $L(\b x^{(t)},\b\lambda^{(t)},\b\mu^{(t)})$ 虽然达不到原问题最优解，但距离最优解的差距不超过 $n/t$；故如果要一个精度为 $\vare$ 的解，需要取 $t=O(\vare^{-1})$，并对
+$$
+tf_0(\b x)-\sum\log(-f_i(\b x))
+$$
+求 Newton Descent。初始 gap 扩大了 $t$ 倍，但是 self-concordance 的参数受限于 log-barrier 项是不变的，因此需要的迭代次数同样扩大 $t$ 倍。
+
+------
+
+因此有 **barrier method**：
+
+- 选取一个 log-barrier 参数序列 $t_0,t_1,\dots$，例如等比数列。
+- 下一轮的初值选取上一轮的终值（**warm start**）。
+
+可以证明这个比单独一轮的 cold start 要更快，前提是仔细设置等比数列的公比。

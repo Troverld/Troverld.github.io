@@ -1,0 +1,15 @@
+{{- $labels := dict "note" "Note" "tip" "Tip" "important" "Important" "warning" "Warning" "caution" "Caution" -}}
+{{- $label := index $labels .AlertType -}}
+{{- if and (eq .Type "alert") $label (not .AlertSign) (not .AlertTitle) -}}
+<aside class="markdown-alert markdown-alert-{{ .AlertType }}" aria-label="{{ $label }}">
+  <p class="markdown-alert-title">{{ $label }}</p>
+  {{ .Text }}
+</aside>
+{{- else -}}
+<blockquote>
+  {{- /* Hugo also recognizes non-GitHub designators and custom titles.
+       Keep those visible as ordinary quote content rather than dropping them. */ -}}
+  {{ if eq .Type "alert" }}<p>[!{{ strings.ToUpper .AlertType }}]{{ .AlertSign }}{{ with .AlertTitle }} {{ . }}{{ end }}</p>{{ end }}
+  {{ .Text }}
+</blockquote>
+{{- end -}}

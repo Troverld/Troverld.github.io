@@ -1,0 +1,706 @@
+$$
+\newcommand{\eps}{\epsilon}
+\newcommand{\cur}[1]{\left\{#1\right\}}
+\newcommand{\b}{\boldsymbol}
+\newcommand{\c}{\mathcal}
+\newcommand{\t}{\text}
+\newcommand{\E}{\mathop{\mathbb E}\limits}
+\newcommand{\d}{\mathrm d}
+$$
+
+### O. 引言
+
+Gaussian 有以下好处：
+
+- 是 CLT 的自然结果。(Tensor Program)
+- 符合最大熵原理：是给定均值方差后最大化熵的分布，用它做先验是最安全且保守的。(Gaussian Learning)
+- 数学上优雅且计算方便：Gaussian 的和还是 Gaussian，求导友好。($\ell_2$ loss)
+
+但是 Gaussian 有其最大的缺点：不符合真实社会分布。
+
+- Gaussian 衰减太快了。(t-SNE)
+- 真实的数据往往是服从幂律的长尾分布。
+    - 财富是幂律的，你和 Musk 的财富均值没有意义。
+    - 词频是幂律的，罕见词仍有 non-negligible 的频率。(Zipf's Law)
+    - 金融是幂律的。
+- 幂律导致 **异常值** (outlier) 是常见的。对于 AI 来说，忽略异常值可以保证训练能正常进行；但对于实际应用来说，这是不可容忍的偏差。需要设计能容忍幂律级别误差的 robust 模型。
+- 幂律分布的模型的二阶矩（方差）时常是发散的，有时均值也是发散的。这导致很多在 Gaussian 中赖以为生的统计技术难以应用。
+- 如果有了幂律分布作为先验，上述最大熵原理即不再有效，因为它是无任何先验时的最优先验。
+
+本文将系统性梳理如今的 AI 领域中，有哪些习以为常的技巧其实隐含着 Gaussian 作为先验，而我们可以其作出何种修改。
+
+### I. 不同先验对应的函数
+
+#### I. 回归问题
+
+首先考虑回归问题。在这种场合，幂律分布表现为 **极端异常值** 的频率不可忽略。
+
+有很多 loss 的设计都来源于 **Maximum Likelihood Estimation**。它认为模型的输出 $\hat y$ 意味着真实值 $y$ 的分布是 $y+\eps$，其中 $\eps$ 是某种噪声，每次测量均独立。则训练的目标就是寻找 $\theta$ 使得其给出的预测 $\cur{\hat y_i}$ 最大化后验概率密度 $p(\cur{y_i}\mid\cur{\hat y_i})$。
+
+如果假设噪声是 Gaussian 的，即 $p(\eps)\propto\exp(-\eps^2/2\sigma^2)$，则取 NLL 并由实验独立性可知
+$$
+-\log p(\cur{y_i}\mid\cur{\hat y_i})=-\sum\log p(y_i\mid\hat y_i)
+\\\propto\sum(y_i-\hat y_i)^2
+$$
+于是得到 MSE ($\ell_2$ loss)。
+
+而如果假设噪声是 Laplacian 的，即 $p(\eps)\propto\exp(-|\eps|/b)$，则同样的分析可以得到 MAE ($\ell_1$ loss)。由此我们看到，除了有助于构造稀疏解（压缩感知）以外，使用 $\ell_1$ loss 一定程度上对异常值更适应。
+
+> [!TIP]
+>
+> MLE 的分析必须针对多个测量对 $(\hat y_i,y_i)$ 才有意义，因为对单个 loss 进行任何单调变换都不改变最大值位置，那么你无法解释为什么不对 $(y-\hat y)^2$ 开个根得到 MAE。只有考虑带求和符号的 loss，才会发现开根后得到的 $\sqrt{\sum(y_i-\hat y_i)^2}$（RMSE）和 MAE 是不同的。
+
+但无论是 Gaussian 还是 Laplacian，它们都属于 thin-tailed 分布的范畴，密度函数指数衰减。最常用的 heavy-tailed 分布是 **Cauchy 分布**
+$$
+p(\eps)=\dfrac1{\pi\gamma(1+(\eps/\gamma)^2)}
+$$
+其中 $\gamma$ 是衡量 scale 的超参数。对其取 NLL 就得到了对应的 **Cauchy Loss**
+$$
+\c L(y,\hat y)=\log\left(1+((\hat y-y)/\gamma)^2\right)
+$$
+当 $\eps\to\infty$ 时其梯度 $\to0$，相当于无视了极度异常点。
+
+而 Cauchy 分布属于更广泛的 **Student's t 分布** 类别，其与自由度 $\nu$ 相关，PDF 是
+$$
+p(\eps)=\dfrac{\Gamma((\nu+1)/2)}{\gamma\sqrt{\nu\pi}\Gamma(\nu/2)}(1+\eps^2/\gamma^2\nu)^{-(\nu+1)/2}
+$$
+可以发现 Cauchy 分布就是 $\nu=1$ 时的场合。用它作先验得到的 loss 就是 **Student's t-loss**
+$$
+\c L(y,\hat y)=\dfrac{\nu+1}2\log(1+\eps^2/\gamma^2\nu)
+$$
+虽然这里的 $\gamma$ 和 $\nu$ 看着地位没啥区别，但是 $\nu$ 决定了外层的系数的 scale；当 $\nu\to\infty$ 时，因为 $\log(1+x)\approx x$ 所以它会退化为 $\ell_2$ loss。如果让 $\nu$ 成为可学习的参数，则模型可以自行寻找 Cauchy 和 Gaussian 之间的平均点。
+
+更一般的方法是 **Barron Loss**：
+$$
+\c L(\eps,\alpha,c)=\dfrac{|\alpha-2|}\alpha\left(\left(\dfrac{(\eps/c)^2}{|\alpha-2|}+1\right)^{\alpha/2}-1\right)
+$$
+这坨玩意通过调整 $\alpha$ 能自动逼近很多稀奇古怪的 loss，总体是 $\alpha$ 越大越薄尾，越小越重尾；让模型自己学 $\alpha$ 能解决很多问题。
+
+除了基于数学，还有很多基于工程学的方法。
+
+- **truncated $\ell_1$/$\ell_2$ loss**：对应的 loss 与 $\tau$ 取 min。这相当于让严重异常的幂律噪声的梯度为 $0$。
+- **Huber loss**：对于超参阈值 $\delta$，当 $\eps<\delta$ 时使用 $\ell_2$ 保证平滑（$\ell_1$ loss 的梯度在原点附近跳跃，不够光滑），$\eps\geq\delta$ 时使用 $\ell_1$ 限制梯度（相当于强行把梯度 clip 到常数）。也被称作 **smooth $\ell_1$ loss**。
+- **Gradient Harmonized Mechanism**：适用于梯度模长有界的 loss（比如说 Huber loss）。把模长分段，统计当前 batch 中每一段的梯度数量，然后将梯度除以当前梯度模长的频率。这是因为离群值在训练后期仍然具有较高的梯度，因此大梯度处有一坨高密度段，加以遏制。（缺点是 batch size 小时不一定好，但是可以通过对历史梯度密度跑 EMA 解决）
+
+#### II. 分类问题
+
+而在分类的场合，幂律表现为 **低频类别** 的数目不可忽略。
+
+仍然考虑 MLE 框架。二分类的场合，模型输出 $p\in[0,1]$ 意味着其认为真实的 $y\sim\t{Bernoulli}(p)$，最大化 $p(\cur{y_i}\mid\cur{p_i})$ 则有
+$$
+\c L(\cur{y_i},\cur{p_i})=-\log p(\cur{y_i}\mid\cur{p_i})
+\\=-\sum\Big(y_i\log p_i+(1-y_i)\log(1-p_i)\Big)
+$$
+于是得到 BCE。
+
+扩展到一般的场合，模型输出归一化概率向量 $\b p$ 意味着 $y\sim\t{Categorical}(\b p)$，于是令 $\b y$ 是对应的 one-hot 向量则有
+$$
+\c L(\cur{\b y_i},\cur{\b p_i})=-\sum\b y_i\cdot\log\b p_i
+\\=-\sum\log\b p_i^{(y_i)}
+$$
+于是得到 CE。
+
+> [!TIP]
+>
+> CE 常常和 KL 联系在一起，但是一般对这个的讨论在生成式模型更常见，讨论 $\b p$ 与 one-hot 的 $\b y$ 间的 KL 散度无甚意义。
+
+可以发现，BCE 和 CE 都没有作出 Gaussian 的假设；但是它假设所有 $(\b y_i,\b p_i)$ 的贡献彼此相同，就会导致罕见样本被海量常见样本淹没。
+
+为了平衡这一点，解决方案是 **Focal Loss**。罕见样本不是关键，关键是难学的样本，所以额外对其加以强调，就得到了
+$$
+\c L(\cur{\b y_i,\b p_i})=-\sum\b y_i\cdot\b\alpha_i\odot(\b1-\b p_i)^\gamma\odot\log\b p_i
+$$
+其中：
+
+- $(\b1-\b p_i)^\gamma$ 对简单样本（$p$ 离 $1$ 较近的项）予以打压，增大 **困难样本** 的梯度。
+- $\b\alpha_i$ 是类别权重平衡因子，增大 **罕见样本** 的梯度。
+- $\gamma$ 和 $\b\alpha_i$ 一般需要联合调整。
+
+> [!TIP]
+>
+> AdaBoost 中也涉及到类似的给不同的 classifier 加权重的环节，但二者略有不同，一般 Focal Loss 调 $\b\alpha$ 不会使用复杂的自适应机制，简单跑个 EMA 得了。
+
+传统的 $\b\alpha$ 被设为 $1/\b n$，其中 $\b n^{(i)}$ 是第 $i$ 类的频率。**Class-Balanced Loss** 认为同一类的样本之间并不独立，第 $n$ 个样本的效力是第 $1$ 个样本的 $\beta^{n-1}$，等比数列求和后得到有效样本数是 $(1-\beta^n)/(1-\beta)$，而权重取倒数即得 $\b\alpha=(1-\beta)/(1-\beta^\b n)$。
+
+而 **Label-Distribution-Aware Margin Loss** 则试图为罕见类创造更大的 logit margin。具体地，令 $\Delta^{(i)}=C/[n^{(i)}]^{1/4}$，则这个 margin 对罕见类更大。令 $\b z$ 为 logit 也即 $\b p=\t{softmax}(\b z)$ ，则训练时使用 $\b p'=\t{softmax}(\b z-\b\Delta\odot\b y)$，人工给 GT 类上难度。
+
+除此之外，回归问题中提到的 GHM 也是一种手段：它不仅能遏制离群值，还能强化罕见类（常常表现为中等模长的低密度分布）。
+
+> [!IMPORTANT]
+>
+> 在回归的场合，我们的核心目标是 **不希望异常值扰动训练**，而异常值是任何时刻都会出现的，所以直接全程用同一个 loss 即可。
+>
+> 然而在分类的场合，核心目标是 **希望对低频类别也有好效果**，但前提是 **保持高频类别的高成功率**，因此 $\b\alpha$ 的调整不能一上来就搞，需要类似退火，在后期再启用。这种技巧被称作 **Deferred Re-weighting** (DRW)。
+
+#### III. KDE
+
+**KDE** 是一种由采样点 $\cur{\b x_i}$ 估测真实 PDF $p$ 的方法。令 $K$ 是归一化 stationary kernel，则有
+$$
+p(\b x)=\dfrac1{nh^d}\sum K((\b x-\b x_i)/h)
+$$
+其中 $h$ 是带宽，控制平滑程度。
+
+按照上述结论，应当根据数据的先验分布选取合适的 kernel。但是，KDE 有一个核心结论：kernel 的选取对 **MISE** 的影响较小，而带宽 $h$ 的选取起决定性作用。其中，MISE 的全称是 **Mean Integrated Squared Error**，定义如下
+$$
+\t{MISE}(h)=\E_{\cur{\b x_i}\sim p}\int(\hat p_{h,\cur{\b x_i}}(\b x)-p(\b x))^2\d\b x
+$$
+其中 $p$ 是真实分布而 $\hat p_{h,\cur{\b x_i}}$ 是采样点为 $\cur{\b x_i}$、带宽为 $h$ 时的 KDE。
+
+> 在条件足够好时，由 Fubini 可以把期望移入积分。然后概率论中有 **Bias-Variance 分解**：
+> $$
+> \E[(X-c)^2]=[\underbrace{\E[X]-c}_{\t{Bias}(X)}]^2+\underbrace{\E[(X-\E X)^2]}_{\t{Variance}(X)}
+> $$
+> 所以有
+> $$
+> \t{MISE}(h)=\int\E_{\cur{\b x_i}\sim p}(\hat p_{h,\cur{\b x_i}}(\b x)-p(\b x))^2\d\b x
+> \\=\int\Big(\t{Bias}(\hat p_{h,\cur{\b x_i}}(\b x))^2+\t{Var}(\hat p_{h,\cur{\b x_i}}(\b x))\Big)\d\b x
+> $$
+> 考虑 Bias。
+> $$
+> \t{Bias}(\hat p_{h,\cur{\b x_i}}(\b x))=\E_{\cur{\b x_i}\sim p}[\hat p_{h,\cur{\b x_i}}(\b x)]-p(\b x)
+> \\=\int\dfrac1{h^d}K((\b x-\b y)/h)p(\b y)\d\b y-p(\b x)
+> \\=\int K(\b u)p(\b x-h\b u)\d\b u-p(\b x)
+> $$
+> 对 $p(\b x-h\b u)$ 在 $\b x$ 处进行二阶 Taylor 展开，有
+> $$
+> p(\b x-h\b u)\approx p(\b x)-h\b u^\top\nabla p(\b x)+\dfrac{h^2}2\b u^\top\nabla^2p(\b x)\b u
+> $$
+> 选取 kernel 满足以下条件：
+>
+> - 对称：$\int\b u K(\b u)\d\b u=\b0$。
+> - 归一：$\int K(\b u)\d\b u=1$。
+> - 球对称且二阶矩有限：$\int\b u\b u^\top K(\b u)\d\b u=\mu_2(K)\b I_d$。
+>
+> 则
+> $$
+> \t{Bias}(\hat p_{h,\cur{\b x_i}}(\b x))=\int K(\b u)p(\b x-h\b u)\d\b u-p(\b x)
+> \\\approx\int K(\b u)\left[p(\b x)-h\b u^\top\nabla p(\b x)+\dfrac{h^2}2\b u^\top\nabla^2p(\b x)\b u\right]\d\b u-p(\b x)
+> \\=\dfrac12h^2\mu_2(K)\t{tr}(\nabla^2 p(\b x))
+> $$
+> 而方差项
+> $$
+> \t{Var}(\hat p_{h,\cur{\b x_i}}(\b x))=\mathop{\t{Var}}_{\cur{\b x_i}\sim p}\left(\dfrac1{nh^d}\sum K((\b x-\b x_i)/h)\right)
+> \\=\dfrac1n\mathop{\t{Var}}_{\b x_1\sim p}\left(\dfrac1{h^d}K((\b x-\b x_1)/h)\right)
+> $$
+> 首先算二阶矩。有
+> $$
+> \E_{\b x_1\sim p}\left[\left(\dfrac1{h^d}K((\b x-\b x_1)/h)\right)^2\right]
+> \\=\dfrac1{h^d}\int K(\b u)^2p(\b x-h\b u)\d\b u
+> $$
+> 令 $R(K)=\int K^2\d\b u$，一阶 Taylor 展开可知其
+> $$
+> \approx\dfrac{p(\b x)R(K)}{h^d}
+> $$
+> 同理对期望项 Taylor 展开，知 $\E_{\b x_1\sim p}\left[\dfrac1{h^d}K((\b x-\b x_1)/h)\right]\approx p(\b x)$，于是知
+> $$
+> \t{Var}(\hat p_{h,\cur{\b x_i}}(\b x))\approx\dfrac{p(\b x)R(K)}{nh^d}-\dfrac{p(\b x)^2}n
+> $$
+> 第一项是 $h\to0$ 时的主项。所有东西缝在一起，最终得到当 $h\to0$ 时，有
+> $$
+> \t{MISE}(h)\approx\dfrac14h^4\mu_2(K)^2\int\t{tr}(\nabla^2 p(\b x))^2\d\b x+\dfrac{R(K)}{nh^d}
+> $$
+> 求导并令导数为零，得到最优带宽是 $h=(dC/n)^{-1/(d+4)}$ 其中 $C$ 是常数，该带宽处的最小 MISE 为 $\Theta(n^{-4/(d+4)})$。这表明：在多维空间中，为达到同等精度，所需样本量随维数指数增长；而 $h$ 的扰动会被高维空间放大，**选取合适的 $h$ 是多维 KDE 的首要矛盾**。
+> 
+> 另一方面，考虑上式中与 kernel 相关的部分，会发现最优 $h$ 处会是
+>$$
+> C(K)=R(K)^2\mu_2(K)^d
+> $$
+> 在满足上述推导时引入的归一性、对称性以及 kernel 需要的正定性时，显式地推出最优的 kernel 是 **多维 Epanechnikov 核**
+> $$
+> K_\t{Epan}(\b u)=\begin{cases}\dfrac{d+2}{2V_d}(1-\|\b u\|^2)&(\|\b u\|\leq1)\\0&(\t{otherwise})\end{cases}
+> $$
+> 计算不同 kernel 的 $C(K)$ 之比，会发现绝大多数 kernel 的相对效率都在 90% 以上。**这说明在 KDE 中，若以 MISE 为 metric，则 kernel 的选取并不重要。**
+
+Takeaway：
+
+- Bias 项是 $h^4$ 的，Variance 项是 $1/nh^d$ 的，平衡二者的 $h=n^{-1/(d+4)}$，对应的 MISE 为 $n^{-4/(d+4)}$。
+- 高维的场合，$h$ 乱动会导致 MISE 极度升高，是关键；kernel 调整则对 MISE 影响不大，最优的是 Epanechnikov 核，但其它 kernel 并不差。
+
+但是既然本章在讨论先验，那肯定不能就此揭过。
+
+一切的问题在于 MISE 这个 metric 其实并不普适：可以发现它就是 PDF 的 $\ell_2$ distance 的期望，而回归问题中我们已经讨论过相关的问题了。如果换用 **Mean Integrated Absolute Error**（对应 $\ell_1$ loss）或者 KL 散度，能一定程度缓解问题，但前述基于 MISE 的分析就统统不成立了。
+
+现在来思考解决方案。最标准的方法是使用 **变带宽 KDE**，即在密集处使用大 $h$、稀疏处使用小 $h$。可以使用 **Abramson 规则**：
+$$
+\lambda_i=(p(x_i)/g)^{-1/2}
+\\h_i=h\lambda_i
+\\p(x)=\dfrac1n\sum\dfrac1{h_i}K((x-x_i)/h_i)
+$$
+其中 $g$ 是几何平均 $\log g=\dfrac1n\sum\log p(x_i)$，用来归一化，保证 $\lambda_i$ 的乘积为 $1$。但是这种方式是自耦合的，算 $\lambda_i$ 需要先知道 $p(x_i)$。所以需要先用一个粗糙的全局带宽估测 $\lambda_i$ 后，再用其得到最终的 $p$。
+
+> [!TIP]
+>
+> Abramson 的指数是 $-1/2$，可以由 MISE 分析得到。
+
+注意到上述描述并没有加粗，因为高维场景和 1D 时有一定区别。具体地，高维 Ambrason 公式如下
+$$
+\lambda_i=(p(\b x_i)/g)^{-1/2}
+\\\b H_i=h\lambda_i\b A
+\\p(\b x)=\dfrac1n\sum\dfrac1{\det\b H_i}K\Big(\b H_i^{-1}(\b x-\b x_i)\Big)
+$$
+- $\lambda_i$ 用以应对长尾性/稀疏性。但是，Ambrason 需要根据全局带宽的测试来确定 $\lambda_i$，这么做在低维时没啥问题，但是高维时因为分布的稀疏性所以 $\lambda_i$ 的估测会很不准，因此选择合适的测试带宽是一个问题。
+- 多维分布一般具有强烈的各向异性，相应的 kernel 也要作出适应。所以 $\b A$ 被用来刻画变量间相关性，一般用协方差矩阵的平方根。
+
+其它方法例如：
+
+- **变换 KDE**：找一个单调函数（比如 log transform）将长尾分布映射到薄尾的空间，在该空间进行估计后再通过 Jacobian 变换回去。
+- **Copula KDE**：高维场合的变换 KDE。用 1D KDE 估测边缘分布，然后用边缘分布的 CDF 把高维分布映到 $[0,1]^d$ 的超立方体，这样只需要 1D KDE 正确处理长尾，高维分析则在超立方体中进行。
+- **长尾 kernel**：和之前的方法一样，对长尾的分布就使用长尾的先验，用 Cauchy Kernel 或 Student's t-Kernel 即可。特别地，这种 kernel 的二阶矩往往发散，所以 **不适用前述 MISE 分析**。
+
+#### IV. 度量学习
+
+NCA 的核心公式是
+$$
+p_{i,j}=\dfrac{K(\b A\b x_i,\b A\b x_j)}{\sum_{k\neq i}K(\b A\b x_i,\b A\b x_k)}
+$$
+可以发现，$p_{i,j}$ 是 $\b A\b x_i$ 单点的 KDE 在所有 $\cur{\b A\b x_{\neq i}}$ 处的概率归一化的结果。其训练是最大化同类的 $p_{i,j}$ 概率和，不过与本文主旨关联不大故略去。
+
+我们真正在意的是 t-SNE。其希望把高维点集 $\cur{\b y_i}$ 降维到低维点集 $\cur{\b x_i}$。其用类似 NCA 的方法得到 $\cur{\b y_i}$ 对应的概率分布 $p$ 和 $\cur{\b x_i}$ 对应的 $q$，然后最小化 forward KL $\t{KL}(p\|q)$。
+
+然后我们发现，$p$ 天然比 $q$ 更长尾：高维中较近距离处可能容纳很多点，但是低维中近距离能容纳的点数有限。于是 $q$ 的 kernel 就必须比 $p$ 更长尾，以推开降维后的点。t-SNE 在高维中使用 Gaussian Kernel，而低维中使用 Student's t-Kernel。
+
+#### V. 总结
+
+考虑位置为 $x$ 的罕见样本：在回归中它是误差大小，在分类中它是类别频率的名次，在度量学习中是特征空间的距离。
+
+- 如果分布是 Gaussian，那么其出现频率是 $\exp(-\t{poly}(x))$ 级别的。
+    - 在回归问题中，这意味着它就算贡献 $\t{poly}(x)$ 级别的梯度也无伤大雅。
+    - 在分类问题中，这意味着我们根本不在意它没有被正确分类。
+- 但是如果分布是幂律，那么其出现频率是 $1/\t{poly}(x)$ 级别的。
+    - 在回归问题中，位置为 $x$ 的样本贡献的梯度会是 $\t{poly}(x)$ 级别，直接接入模型很可能导致训练挂掉，必须保证梯度级别小于其出现频率倒数的级别。
+    - 在分类问题中，常规的梯度是 $\Theta(1)$ 级别的，这意味着它会被高频信号直接淹没，需要额外强调其梯度。
+    - 在 KDE 中，MISE 分析会忽略它，必须使用自适应 KDE 或是跟着使用长尾 kernel。
+    - 在度量学习中，情况反过来：在高维中其出现频率是 $\t{poly}(x)$ 级别的，但是低维时轨道宽度是 $\Theta(1)$ 的，所以必须外推到 $\t{poly}(x)$ 远处的轨道才能容纳这么多邻居。
+
+本节的核心操作是因地制宜，根据数据分布的特性，后验地选取更适合的函数：
+
+- 在回归中，这样的函数应当对长尾予以遏制。
+- 在分类中，这样的函数应当对长尾予以激励。
+- 在 KDE 中，这样的函数应当对长尾合适处理。
+- 在度量中，这样的函数应当用低维时距离造成的长尾来拟合高维时维数造成的长尾。
+
+### II. 生成式模型的瓶颈理论
+
+#### I. 变分信息瓶颈
+
+众所周知，VAE 的核心是 ELBO
+$$
+\begin{align*}
+\log p(x)=\log\int q(z\mid x)\dfrac{p(x,z)}{q(z\mid x)}\d z
+\\\geq\int q(z\mid x)\log\dfrac{p(x,z)}{q(z\mid x)}\d z
+\\=\E_{z\sim q(\cdot\mid x)}\log\dfrac{p(x,z)}{q(z\mid x)}&&(\t{ELBO})
+\\=\E_{z\sim q(\cdot\mid x)}\log p(x\mid z)-\t{KL}(q(z\mid x)\|p(z))
+\end{align*}
+$$
+上述描述涉及到两个随机变量 $X,Z$，其中 $X$ 是 data，$Z$ 是 latent。
+
+- $p(x)$ 是 $X$ 的 PDF 即 data distribution，VAE 中用 $p(x)=p(z)p(x\mid z)$ 建模它。最终式子中不包含 $p(x)$，但只要在 ELBO 中优化 $p(x\mid z)$，$\log p(x)$ 就会因为 ELBO 而跟着被优化。
+- $p(x,z)$ 是 $X,Z$ 的联合 PDF。最终训练式中不包含它。
+- $p(z)$ 是 $Z$ 的 PDF，要么设为固定先验（如 Gaussian），要么加点正则化防坍塌后，额外使用新模型建模（如 VQ）。
+- $p(x\mid z)$ 是 decoder，也是 VAE 的核心优化对象。
+- $q(z\mid x)$ 是 encoder，这个可以任意选均成立，VAE 中使用模型来参数化，Diffusion 中使用固定的 Gaussian 加噪。
+
+$\beta$-VAE 给 KL 项前面加了一个 $\beta$。虽然它看起来有点 empirical，但其实存在一些深刻的理论，以下展开分析。
+
+------
+
+考虑目标变量 $Y$ 和输入变量 $X$。$Y$ 有一部分信息来自于 $X$，还有一部分是额外的随机性。**信息瓶颈** (IB) 被定义为一个表示变量 $Z$，其在最大限度压缩 $X$（删除其中与 $Y$ 无关的信息）的同时，最大限度保留预测目标 $Y$ 的能力（保留其中与 $Y$ 有关的信息）。因此，可以认为存在如下的概率图：
+$$
+Y\to X\to Z
+$$
+给定 $X$，有 $Y,Z$ 独立。而目标为：
+
+- 最小化互信息 $I(Z;X)$。
+- 最大化互信息 $I(Z;Y)$。
+
+对两个互信息分别展开推导。
+
+> [!NOTE]
+>
+> 在以下所有推导中，作出这些约定：
+>
+> - 默认 $X,Y,Z$ 服从一套联合分布 $p(x,y,z)$。
+> - 引入另一套变分分布 $q(x,y,z)$，它们对应另一套变分随机变量 $X',Y',Z'$。
+
+对 $I(Z;X)$ 推导：
+$$
+I(Z;X)=H(Z)-H(Z\mid X)
+\\=\t{CE}(p_Z\|q_Z)-\t{KL}(p_Z\|q_Z)-H(p_Z\mid p_X)
+\\=\int p(x)\int p(z\mid x)\log p(z\mid x)\d z\d x-\int p(z)\log q(z)\d z-\t{KL}(p_Z\|q_Z)
+\\=\int p(x)\int p(z\mid x)\log\dfrac{p(z\mid x)}{q(z)}-\t{KL}(p_Z\|q_Z)
+\\=\E_{x\sim p(x)}\t{KL}(p(z\mid x)\|q(z))-\t{KL}(p_Z\|q_Z)
+\\=\t{KL}(p_{Z\mid X}\|q_Z\mid p_X)-\t{KL}(p_Z\|q_Z)
+$$
+其中 $\t{KL}(p_{Z\mid X}\|q_Z\mid p_X)$ 这一坨东西是一种 **条件 KL 散度**。而把 $\t{KL}(p_Z\|q_Z)$ 丢掉就得到了 VAE 中的 KL 项。
+
+对 $I(Z;Y)$ 推导：
+$$
+I(Z;Y)=H(Y)-H(Y\mid Z)
+\\=H(p_Y)+\int p(z)\d z\int p(y\mid z)\log p(y\mid z)\d y
+\\=H(p_Y)-\int p(z)\d z\Big(\t{CE}(p(y\mid z)\|q(y\mid z))-\t{KL}(p(y\mid z)\|q(y\mid z))\Big)
+\\=H(p_Y)-\t{CE}(p_{Y\mid Z}\|q_{Y\mid Z}\mid p_Z)+\t{KL}(p_{Y\mid Z}\|q_{Y\mid Z}\mid p_Z)
+$$
+因为 $H(p_Y)$ 与 $Z$ 无关所以可以丢掉，然后放缩掉 KL 项，得到
+$$
+I(Z;Y)\mathop\geq_{+C}\int p(z)p(y\mid z)\log q(y\mid z)\d y\d z
+$$
+特别地，在 VAE 中有 $X=Y$，得到
+$$
+I(Z;X_\t{out})\mathop\geq_{+C}\E_{x\sim p(x)}\E_{z\sim p(z\mid x)}\log q(x\mid z)
+$$
+而另一侧是
+$$
+I(Z;X_\t{in})\leq\t{KL}(p_{Z\mid X}\|q_Z\mid p_X)
+$$
+这是一个联合优化问题。把它们用一个 Lagrange 乘子 $\beta$ 结合，就得到了
+$$
+\max_\theta \E_{x\sim p(x)}\E_{z\sim p(z\mid x)}\log q(x\mid z)-\E_{x\sim p(x)}\beta\t{KL}(p(z\mid x)\|q(z))
+$$
+然而与 ELBO 推出的式子对比：
+$$
+\c L_\t{ELBO}=\beta\t{KL}(q(z\mid x)\|p(z))-\E_{z\sim q(z\mid x)}\log p(x\mid z)
+$$
+可以发现，虽然二者形式相同，但本质区别很大：
+
+- IB 式推法外侧有一个期望，是宏观的结果；而 ELBO 可以得到微观结果。微观结果的意义在于可以引入 $p_\t{data}$ 的先验展开更精细的分析，而这是 IB 难以直接提供的。
+- IB 解耦了 recon 和 KL；相对的，ELBO 同时得到两者。这则是 IB 的优势：它为 **用其它正则项替换 KL** 提供了合法性依据；如果只有 ELBO，那只能说是 empirical 的修改。
+- IB 可以推广到 $X\neq Y$ 的场合，对有监督/半监督更适用。
+- IB 的核心目标是训练 encoder 来做特征提取，变分项 decoder $q(x\mid z)$ 可以任选（但越好就越贴近 ELBO）
+- ELBO 的核心目标是训练 decoder 来做图像生成，变分项 encoder $q(z\mid x)$ 可以任选（但越好就越贴近 ELBO）。
+- ELBO 和 IB 共同表明 **变分分布和原始分布的地位是对偶的**，总是可以固定一者然后把另一者看做变分分布。
+
+------
+
+通信工程中，有所谓的 **率失真理论**：
+
+- KL 项是速率 $R$，衡量了隐变量携带了多少关于输入 $x$ 的信息。
+- recon 项是失真 $D$，衡量重建数据的好坏。
+
+所有可实现的 VAE 在 $R$-$D$ 平面上有一条 pareto frontier。
+
+如果直接用固定的 Lagrange 乘子 $\beta$ 连在一起，就相当于在 $R$-$D$ 平面上画一条切线。因此，VAE 只能求出 pareto frontier **凸包** 上的点。
+
+解决方案是使用类似 coodinate descent 的方法：
+
+- 目标被建模为，固定 $D\leq\kappa$ 时能得到的最小 $R$（或相反）。
+- $\beta$ 不再被视作常数，而是一个可学习的参数：如果当前 $D\leq\kappa$ 则适当调小 $\beta$ 放松限制，否则则调大收紧限制。
+- 这样做可以学习出 pareto frontier 上的任何点，而不仅是凸包上的点。
+
+这就是 **GECO** 方法。
+
+#### II. KL 项的分析
+
+虽然 $p,q$ 的地位是对偶的，但为了遵循相关论文规范，在下文的所有分析中，我们默认：
+
+- $q(x)$ 是数据分布；$q(z\mid x)$ 是 encoder，由此得到 $q(z)=\E_{x\sim q_x}[q(z\mid x)]$ 作为 **聚合后验**。
+- $p(z)$ 是对 $z$ 的先验，$p(z\mid x)$ 是 decoder，得到 $p(x)=\E_{z\sim p_z}[p(z\mid x)]$ 作为生成分布。
+
+再列一份 ELBO：
+$$
+\log p(x)\geq\E_{z\sim q_{z\mid x}}\log p(x\mid z)-\t{KL}(q_{z\mid x}\|p_z)
+$$
+然后分析一些东西。
+
+VAE 的一个现象是 **后验坍塌** (posterior collapse)：
+
+- 如果 decoder $p(x\mid z)$ 过于强大，以至于不需要 $z$ 中的额外信息就能重建 $x$：表现为不管 $z$ 的分布如何，都有 recon 项充分小；
+- 那么 encoder 会直接学会令 $q_{z\mid x}=p_z$，这样能取巧地最小化 KL 项：表现为 encoder 丢弃了 $x$ 的信息。
+
+VAE 的另一个现象是 **先验不匹配** (prior mismatch)，表现为 $p(z)$ 与 $q(z)$ 不匹配。因为训练时的 decoder 只在聚合后验处被训练，不匹配会导致生成时使用 $p(z)$ 采样会落到未充分训练的部分导致生成质量差。
+
+先验不匹配的一种形式是 **先验空洞** (Prior Hole)，不同的 $q(z\mid x)$ 是 $p(z)$ 中的若干「孤岛」，它们之间的插值路径中有很多地方没有意义。一定程度的先验空洞有助于不同类别之间的区分，但同时也降低了模型关于插值/扰动的稳定性。
+
+现在考虑前文得出的结论：
+$$
+\E_{x\sim q_x}\t{KL}(q_{z\mid x}\|p_z)=I(Z;X)+\t{KL}(q_z\|p_z)
+$$
+则：
+
+- 后验坍塌意味着 $I(Z;X)$ 过小。
+- 先验不匹配意味着 $\t{KL}(q_z\|p_z)$ 过大。
+- 理想情形时，整体有 $q(z)$ 匹配 $p(z)$（防止先验不匹配）但是单体的 $q(z\mid x)$ 则不然（防止后验坍塌）
+
+总结：
+
+|    现象    | E[KL] |  I   |  KL  |               评论               |
+| :--------: | :---: | :--: | :--: | :------------------------------: |
+|  后验崩溃  | 极小  | 极小 | 极小 |        生成平均图像/噪声         |
+| 先验不匹配 | 较大  | 较大 | 较大 |      重构效果好，生成效果差      |
+|  离靶崩溃  | 较大  | 极小 | 较大 | 后验坍塌在先验之外，重构生成均差 |
+|  理想状况  | 适中  | 适中 | 极小 |      特征提取和生成质量均好      |
+
+对于这个问题，要辩证地看：
+
+- 如果我们的 VAE 重点是 encoder，希望获取一个好的 feature extractor，则 **后验坍塌** 是我们应当竭力避免的；与之相反，因为我们并不需求其有好的生成能力，就算出现 **先验不匹配** 也无妨，真正要担心的是 **先验漏洞**：它会导致隐空间中的度量和测地线失效。正因如此，这一方面的分析常常会舍去主要防止先验不匹配的 KL 项，直接使用正则化方法隐式地防止特证空间坍塌。
+- 但如果我们的目标就是搓一个好 decoder 当作生成器，那么 **后验坍塌** 与否我们并不在意，但必须保证极度的 **先验匹配**。事实上，Diffusion 正是利用了这一点：把 $x_0\to x_T$ 的加噪过程看做 encoder，则 encoder 直接坍塌到固定的 Unit Gaussian。然而 Decoder 的多步降噪过程实在强大，能直接从 Unit Gaussian 中还原出 $x_0$。
+
+#### III. 换先验
+
+首先先分析先验 $p(z)$ 对 VAE 的影响。不好的先验会同时导致后验坍塌和先验不匹配，最典型的例子就是默认的 Unit Gaussian 先验。
+
+但是，为了保证 KL 项容易计算，先验不能随便选择，且换先验经常也伴随着 encoder 的更换。
+
+##### GMM
+
+比起 Gaussian 先验更进一步的是 **GMM** 先验，取
+$$
+p(z)=\sum_{k=1}^K\pi_k\c N(z;\mu_k,\Sigma_k)
+$$
+其中：
+
+- $\pi_k$ 是可学习的归一化权重，是 logit softmax 的结果。为了避免坍塌为 one-hot 分布，常见方法包括：
+    - 添加熵项鼓励分散。
+    - 使用 **Dirichlet 先验**。
+- $\mu_k$ 是可学习的均值。为了避免重合，常见方法包括：
+    - 显式加入排斥项（例如 $\sum_{i\neq j}K(\mu_i,\mu_j)$）。
+    - 先训普通 VAE，得到稳定的 $z$ 分布后，用 K-mean 初始化均值。
+    - 训练初期冻结 $\mu_k$。
+- $\Sigma_k$ 是可学习的协方差。为了避免 $\Sigma_k\to0$，一般要强制加一个 $\eps$。
+
+GMM 的 encoder 仍然使用单 Gaussian 分布。然而遗憾地，单 Gaussian 和 GMM 之间的 KL 散度 **没有闭式解**，因此只能使用以下方法：
+
+- 做 Monte Carlo 采样。
+
+- 注意到 GMM 其实可以被看做是一个 $c\to z\to x$ 的双层 HVAE（见下文），其中 $c$ 是 label。所以由 MHVAE 的 ELBO 式，有
+    $$
+    \t{KL}(q_{z\mid x}\|_z)\leq\t{KL}(q_{c\mid x}\|p_c)+\E_{c\sim q_{c\mid x}}\t{KL}(q_{z\mid x,c}\|p_{z\mid c})
+    $$
+    要用这个式子训，需要 $q_{c\mid x}$ 的 **classifier** 与 $q_{z\mid x,c}$ 的复杂东西。为了方便，引入 **平均场假设** $q(z,c\mid x)\approx q(z\mid x)q(c\mid x)$，这样 $q(z\mid x,c)\approx q(z\mid x)$，就只多出了一个 classifier。
+    此时要计算的是 $\t{KL}(q_{c\mid x}\|p_c)$ 的概率向量 KL 和 $\t{KL}(q_{z\mid x,c}\|p_{z\mid c})$ 的 Gaussian KL，都有闭式解。
+    使用这种方法的 GMM 被称作 **GMVAE**。
+
+GMM 具有以下特点：
+
+- 容易出现 $\pi$ 坍塌、$\mu$ 重合、$\Sigma$ 消失等问题，需要特殊手段处理。
+- $K$ 一旦设置无法调整。
+
+##### VQVAE
+
+GMM 需要额外注意避免 $\Sigma$ 消失。如果反其道而行之，强制 $\Sigma=0$ 呢？则 bottleneck 就变成了若干 Dirac 函数
+$$
+p(z)=\sum\pi_i\delta(\mu_i)
+$$
+那么为了保证 KL term 不爆炸，须有 $\t{Supp}(q_{z\mid x})\sube\t{Supp}(p_z)=\cur{\mu_i}$。实际的 encoder $q_{z\mid x}$ 是确定性的：
+
+- 先输出一个连续向量 $z_e(x)$，这部分可微。
+- 再把它确定性量化到最近的 $\mu_i$，这部分不可微，反向传播时使用 **Straight Through Estimator** 直接传递梯度。
+- 之所以宁愿承担不可微的代价也要选择确定性的量化，出于以下原因：
+    - 为了符合对数据的先验：**由离散的、边界明确的「原子」所构成**。其它的方法，不论是 Gumbel-Softmax 还是 NCA 式 soft kNN 都不够硬。
+    - soft 的方法必须遍历 codebook 中所有元素，而确定性 NN 可以使用 KD Tree 等高效算法（虽然在现代 GPU 并行环境下没啥区别）
+    - 让 KL term 变成常数，在 **训练** 时不需要操心对 $p(z)$ 的先验。
+
+虽然没有 KL term，但是 VQ-VAE 多了与 Swav 等自监督方法相关的 loss，即
+$$
+\|\t{sg}(z_e(x))-\mu_e\|^2+\|\t{sg}(\mu_e)-z_e(x)\|^2
+$$
+还有例如在一个 code 被量化到的次数过少就把它干掉等方法。更详细的分析将在与自监督方法相关的博客中讨论，此处按下不表。
+
+虽然训练时不需要 $p(z)$，但是采样时还是需要的。一种方法是相信 codebook 尽量均匀地量化了因此直接取均匀分布，另一种方法是直接令 $p(z)=q(z)$ 也即使用聚合后验。
+
+如何建模聚合后验？这似乎需要另一个生成式模型。但注意到 $z$ 是离散的，因此可以使用自回归模型来处理。
+
+##### Normalizing Flow
+
+考虑在 $p_\t{base},q_\t{base}$ 上套一个可逆的映射 $f$，参数化为 $p_\t{flow}=f_\sharp p_\t{base}$ 或 $q_\t{flow}=f_\sharp q_\t{base}$ 来增强表现力。这主要有三种流派：
+
+**Posterior-Only**：只增强 $q_{z\mid x}$，$p_z$ 则保持简单。则
+$$
+q_\t{flow}(z\mid x)=q_\t{base}(z')/|\det\t J f(z')|
+\\\t{KL}(q_\t{flow}\|p_\t{base})=\E_{z\sim q_\t{flow}}\log q_\t{base}(z')-\log|\det\t J f(z')| -\log p_\t{base}(z)
+\\=\E_{z'\sim q_\t{base}}\log q_\t{base}(z')-\log|\det\t J f(z')| -\log p_\t{base}(f(z'))
+$$
+因此必须选择 $\det\t J$ 容易计算的流。
+
+**Prior-Only**：反过来，增强 $p_z$ 而不是 $q_{z\mid x}$，推导类似。优势是在推理时 $p_z$ 采样速度快。
+
+**Symmetric**：用 **同一个** flow 同时增强 $p$ 和 $q$。则列出 KL 式会发现两个 Jacobian 抵消了，有
+$$
+\t{KL}(p_\t{flow}\|q_\t{flow})=\t{KL}(p_\t{base}\|q_\t{base})
+$$
+因此可以选择 **任何** $f$，不必要求其 Jacobian 容易计算。因此，其价值不在于提供更复杂的 KL 约束（因为用不用 $f$ 的 KL term 均相同），而在于增强这些分布的表达能力。
+
+##### VampPrior
+
+VQVAE 中已经在生成时使用聚合后验来替代先验。能否进一步，在训练时也做此修正？
+
+考虑一组可训练的、和输入数据形状相同的 **pseudo-input** $\cur{u_k}$，然后令
+$$
+p(z)=\dfrac1K\sum q(z\mid u_k) 
+$$
+其中 $q$ 就是 encoder，且即使在算先验时也允许修正。$u_k$ 通常用随机样本或噪声初始化，且通常搭配 KL annealing 来优先训练 pseudo input。
+
+如果 encoder 的输出是 Single Gaussian 的话，那么此时的 $p(z)$ 也是 GMM 模型。可以和 GMVAE 一样用 classifier，不过使用 VampPrior 一般意味着对 Encoder 的能力有充分自信，所以直接 MC 是最简单的方式。
+
+##### HVAE
+
+考虑 **HVAE**，其 latent 是一个 Markov Chain，$x_0$ 是原始数据，$x_n$ 是最深一层的 latent。第一层的 ELBO 有
+$$
+\log p(x_0)\geq\E_{x_1\sim q_{x_1\mid x_0}}\log p(x_0\mid x_1)-\t{KL}(q_{x_1\mid x_0}\|p_{x_1})
+$$
+把 $\t{KL}$ 项展开
+$$
+\t{KL}(q_{x_1\mid x_0}\|p_{x_1})=\E_{x_1\sim q_{x_1\mid x_0}}[\log q(x_1\mid x_0)-\log p(x_1)]
+$$
+用 $p_{x_2\mid x_1}$ 再套一层 ELBO
+$$
+{}\leq\E_{x_1\sim q_{x_1\mid x_0}}\left[\log q(x_1\mid x_0)-\int q(x_2\mid x_1)\log\dfrac{p(x_2,x_1)}{q(x_2\mid x_1)}\d x_2\right]
+\\=\int q(x_1,x_2\mid x_0)\log\dfrac{q(x_1,x_2\mid x_0)}{p(x_1,x_2)}\d x_1\d x_2
+\\=\int q(x_2\mid x_0)q(x_1\mid x_0,x_2)\log\dfrac{q(x_2\mid x_0)q(x_1\mid x_0,x_2)}{p(x_1\mid x_2)q(x_2)}\d x_1\d x_2
+\\=\int q(x_2\mid x_0)\log\dfrac{q(x_2\mid x_0)}{p(x_2)}\d x_2
+\\+\int q(x_2\mid x_0)q(x_1\mid x_0,x_2)\log\dfrac{q(x_1\mid x_0,x_2)}{p(x_1\mid x_2)}\d x_1\d x_2
+\\=\t{KL}(q_{x_2\mid x_0}\|p_{x_2})+\E_{x_2\sim q_{x_2\mid x_0}}\t{KL}(q_{x_1\mid x_0,x_2}\|p_{x_1\mid x_2})
+$$
+于是归纳可得
+$$
+\log p(x_0)\geq\E_{x_1\sim q_{x_1\mid x_0}}\log p(x_0\mid x_1)-\t{KL}(q_{x_1\mid x_0}\|p_{x_1})
+\\\geq\E_{x_1\sim q_{x_1\mid x_0}}\log p(x_0\mid x_1)-\t{KL}(q_{x_2\mid x_0}\|p_{x_2})-\E_{x_2\sim q_{x_2\mid x_0}}\t{KL}(q_{x_1\mid x_0,x_2}\|p_{x_1\mid x_2})
+\\\geq\E_{x_1\sim q_{x_1\mid x_0}}\log p(x_0\mid x_1)-\t{KL}(q_{x_n\mid x_0}\|p_{x_n})
+\\-\sum_{i=2}^n\E_{x_i\sim q_{x_i\mid x_0}}\t{KL}(q_{x_{i-1}\mid x_0,x_i}\|p_{x_{i-1}\mid x_i})
+$$
+在前面的单层模型中，我们可以直接定义 $p,q$。但是在 HVAE 中，因为有 $q_{x_{i-1}\mid x_0,x_i}$ 这样的怪东西，为了保证符合 Bayes 等相关概率公式，必须严格考察其自洽性。
+
+一般而言，联合分布 $q$ 都是通过前向 Markov 链 $q_{x_i\mid x_{i-1}}$ 定义的，然后通过
+$$
+q(x_{i-1}\mid x_0,x_i)=\dfrac{q(x_i\mid x_{i-1})q(x_{i-1}\mid x_0)}{q(x_i\mid x_0)}
+$$
+计算。这要求跨步前向过程 $q(x_i\mid x_0)$ 可以被一步 tractable，而不是通过整个 MC 展开。
+
+Diffusion 中直接选取不含参数的 Gaussian 加噪为前向过程，保证一步 tractable 性。但如果我们还是希望保证 Encoder 的可训练性呢？请看下一小节。
+
+本小节的最后，来对比另一种 ELBO。它不像上述通过反复展开 KL 推导，而是直接一步到位：
+$$
+\log p(x_0)\geq\E_{x_{1:n}\sim q_{x_{1:n}\mid x_0}}\log p(x_0\mid x_{1:n})-\t{KL}(q_{x_{1:n}\mid x_0}\|p_{x_{1:n}})
+$$
+代入 Markov 性质，有 $p(x_0\mid x_{1:n})=p(x_0\mid x_1)$，且
+$$
+\t{KL}(q_{x_{1:n}\mid x_0}\|p_{x_{1:n}})=\int q(x_{1:n}\mid x_0)\log\dfrac{q(x_{1:n}\mid x_0)}{p(x_{1:n})}\d x_{1:n}
+\\=\sum_{i=1}^{n-1}\int q(x_{1:n}\mid x_0)\log\dfrac{q(x_i\mid x_{i-1})}{p(x_i\mid x_{i+1})}\d x_{1:n}
+\\+\int q(x_{1:n}\mid x_0)\log\dfrac{q(x_n\mid x_{n-1})}{p(x_n)}\d x_{1:n}
+\\=\sum_{i=1}^{n-1}\E_{x_{i-1},x_{i+1}\sim q(x_{i-1},x_{i+1}\mid x_0)}\t{KL}(q_{x_i\mid x_{i-1}}\|p_{x_i\mid x_{i+1}})
+\\-\E_{x_{n-1}\sim q(x_{n-1}\mid x_0)}\t{KL}(q_{x_n\mid x_{n-1}}\|p_{x_n})
+$$
+于是
+$$
+\log p(x_0)\geq\E_{x_1\sim q_{x_1\mid x_0}}\log p(x_0\mid x_1)
+\\-\sum_{i=1}^{n-1}\E_{x_{i-1},x_{i+1}\sim q(x_{i-1},x_{i+1}\mid x_0)}\t{KL}(q_{x_i\mid x_{i-1}}\|p_{x_i\mid x_{i+1}})
+\\+\E_{x_{n-1}\sim q(x_{n-1}\mid x_0)}\t{KL}(q_{x_n\mid x_{n-1}}\|p_{x_n})
+$$
+这个式子被称为 **Vanilla HVAE**。它的 encoder/decoder 结构看起来比前一种更简单（只 conditioned over 前一层/下一层），但这反倒意味着缺少信息流动，每向上一层互信息在严格减少；而与之相反，前一种，被称作 **Bidirectional HVAE**，每一步都有 $x_0$ 补充互信息，因此不容易后验塌陷。
+
+当然正如前文分析，假如你的目标就是 feature extraction，并不关心后验坍塌与否，那这种形式反倒更自然：每一层都在压缩信息，越深层的 latent 对应的 feature 越抽象。
+
+##### NVAE
+
+为符合原文分布，本小节用 $z_{1:n}$ 表示隐变量。
+
+Decoder：使用 Gaussian 参数化 $p_{z_i\mid z_{i+1}}$。
+
+Encoder：为了正确建模 $q_{z_i\mid x,z_{i+1}}$，使用一个 **bidirectional** 架构：
+
+- Bottom-Up：用 ResNet 式的网络提取 $x$ 的特征 $h_{1:n}$。
+- Top-Down：$q(z_i\mid x,z_{i+1})=\c N(z_i;\mu_q(h_i,z_{i+1}),\sigma_q(h_i,z_{i+1}))$。
+- 由此，$x$ 的特征通过 $h_i$ 传递给 $z_i$，实现了成功的 condition。
+
+然后补充一些技术细节：
+
+- 为了让 $p_{z_i\mid z_{i+1}}$ 和 $q_{z_i\mid x,z_{i+1}}$ 尽量接近，对后者的参数化使用 **Residual Parameterization**：网络输出 $\Delta\mu$ 和 $\Delta\sigma$，真实采用的是 $\mu_q=\mu_p+\Delta\mu$ 和 $\sigma_q=\sigma_p\Delta\sigma$。这样只要初始化时令 $\Delta\mu\approx0,\Delta\sigma\approx1$，就有初始接近 $0$ 的 KL 项。这解决了深层 VAE 初始训练不稳定的问题。
+
+- 为了增强表达能力，对 $q,p$ 使用了前述 Symmetric NF 的方法。具体地，使用的映射是
+    $$
+    f=f_K\circ\dots\circ f_1
+    $$
+    其中每个 $f_i$ 是轻量级的 **Residue Flow** $f(z)=z+g(z)$。由 **Banach 不动点定理**，只要 $g$ 是 $1$-Lipschitz 的就能保证可逆性，而 Lipschitz 性可以通过 **Spectral Normalization** 来保证。
+
+- $\E_{z_i\sim q_{z_i\mid x}}\t{KL}(q_{z_{i-1}\mid x,z_i}\|p_{z_{i-1}\mid z_i})$ 中包括一个期望项，而这个期望项几乎只能依靠 MC 处理。也即，每个 sample 都会在 encoder 中跑一个完整的 trajectory，然后 trajectory 中的每一项分别计算 KL 散度。为了保证 MC 正确，trajectory 中的每一次采样都必须来自 Encoder 而不是 Decoder。
+
+- 对 KL 进行 $\beta$ 加权，不同层的 KL 权重不同。
+
+Residue Parameterization 的具体方法为：
+
+- Decoder 用 $z_{i+1}$ 得到特征 $s_{i+1}$，用特征得到 $\mu_p$ 和 $\sigma_p$。
+- Encoder 把 $h_i$ 和 $s_{i+1}$ 在通道维拼接或直接相加，得到融合特征 $t_i$，然后用其进一步得到 $\Delta \mu$ 和 $\Delta\sigma$。
+
+$$
+\begin{matrix}
+&&\t{Enc}&&&\t{Dec}
+\\&h_n&\to&z_n&\xleftrightarrow{\t{KL}}&z_n
+\\&\uparrow&&\downarrow&&\downarrow
+\\&h_{n-1}&\to&z_{n-1}&\xleftrightarrow{\t{KL}}&z_{n-1}
+\\&\uparrow&&\downarrow&&\downarrow
+\\\t{ResNet}&\vdots&&\vdots&\t{NF-Gaussian}&\vdots
+\\&\uparrow&&\downarrow&&\downarrow
+\\&h_1&\to&z_1&\xleftrightarrow{\t{KL}}&z_1
+\\&\uparrow&&&&\downarrow
+\\&x&&&\xleftrightarrow{\t{Recon}}&x
+\end{matrix}
+$$
+
+##### VDVAE
+
+如果说 NVAE 靠的是使用强大工程技巧（NF、Residue Parameterization），那 VDVAE 就是纯粹的大力出奇迹，嗯堆深度。
+
+其整体架构和 NVAE 一样服从上述图示，但是这回详细对比每一步。
+
+- $h_i=f(h_{i-1})$：NVAE 较复杂，VDVAE 直接使用标准残差块，但格式相同。下采样均使用 strided 卷积。
+- $s_i=f(s_{i+1},z_i)$：同上，NVAE 较复杂，VDVAE 直接把 $z_i$ 过卷积后加在 $s_{i+1}$ 上。
+- $\mu_p,\sigma_p=f(s_i)$：VDVAE 直接对 $s$ 过线性，NVAE 则用卷积。
+- $\mu_q,\sigma_q$：VDVAE 把 $s$ 和 $h$ 加一块过线性，NVAE 使用前述 Residue 方法，用 $s,h$ 得到 $\Delta\mu,\Delta\sigma$ 后与 $\mu_p,\sigma_p$ 结合。
+
+这启示我们：架构的复杂度可以一定程度替代先验的复杂度。
+
+> [!TIP]
+>
+> 特别地，如果展开来分析会发现，对于 reconstruction 出来的 $x'$，recon loss 会沿着整个 chain 对全体 $\mu_q,\sigma_q$ 一起 BP；但是对于 sample 出来的 $x'$，因为没有相关的 loss，所以全体 $\mu_p,\sigma_p$ 就没有机会在同一个 chain 中被 BP。
+>
+> 如果有人（是谁啊好难猜啊）试图引入一个与 sampled $x'$ 相关的新 loss，而且希望把它用于 pretrain 而不是 SFT，那很容易因为跨层的误差累计而出问题。可能的解决方案包括：
+>
+> - 添加合适的 stopgradient。
+> - 获得更精细的 layer-wise 的监督。
+
+##### Biased Priors
+
+前文中使用的这些先验都是较为通用的。现在考虑回归本文的主题，来点根据数据特色专门设置的先验。
+
+首先是和之前一样的话题：用 Cauchy/Student's t 来处理长尾分布。
+
+Cauchy 的优势是 CDF 有解析解，因此可以直接 reparameterization：取 $\eps\sim\t{Unif}(0,1)$ 然后 ICDF 变换回去即可。Student's t 同理。（但是，这两者的 ICDF 包含 $\tan$ 项，容易导致梯度爆炸，是一个劣势）
+
+但是它们比起 Gaussian 的劣势在于 KL 散度没有解析解，因此只能跑 MC。
+
+然后，在很多数据中，**角度** 是比起 **距离** 更重要的度量。因此，考虑将先验定义在超球面上，引入 **von Mises-Fisher 分布**
+$$
+p(\b z;\mu,\b \kappa)=C_D(\kappa)\exp(\kappa\b \mu^\top\b z)
+$$
+它是超球面上的 Gaussian 类似物：
+
+- $\b z,\b\mu$ 都是单位向量。
+- $\b\mu$ 是均值方向，$\kappa$ 类似方差，$C_D$ 是用于归一化的系数，可以通过第一类修正 Bessel 函数计算。
+
+Encoder 输出 $D$ 维向量（归一化得到 $\b\mu$）和 $\kappa>0$。
+
+但是，vMF 分布并不能直接用 Reparameterization Trick。其实际方法很复杂：
+
+- 先考虑 $\b\mu$ 指向北极点的场合。此时球面上任意点在关于 $\b\mu$ 投影后，都可以用投影长度 $w$ 和与 $\b\mu$ 垂直的 $d-2$ 维超平面上均匀分布描述。
+- 投影长度 $w$ 的 PDF 有解析描述，但是与 Cauchy 场合不同，其 CDF 没有。所以只能使用 **Rejection Sampling** 方法：
+    - 对于目标分布 $p$，取一个能采样的 proposal $q$，并保证存在函数 $M$ 使得 $Mq(x)>p(x)$ 处处成立。
+    - 从 $q$ 中采样 $x$，然后 w.p. $p(x)/Mq(x)$ 接受，否则拒绝并重新采样。
+    - 针对 vMF 的 PDF，选了一个特定的 $q$。
+- 得到北极点采样后，用 Householder 变回去。
+
+但是它比起 Cauchy 也有优势：若设先验为球面均匀分布，那么 KL 散度可以显式计算。
+
+对比上述先验，可以发现朴素 VAE 能这么简单，完全仰赖 Gaussian 的优良数学性质：
+
+- Cauchy 对 KL 不友好。
+- vMF 对 Reparameterization 不友好。
+
+这和算 loss 时只需要改一行，或者算 KDE 时只需要换个 kernel 完全不同。
+
+还有一些更变态的在比如说双曲空间上跑的 VAE，即 **Poincaré VAE**。因为太小众变态了，所以不予讨论。
+
+#### IV. 换 KL
+
+
+
+#### V. 换 recon
+

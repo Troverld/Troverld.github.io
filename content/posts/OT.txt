@@ -1,0 +1,1077 @@
+$$
+\newcommand{\b}{\boldsymbol}
+\newcommand{\t}{\text}
+\newcommand{\c}{\mathcal}
+\newcommand{\cur}[1]{\left\{#1\right\}}
+\newcommand{\d}{\mathrm d}
+\newcommand{\ip}[1]{\left<#1\right>}
+\newcommand{\E}{\mathop{\mathbb E}}
+\newcommand{\p}{\partial}
+\newcommand{\vare}{\varepsilon}
+\newcommand{\f}{\mathfrak}
+$$
+
+## O. Notation
+
+使用权重向量 $\b a$ 和位置 $x_1,\dots,x_n\in\cal X$ 来描述离散测度
+$$
+\alpha=\sum_{i=1}^n\b a_i\delta_{x_i}
+$$
+其中 $\delta_{x_i}$ 就是 Dirac 分布 $1_\cur{X=x_i}$。如果 $\alpha$ 是概率测度，则 $\b a$ 需要属于概率单纯形。
+
+OT 仅考虑 $\b a$ 中每一项严格正的场景。
+
+定义 $\c M(\c X)$ 为 $\c X$ 上所有 **Radon 测度**。鉴于我没学过拓扑，可以将其直接看做测度集合。
+
+定义 $\c M_+^1(\c X)$ 为全体概率测度。
+
+定义 $\c C(\c X)$ 为 $\c X$ 上所有连续函数。
+
+对于向量 $\b f,\b g$，定义外和 $\b f\oplus\b g$ 为矩阵 $M_{i,j}=\b f_i+\b g_j$。
+
+对于函数 $f,g$，定义外和 $(f\oplus g)(x,y)=f(x)+g(y)$。
+
+同理可定义外积 $\otimes$。
+
+## I. Foundation
+
+### Monge Problem
+
+对于费用矩阵 $C\in\R^{n\times n}$，**最优指派问题** (Optimal Assignment Problem) 寻求下式
+$$
+\min_{\sigma\in\t{Perm(n)}}\dfrac1n\sum C_{i,\sigma(i)}
+$$
+对于离散测度 $\alpha=\sum_{i=1}^n\b a_i\delta_{x_i},\beta=\sum_{i=1}^m\b b_i\delta_{y_i}$，**Monge 问题** 寻求映射 $T:\cur{x_i}\to\cur{y_j}$ 满足
+$$
+\forall j:\b b_j=\sum_{i:T(x_i)=y_j}\b a_i
+$$
+简记为 $T_\sharp\alpha=\beta$。因为 OT 中要求 $\b b$ 严格正，所以这必是满射。
+
+这个问题最小化某种运输代价，即函数 $c:\c X\times\c Y\to\R$。形式化地，
+$$
+\min_T\cur{\sum_i\b a_ic(x_i,T(x_i)):T_\sharp\alpha=\beta}
+$$
+只要 $x,y$ 彼此不同，就可以用 $\sigma:[n]\to[m]$ 来替代 $T$，而上述关系即写成
+$$
+\b b_j=\sum_{i\in\sigma^{-1}(j)}\b a_i
+$$
+特别地，当 $n=m$ 且 $\b a,\b b$ 都是均匀分布时，其转化为最优分配问题，其中 $C_{i,j}=c(x_i,y_j)$。
+
+当 $n\neq m$ 时，Monge 问题是非对称问题。这意味着可能在存在 $T_\sharp\alpha=\beta$ 的同时，不存在 $T'_\sharp\beta=\alpha$。
+
+特别地，对于连续映射 $T:\c X\to\c Y$，$T_\sharp\alpha$ 是测度集合 $\c M(\c X)\to\c M(\c Y)$ 的 **Push-Forward Operator**：称 $\beta\in\c M(\c Y)$ 是Push-Forward Operator，如果
+$$
+\forall h\in\c C(\c Y):\int_\c Yh\d\beta=\int_\c Xh(T)\d\alpha
+$$
+换言之，有 $\beta=\alpha\circ T^{-1}$。$T_\sharp$ 变换会线性、保正性以及保总质量。
+
+使用 Push-Forward 语言可以定义一般场合的 Monge 问题：对于概率测度 $\alpha,\beta$，有
+$$
+\min_T\cur{\int_\c Xc(x,T(x))\d\alpha:T_\sharp\alpha=\beta}
+$$
+另一方面，Push-Forward $T_\sharp$ 有其逆 Pull-Back $T^\sharp g=g\circ T$。事实上，Push-Forward 和 Pull-Back 互为共轭：
+$$
+\forall\alpha,g\in\c M(\c X)\times\c C(\c Y):\int_\c Y g\d(T_\sharp\alpha)=\int_\c X(T^\sharp g)\d\alpha
+$$
+
+### Kantorovich Relaxation
+
+虽然我们已经介绍了非均匀乃至连续场合的 Monge 问题，但只有均匀、离散的 Monge 问题保证存在合法 $T$。最优指派问题是组合的，一般连续场合是非凸的，都不好解。
+
+所以 Kantorovich 提出了一种松弛：以上我们仅允许每个 $\b a_i$ 作为一个整体被发送到某个 $\b b_j$，现在我们可以允许其被 split，以概率的方式被发送。由此，将 $T$ 或 $\sigma$ 由 coupling matrix $P\in\R_+^{n\times m}$ 描述，其中 $P_{i,j}$ 表示从 $\b a_i$ 流向 $\b b_j$ 的量。所有合法的 coupling matrix 构成矩阵集合
+$$
+U(\b a,\b b)=\cur{P\in\R_+^{n\times m}:P\b 1_m=\b a\land P^\top\b1_n=\b b}
+$$
+$U$ 是有界且被 $n+m$ 个等式约束的矩阵，由线性规划相关知识，其是凸多胞体。此外，Monge 问题是非对称的，但 Kantorovich 问题是对称的：$P\in U(\b a,\b b)$ 当且仅当 $P^\top\in U(\b b,\b a)$。在费用矩阵为 $C$ 的场合，有
+$$
+\t L_C(\b a,\b b):=\min_{P\in U(\b a,\b b)}\ip{C,P}=\min_{P\in U(\b a,\b b)}\sum_{i,j}C_{i,j}P_{i,j}
+$$
+对于排列 $\sigma$，容易定义对应的排列矩阵 $(P_\sigma)_{i,j}=[j=\sigma_i]/n$。则最优指派问题可以写成
+$$
+\min_{P_\sigma}\ip{C,P_\sigma}
+$$
+特别地，排列矩阵属于 **Birkhoff 多胞体** $U(\b 1_n/n,\b1_n/n)$ 也即全体双随机矩阵构成的集合。于是自然有
+$$
+\t L_C(\b 1_n/n,\b1_n/n)\leq\min_{P_\sigma}\ip{C,P_\sigma}
+$$
+现在来一点神秘定理。
+
+- **线性函数极值定理**：对于任何紧凸集，都存在某个极点（不能表示为凸集中其它元素的归一带权和的点）是最值。
+- **Birkhoff-von Neumann 定理**：Birkhoff 多胞体的极点是全体排列矩阵。
+
+因为 Kantorovich 问题就是线性函数 $\ip{C,P}$，所以可知：$\t L_C(\b 1_n/n,\b1_n/n)$ 可以通过求最小带权匹配解决。
+
+现在再来点 notation。$\t L_C(\b a,\b b)$ 是依据费用矩阵 $C$ 构建的，而 $C$ 本身可以通过代价函数 $c$ 以 $C_{i,j}=c(x_i,y_j)$ 的方式构建，所以可以定义测度间的 $\c L_c(\alpha,\beta)=\t L_C(\b a,\b b)$。
+
+进一步还可以被扩张到连续场合。定义 $\pi\in\c M_+^1(\c X,\c Y)$ 是全体联合分布。定义
+$$
+\c U(\alpha,\beta):=\cur{\pi\in\c M_+^1(\c X,\c Y):P_{\c X\sharp}\pi=\alpha,P_{\c Y\sharp}\pi=\beta}
+$$
+其中 $P_\c X(x,y)=x,P_\c Y(x,y)=y$ 是取坐标函数。其等价条件是对边缘分布的约束：$\pi(A,\c Y)=\alpha(A),\pi(\c X,B)=\beta(B)$。则 Kantorovich 问题被扩展为
+$$
+\c L_c(\alpha,\beta)=\min_{\pi\in\c U(\alpha,\beta)}\int_{\c X\times\c Y}c(x,y)\d\pi(x,y)
+$$
+可以被看做是测度空间上的无穷维线性规划。
+
+也可以使用随机变量的语言重写为
+$$
+\c L_c(\alpha,\beta)=\min_{(X,Y)}\cur{\E c(X,Y):X\sim\alpha,Y\sim\beta}
+$$
+
+### Wasserstein Distance
+
+考虑令 $D$ 是 $n\times n$ 距离矩阵，也即满足以下三条：
+
+- 非负且对称
+- 当且仅当对角线为零
+- 三角不等式 $D_{i,j}\leq D_{i,k}+D_{k,j}$
+
+令费用 $C$ 是 $p$-scale 后的距离矩阵，也即 $C_{i,j}=(D_{i,j})^p$，且 $p\geq1$。则定义 $p$-Wasserstein 距离
+$$
+\t W_p(\b a,\b b):=\t L_{D^p}(\b a,\b b)^{1/p}
+$$
+则 $\t W_p$ 是 $\Sigma_n$ 上的一个距离度量。注意，$\t W_p$ 与其背景距离 $D$ 相关。
+
+其证明比较复杂（但是似乎有使用 Kantorovich-Rubinstein 对偶的方法），略过不提。
+
+特别地，当 $0<p\leq 1$ 时，$D^p$ 本身会是一个合法距离矩阵，因此此时有 $\t W_p(\b a,\b b)^p$ 是距离度量。
+
+更一般地，对于 $\c X=\c Y$ 以及 $\c X$ 上的度量 $d$，可以定义连续场合的 $p$-Wasserstein 距离
+$$
+\c W_p(\alpha,\beta):=\c L_{d^p}(\alpha,\beta)^{1/p}
+$$
+Wasserstein 距离是一个「weak distance」，即可以比较支撑集不交的范数间的距离。例如，$\c W_p^p(\delta_x,\delta_y)=d(x,y)$，且当 $x\to y$ 时有 $\c W_p(\delta_x,\delta_y)\to0$。其进一步推论可以是，依分布收敛且 $p$ 阶矩有限与 Wasserstein 距离趋于零是等价的。
+
+### Kantorovich Duality
+
+离散 Kantorovich 问题 $\t L_C(\b a,\b b)$ 是一个凸线性规划问题。因此自然可以构建其对偶：有
+$$
+\t L_C(\b a,\b b)=\max_{(\b f,\b g)\in R(C)}\ip{\b f,\b a}+\ip{\b g,\b b}
+$$
+其中
+$$
+R(C):=\cur{(\b f,\b g)\in\R^n\times\R^m:\b f\oplus\b g\leq C}
+$$
+换言之，$\b f_i+\b g_j\leq C_{i,j}$。这两个对偶变量一般被称作 Kantorovich 势。
+
+其实际意义可以是物流外包：运输公司为每单位的货物发送收价 $\b f_i$，货物接受收价 $\b g_j$，于是 $i\to j$ 的单位物流成本就是 $\b f_i+\b g_j$。当然为了保证外包有意义，就需要保证 $\b f_i+\b g_i\leq C_{i,j}$ 也即自行运营成本。在此基础上，运输公司希望最大化收益。
+
+在连续的场合，也有类似的定义
+$$
+\c L_c(\alpha,\beta)=\sup_{(\b f,\b g)\in\c R(c)}\int_\c Xf\d\alpha+\int_\c Yg\d\beta
+\\\c R(c)=\cur{(f,g)\in\c C(\c X)\times\c C(\c Y):f\oplus g\leq c}
+$$
+特别地，当 $\alpha$ 和 $\beta$ 都是概率测度的场合，上述受限定义可以被扩展为无限制定义
+$$
+\c L_c(\alpha,\beta)=\sup_{(\b f,\b g)\in\c C(\c X)\times\c C(\c Y)}\int_\c Xf\d\alpha+\int_\c Yg\d\beta+\min_{\c X\otimes\c Y}(c-f\oplus g)
+$$
+其中 $\c X\otimes\c Y$ 指 $\c X\times\c Y$ 上所有在乘积测度 $\alpha\otimes\beta$ 上非零测的位置。
+
+### Brenier Theorem
+
+Brenier 定理联系了 OT、凸分析和流体力学（？）。
+
+对于 $\c X=\c Y=\R^d$，$c(x,y)=\|x-y\|^2$，如果两个测度 $\alpha,\beta$ 中至少有一者绝对连续（w.l.o.g. 假设为 $\alpha$）也即存在密度函数 $\rho_\alpha$，则 Kantorovich 问题中的 $\pi$ 是唯一的，且是一个确定的映射（换句话说，存在 Monge 问题中的映射 **Monge Map** $T$），有 $\pi=(\t{Id},T)_\sharp\alpha$，即
+$$
+\forall h\in\c C(\c X\times\c Y):\int_{\c X\times\c Y}h\d\pi=\int_\c Xh(x,T(x))\d\alpha
+$$
+更进一步地，$T$ 是一个凸函数 $\varphi$ 的梯度，即 $T=\nabla\varphi$。而 $\varphi$ 是关于加常数唯一的满足 $(\nabla\varphi)_\sharp\alpha=\beta$ 的凸函数，且与对偶式中的 $f$ 挂钩：有 $\varphi(x)=\|x\|^2/2-f(x)$。
+
+特别地，一维场合 $T$ 是单增的，高维场合 $T$ 是无旋的，符合我们的朴素认知。其总体是证明，在 Euclidean 距离的平方且绝对连续（*还要补上方差有限*）的场合，Kantorovich 和 Monge 等价。
+
+证明：
+
+我们要最小化
+$$
+\int\|x-y\|^2\d\pi=\int(\|x\|^2+\|y\|^2-2\ip{x,y})\d\pi
+$$
+其中 $\|x\|^2$ 和 $\|y\|^2$ 均只与边缘分布相关，而因为边缘分布是固定的所以可以作为常数被省略，目标变为最大化内积
+$$
+\max_\pi\int\ip{x,y}\d\pi
+$$
+然后对其求对偶，得到势能函数 $\varphi,\psi$，满足 $\varphi(x)+\psi(y)\geq\ip{x,y}$ 然后求
+$$
+\min_{\varphi,\psi}\int\varphi\d\alpha+\int\psi\d\beta
+$$
+特别地，其与原始 Kantorovich 对偶 $\c L_c(\alpha,\beta)=\sup_{(\b f,\b g)\in\c R(c)}\int_\c Xf\d\alpha+\int_\c Yg\d\beta$ 的关系是 $\varphi=\|\cdot\|^2/2-f,\psi=\|\cdot\|^2/2-g$。
+
+当 $\varphi$ 固定时，$\psi$ 越小越好，因此有 $\psi=\sup_x\ip{x,y}-\varphi(x)=\varphi^*$ 也即 Legendre 共轭。再对 $\psi$ 反过来寻找最优的 $\varphi$，得到最优的 $(\varphi,\psi)$ 对应是互为共轭的凸函数。
+
+由 KKT 条件，最优的 $\pi$ 应当满足互补松弛性，即 $\pi$-a.e. 有 $\varphi(x)+\psi(y)=\ip{x,y}$。由 Fenchel-Young 不等式，其充要条件是 $y\in\p\varphi(x)$。由 Rademacher 定理，凸函数 a.e. 可导。因为 $\alpha$ 有密度，所以 $\alpha$-a.e. 可导。因此 a.e. 有 $y=\nabla\varphi(x)$，那么 $\pi$ 就是映射 $x\mapsto\varphi(x)$。
+
+> [!NOTE]
+>
+> 其实更常见的写法是 $T(x)=x-\nabla f(x)$，其中 $f$ 是 Kantorovich 势。
+
+### Special Cases
+
+现在来点 OT 的应用。
+
+向量间的 $\ell_1$-norm 可以被看做是 $D=[x\neq y]$ 时的 $1$-Wasserstein 距离。扩展到任意测度就是 TVD。
+
+1D 且均匀的场合是经典排序后顺序对齐的模式。在 CV 领域有一个经典应用是 **Histogram Equalization**，将一张 **灰度**（以保证 1D 性）图的色调迁移到另一张图。解决方案同样是排序后对齐。进一步地，可以对排序后相同位置的两个像素作插值以实现平滑过渡。
+
+这部分还有一些例如 Gaussian 或椭圆曲线间的 Wasserstein 距离的算数大赛，不管了。
+
+### Conclusion
+
+```mermaid
+graph LR
+	A[Monge] --允许传输不连续--> B[Kantorovich]
+	B --Brenier：绝对连续L^2度量--> A
+	B <--LP对偶--> E[Kantorovich Potential]
+	B --传输是排列--> C[Optimal Assignment]
+	C --Birkhoff：均匀分布--> B
+	B --费用是距离--> D[Wasserstein Distance]
+```
+
+## II. Algorithm
+
+### Kantorovich Linear Program
+
+我们已经知道离散 Kantorovich 规划
+$$
+\t L_C(\b a,\b b)=\min_{P\in U(\b a,\b b)}\sum_{i,j}C_{i,j}P_{i,j}
+$$
+可以被简单写成标准线性规划的形式：定义 $A$ 为求行和、列和矩阵，将 $C,P$ 展平后即有
+$$
+\t L_C(\b a,\b b)=\min_\b p\b c^\top\b p
+\\A\b p=\begin{bmatrix}\b a\\\b b\end{bmatrix}
+$$
+特别地，$A\b p=\begin{bmatrix}\b a\\\b b\end{bmatrix}$ 虽然是线性方程组，但存在冗余。但是可以证明：任意移除一行并移除 $\begin{bmatrix}\b a\\\b b\end{bmatrix}$ 中对应项时，其是完备的，换言之 $A$ 离满秩差一。
+
+而其对偶问题
+$$
+\t L_C(\b a,\b b)=\max_\b h\begin{bmatrix}\b a\\\b b\end{bmatrix}^\top\b h
+\\A^\top\b h\leq\b c
+$$
+即对应 Kantorovich 势。
+
+> [!TIP]
+>
+> 「弱对偶」指前者的 $\min$ 等于后者的 $\max$，「强对偶」指前者取 $\min$ 处后者取 $\max$，Kantorovich 对偶同时满足这两者。
+
+### $C$-Transform
+
+对于 Kantorovich 对偶形式
+$$
+\t L_C(\b a,\b b)=\max_{(\b f,\b g)\in R(C)}\ip{\b f,\b a}+\ip{\b g,\b b}
+$$
+当 $\b f$ 固定时，$\b g$ 的最优解总是 $\b f$ 的 **$C$-变换** 向量
+$$
+(\b f^C)_j=\min_i C_{i,j}-\b f_i
+$$
+于是 Kantorovich 对偶可以写成单变量形式
+$$
+\t L_C(\b a,\b b)=\max_\b f\ip{\b f,\b a}+\ip{\b f^C,\b b}
+$$
+另一方面，$\b g$ 固定时最优 $\b f$ 会是 $\b g$ 的 **$\bar C$-变换** 向量
+$$
+(\b f^\bar C)_i=\min_j C_{i,j}-\b g_j
+$$
+于是对于一切 $\b f$，均可建立一个迭代式的不等式列
+$$
+\ip{\b f,\b a}+\ip{\b f^C,\b b}\leq\ip{\b f^{C\bar C},\b a}+\ip{\b f^C,\b b}\leq\ip{\b f^{C\bar C},\b a}+\ip{\b f^{C\bar C C},\b b}\leq\dots
+$$
+很遗憾地，这个式子并不能拿来优化，因为按照如下性质，其会立刻收敛：
+
+- $\b f\leq\b f'\implies\b f^C\geq\b f'^C$。
+- $\b f^{C\bar C}\geq\b f,\b g^{\bar CC}\geq\b g$。
+- $\b f^{C\bar CC}=\b f^C$。
+
+### Complementary Slackness
+
+作为凸优化问题，其 KKT 条件保障了对于原问题的最优解 $P^*$ 和对偶问题的最优解 $\b f^*,\b g^*$，满足
+$$
+P_{i,j}^*(C_{i,j}-\b f_i^*-\b g_j^*)=0
+$$
+另一方面，定义矩阵 $P$ 和向量对 $(\b f,\b g)$ 关于费用矩阵 $C$ **互补** (complementary)，如果对于一切 $P_{i,j}>0$ 处都有 $\b f_i+\b g_j=C_{i,j}$。注意：互补的矩阵-向量对不一定是合法解——在 $P_{i,j}=0$ 的位置，可能存在 $\b f_i+\b g_j>C_{i,j}$ 的不合法现象！而补上合法条件后，即有：互补且合法的的矩阵-向量对必为最值。
+
+### Vertices of Polytope
+
+由线性函数极值定理，$U(\b a,\b b)$ 的顶点中必有极值点。由 Birkhoff-von Neumann 可知 $U(\b 1_n/n,\b 1_n/n)$ 的顶点是所有排列矩阵；有没有更一般的结论？
+
+首先 Kantorovich 问题可以被简单建模为二分图费用流问题。于是首先可以得到第一个结论：
+
+- 顶点的 $P$ 中，$P_{i,j}>0$ 的位置对应的边 $(i,j')$ 不应该成环。于是，顶点至多包含 $n+m-1$ 个非零项。
+
+证明很简单：如果存在环，则可以用「奇边加 $\vare$、偶边减 $\vare$」和相反方案的线性组合拼出原方案。
+
+另一方面，其逆定理也是成立的：无环的都是顶点。
+
+> [!TIP]
+>
+> 这是因为它们的列向量线性无关，因此是线性规划的基本可行解，必然是顶点。
+
+### Network Simplex
+
+对于任意顶点 $P$，都可以简单求出与其互补的 $(\b f,\b g)$ 对：对于支撑图 $G(P)$ 也即全体非零位置构成的图，其是森林，可以在每棵树上确定一个点设置其势，然后沿着树确定其它连通点的势。由此求出的势确实是互补的，但在非支撑边处其不一定合法。
+
+现在尝试对于不一定合法的 $(\b f,\b g)$，修改之使其合法。如果有 $\b f_i+\b g_j>C_{i,j}$，则有两种可能：
+
+- 向 $G(P)$ 中加入 $(i,j')$ 不会成环。此时原始变量 $P$ 不变，对偶变量 $(\b f,\b g)$ 在新图 $G(P)\cup\cur{(i,j')}$ 上使用上述树搜索方法重新确定。
+- 会成环，则在环上与 $(i,j')$ 同奇偶性的边要增加权值，异奇偶性的要减少权值。为了保证 $P$ 的合法性，这一权值 $\theta$ 应是所有异奇偶性的边权最小值。于是 $P$ 要被更新，更新完后异奇偶性的 $\theta$ 边会断掉，于是由 $P$ 移到另一个顶点 $P'$。
+
+在不成环时，这样做保持 $P$ 不变；在成环时，这样做让费用 $\ip{C,P'}$ 严格减少，且减少值恰为 $\theta(\b f_i+\b g_j-C_{i,j})$。
+
+于是可以得到以下算法：
+
+1. 初始化任意顶点 $P$。
+2. 初始化 $G$ 为 $G(P)$，然后在 $G$ 上求出 $(\b f,\b g)$。
+3. 寻找 $\b f_i+\b g_j>C_{i,j}$。
+    1. 如果不成环，向 $G$ 中添加 $(i,j')$，求出 $(\b f,\b g)$ 后回到 (3) 开头再次寻找。因为每次这样做都会合并 $G$ 中两个连通块，所以至多执行线性次。
+    2. 如果成环，则增广、更新 $P$ 并回到 (2)。因为增广后费用严格减少且费用非负，所以执行次数有限。
+4. 如果未发现违反约束的位置，则找到互补合法解，即为最优解。
+
+这个算法被称作「Network Simplex」，因为 $P$ 在单纯形的顶点上移动。Tarjan 证明了该算法在使用 LCT 实现时，复杂度是 $O((n+m)nm\log(n+m)\log((n+m)\|C\|_\infty))$。
+
+### Dual Ascent Method
+
+前述网络单纯形法是对原始问题 $P$ 的迭代，而另一种对偶上升法则选择对对偶势 $(\b f,\b g)$ 进行迭代，是匈牙利算法的扩展。
+
+首先，定义 $\b 1_S$ 为仅在 $S$ 处取 $1$ 的向量。对于可行的对偶势 $(\b f,\b g)$，定义 balanced 的边为 $\b f_i+\b g_j=C_{i,j}$ 也即紧约束的边，反之即为 inactive，此时有 $\b f_i+\b g_j<C_{i,j}$。
+
+对于任意 $S\in[n]$，定义 $S'$ 为其通过 balanced 边连接的右部点集，令 $(\b f',\b g')=(\b f,\b g)+\vare(\b 1_S,-\b 1_{S'})$，则只要 $\vare$ 足够小其即仍然可行：因为 inactive 的边总是可以提供 margin。
+
+命题：或者 $(\b f,\b g)$ 已经最优，或者能找到满足条件的 $(S,S')$ 使得其上扰动能严格更优。
+
+证明使用最大流建图：源汇流量分别为 $\b a_i,\b b_j$，而在 balanced 的位置连接容量无穷的边，然后在上面跑最大流。如果满流则已求出互补的 $P$，达到最优；否则考虑从源点出发经过未饱和边可达的点集，则所有左部点为 $S$、右部点为 $S'$。
+
+- 首先，右部点必然从某个左部点连来，而左部点能前往的所有右部点即为 balanced 边可达的点集（因为容量无穷所以永远不会饱和），也就是说 $S'$ 恰为 $S$ 通过 balanced 边连接的全体点集，满足扰动条件。
+- 其次，通过最大流-最小割定理可以证明此次扰动必然有严格正的增量。
+
+这个方法就是经典的原始对偶算法。
+
+### Auction
+
+请见[计算经济学](https://www.cnblogs.com/Troverld/p/19372096)。
+
+### Conclusion
+
+```mermaid
+graph LR
+	C[Network Simplex]
+	A[Kantorovich 规划]
+	B[Kantorovich 对偶]
+	D[Dual Ascent]
+	C~~~A~~~B~~~D
+	A --原始迭代--> C
+	A <--互补条件--> B
+	B --对偶迭代--> D
+```
+
+## III. Entropic Regularization
+
+### Definition
+
+对于传输矩阵 $P$，定义离散熵为
+$$
+H(P)=-\sum_{i,j}P_{i,j}(\log(P_{i,j})-1)
+$$
+该定义对向量同样生效。如果向量/矩阵中某项为零或负数，则人为定义其熵为负无穷。
+
+> [!TIP]
+>
+> 注意到其与常规 Shannon 熵的定义差了一个 $-1$ 项。在归一化的场合，这相当于 Shannon 熵减去常数 $1$，不影响最优化的位置。另一方面，其可以在求导时得到良好结果：有 $\nabla H=-\log P$。
+
+进一步，其 Hessian 是 $-\t{diag}(1/P_{i,j})$，而 $P_{i,j}\leq1$ 表明了其 $1$-强凹性。熵正则化就是在标准的 Kantorovich 规划上额外减去熵正则项：
+$$
+\t L^\vare_C(\b a,\b b)=\min_{P\in U(\b a,\b b)}\ip{P,C}-\vare H(P)
+$$
+原本的规划是线性规划，现在减去强凹函数后，其即成为强凸优化，拥有唯一最优解。
+
+> [!NOTE]
+>
+> 熵项相当于为 $P$ 施加了一个斥力，让其远离概率单纯形的边缘，因此求出的解丧失了原始问题的稀疏性。
+>
+> 这里减去熵项并非唯一可行方案，有人使用 $\ell_2$ 正则化项替代。不过因为熵项太好用了，所以大家都用它。
+>
+> 同理，在回归问题特别是 Bayesian Net 或 Probablistic Regression 中，也会添加熵项。
+>
+> 此外，Kantorovich 规划是 Monge 运输的松弛版本，而熵正则化则对应着 **Schrödinger Bridge Problem** 或者 **Langevin Dynamics**，是 Brown 运动下的传输问题，可以得到最大熵原理的支持。
+
+当 $\vare\to0$ 时，$\t L_C^\vare$ 的解 $P_\vare$ 会趋于 $\t L_C$ 的所有最优解中熵最大者，于是 $L_C^\vare(\b a,\b b)\to\t L_C(\b a,\b b)$。另一方面，当 $\vare\to\infty$ 时，熵项会成为主导，此时有 $P_\vare\to\b a\otimes\b b=\b a\b b^\top=(\b a_i\b b_j)_{i,j}$。
+
+熵正则化后的最优解可以使用 KL 散度描述。这里的 KL 散度和熵一样也多出了额外项：
+$$
+\t{KL}(P\|K)=\sum\left(P_{i,j}\log\dfrac{P_{i,j}}{K_{i,j}}-P_{i,j}+K_{i,j}\right)
+$$
+> [!TIP]
+>
+> 对于归一化的 $P$ 和 $K$，额外项会互相抵消。但是这个定义同样适用于一般的场合。
+
+则定义 Gibbs 核
+$$
+K_{i,j}=\exp(-C_{i,j}/\vare)
+$$
+其是在没有边缘分布约束时，基于成本矩阵 $C$ 最自然的分布。然而为了保证 $U(\b a,\b b)$ 的约束，要求到其中的投影，于是有
+$$
+P_\vare=\t{Proj}_{U(\b a,\b b)}^\t{KL}(K)=\arg\min_{P\in U(\b a,\b b)}\t{KL}(P\|K)
+$$
+这是因为，在最小化 KL 散度时，去掉常数的 $K_{i,j}$ 项，再去掉归一的 $P_{i,j}$ 项（相当于回归常规 KL 散度定义），则有
+$$
+\sum P_{i,j}\log\dfrac{P_{i,j}}{\exp(-C_{i,j}/\vare)}
+\\=\sum P_{i,j}\log P_{i,j}+\dfrac1\vare\sum C_{i,j}P_{i,j}
+$$
+恰是原始熵正则式。这样，其即将复杂的优化问题转成一个纯集合的投影问题。
+
+------
+
+当然，这个定义也可以扩展到一般场合。对于离散测度和费用函数 $c$，有
+$$
+\c L_c^\vare(\alpha,\beta)=\t L_C^\vare(\b a,\b b)
+$$
+定义连续 KL 散度为
+$$
+\t{KL}(\pi\|\xi)=\int_{\c X\times\c Y}\log\left(\dfrac{\d\pi}{\d\xi}(x,y)\right)\d\pi+\int_{\c X\times\c Y}(\d\xi-\d\pi)
+$$
+而在 Radon-Nikodym 导数不存在时定义为正无穷。则连续场合有
+$$
+\c L_c^\vare(\alpha,\beta)=\min_{\pi\in\c U(\alpha,\beta)}\int_{\c X\times\c Y}c\d\pi+\vare\t{KL}(\pi\|\alpha\otimes\beta)
+$$
+特别地，此处的 $\alpha\otimes\beta$ 并不重要，仅仅界定了一个支撑集。这是因为对于一切有相同支撑集的 $\alpha',\beta'$ 都有
+$$
+\t{KL}(\pi\|\alpha\otimes\beta)=\t{KL}(\pi\|\alpha'\otimes\beta')-\t{KL}(\alpha\otimes\beta\|\alpha'\otimes\beta')
+$$
+同理有投影视角的写法：考虑 Gibbs 分布
+$$
+\d\c K=\exp(-c(x,y)/\vare)\d\alpha\d\beta
+$$
+则有
+$$
+\c L_c^\vare(\alpha,\beta)=\min_{\pi\in\c U(\alpha,\beta)}\t{KL}(\pi\|\c K)
+$$
+也有随机变量语言
+$$
+\c L_c^\vare(\alpha,\beta)=\min_{(X,Y)}\cur{\E_{(X,Y)}c(X,Y)+\vare I(X;Y):X\sim\alpha,Y\sim\beta}
+$$
+其中 $I$ 是互信息 $\t{KL}(\pi\|\alpha\otimes\beta)$。
+
+### Sinkhorn's Algorithm
+
+定理：投影视角写法
+$$
+\arg\min_{P\in U(\b a,\b b)}\t{KL}(P\|K)
+$$
+的唯一解总是可以写成下式
+$$
+P_{i,j}=\b u_iK_{i,j}\b v_j
+$$
+其中 $\b u,\b v$ 是严格正的常向量。也可以简写成 $P=\t{diag}(\b u)K\t{diag}(\b v)$。
+
+证明考虑引入对偶 $\b f,\b g$ 然后写出 Lagrange 函数是
+$$
+L=\ip{P,C}-\vare H(P)-\ip{\b f,P\b 1_m-\b a}-\ip{\b g,P^\top\b1_n-\b b}
+$$
+使用 KKT 条件知
+$$
+0=\dfrac{\p L}{\p P_{i,j}}=C_{i,j}+\vare\log P_{i,j}-\b f_i-\b g_j
+$$
+整理可知 $P_{i,j}=\exp(\b f/\vare)\exp(-C_{i,j}/\vare)\exp(\b g/\vare)$。定义 $\b u=\exp(\b f/\vare),\b v=\exp(\b g/\vare)$，并代入 Gibbs 核的定义即证。
+
+这样构造出的 $\b u,\b v$ 必须满足行列的和限制，即 $\b u\odot K\b v=\b a,\b v\odot(K^\top\b u)=\b b$，其中 $\odot$ 是 Hadamard 积。于是有一个简单方法：任意初始化后，轮流迭代更新 $\b u,\b v$。不同的初始化常常会导致不同的迭代结果，但是 $\b u,\b v$ 关于常数 $\lambda$（$\lambda\b u,\b v/\lambda$）是唯一的，且迭代必然收敛。这就是 Sinkhorn 算法。
+
+<span id="BregmanIteration"></span>此外，还有另一种由 Bregman 提出的对原始问题的迭代：有行限制 $\c C_\b a^1=\cur{P:P\b 1_m=\b a}$，列限制 $\c C_\b b^2=\cur{P:P^\top\b 1_n=\b b}$，则 $U(\b a,\b b)=\c C_\b a^1\cap\c C_\b b^2$。于是可以轮流求
+$$
+P^{(\ell+1)}=\t{Proj}_{\c C_\b a^1}^\t{KL}(P^{(\ell)})
+\\P^{(\ell+2)}=\t{Proj}_{\c C_\b a^2}^\t{KL}(P^{(\ell+1)})
+$$
+的 Mirror Descent，则其最终会收敛至唯一解，且其与 Sinkhorn 迭代完全等价。
+
+可以证明的是，当 $n=m$ 且 $\vare=4\log(n)/\tau$ 时，在 $O(\|C\|_\infty^3\log(n)\tau^{-3})$ 步内，Sinkhorn 收敛到 $\ip{P',C}\leq \t L_C(\b a,\b b)+\tau$ 的解。另一种策略是不采用固定 $\vare$，而是不断调小 $\vare$ 的退火过程，即
+$$
+P^{(\ell+1)}=\arg\min_{P\in U(\b a,\b b)}\cur{\ip{P,C}+\vare\t{KL}(P\|P^{(\ell)})}
+$$
+可以发现其遵循一个典型的 Mirror Descent 过程，而每一步 Mirror Descent 的解都使用 $P^{(\ell)}$ 为 Kernel 的 Sinkhorn。
+
+既然将其解释为 Mirror Descent 视角，那么自然可以如前文所说，超脱熵和 KL 散度的框架，而是变到一般的凸函数 $R(P)$ 以及其上的 Bregman 散度。但是，熵的优势在于其天然隐含了 $P$ 的严格正性，而一般的凸度量需要额外显式添加 $P\geq0$ 的约束。此外，熵的场合，单步 MD 可以使用 Sinkhorn 高效求解，而一般凸函数时不一定存在高效解法，可能需要使用更复杂的工具，且难以并行。
+
+> [!TIP]
+>
+> 分析 Sinkhorn 算法的收敛性可以使用 **Hilbert 度量** 作为工具。对于正 $n$ 维向量 $\b u,\b v$，有
+> $$
+> d_\c H(\b u,\b v)=\log\max_{i,j}\dfrac{\b u_i\b v_j}{\b u_j\b v_i}
+> $$
+> Hilbert 度量是 **射影空间** 上的度量，这意味着其中任意一者乘以任意系数缩放后度量结果不变，换句话说其实际在度量二者射线间夹角。于是其满足三角不等式，且 $d_\c H=0$ 当且仅当 $\b u\sim\b v$ 也即二者成缩放关系。
+>
+>
+> 其另一种理解方式是通过 **Variation Seminorm** $\|\b f\|_\t{var}=\max\b f_i-\min\b f_i$：有
+> $$
+> d_\c H(\b u,\b v)=\|\log\b u-\log\b v\|_\t{var}
+> $$
+> 而 VS 又与 $\ell_\infty$ norm 关系很大：有 $\|\b f\|_\t{var}\leq2\|\b f\|_\infty$；反之，如果已知某一维上 $\b f_i=0$ 则又有 $\|\b f\|_\infty\leq\|\b f\|_\t{var}$。
+>
+> Hilbert 度量的核心性质是其关于正矩阵的压缩性质：对于 $n\times m$ 的正矩阵 $K$，对于一切正向量 $\b u,\b v$，都有
+> $$
+> d_\c H(K\b u,K\b v)\leq\lambda(K)d_\c H(\b u,\b v)
+> $$
+> 其中 $\lambda(K)$ 是一个与 $K$ 本身性质相关的、必然小于 $1$ 的常数。这其实很容易理解：原本可行的 $\b u,\b v$ 范围是全体正向量，但是乘以 $K$ 后，这个 $\R^+$ 区域就缩水了。
+>
+> 这个性质可以被用于证明指数收敛性。
+
+### Parallelized Sinkhorn
+
+使用并行算法加速 Sinkhorn 算法。假设同时要计算 $N$ 组 $(\b a_i,\b b_i)$ 间的 $L_C^\vare$，则可以定义它们拼成的矩阵 $A,B$，然后即有
+$$
+U^{(\ell+1)}=A/KV^{(\ell)}
+\\V^{(\ell+1)}=B/K^\top U^{(\ell+1)}
+$$
+特别地，如果代价矩阵 $C$ 具有某种特殊的维数独立性（这是这个问题上常见的场合），即存在某种 $i\to(i_1,\dots,i_d)$ 的维数写法和每维独立的代价矩阵 $C^k$，使得
+$$
+C_{i,j}=\sum_{k=1}^dC^k_{i_k,j_k}
+$$
+则同样有
+$$
+K_{i,j}=\prod K_{i_k,j_k}^k
+$$
+此时矩阵乘法 $K\b u$ 可以关于每个维数分开进行，让其复杂度变为 $O(n^{1+1/d})$。这在超立方体等场合会很有用。
+
+另一种常见的假设是 $K$ 具有平移不变性，即 $K_{i,j}=k_{i-j}$。此时 $K\b u$ 其实是卷积 $k\star u$，可以使用 FFT 等近似处理。
+
+### Stablized Sinkhorn
+
+Sinkhorn 的问题之一在于 $\vare$ 很小时会出现精度问题。此时可以在对数域中优化以保证精度。
+
+具体而言，我们推导 Sinkhorn 算法时给出了最优解处需满足 $P_{i,j}=\exp(\b f/\vare)\exp(-C_{i,j}/\vare)\exp(\b g/\vare)$ 也即 $P=\t{diag}(e^{\b f/\vare})K\t{diag}(e^{\b g/\vare})$。于是在 Lagrange 函数中代入该式，即有对偶为
+$$
+(\b f,\b g)\mapsto\ip{P,C}-\vare H(P)-\ip{\b f,P\b 1_m-\b a}-\ip{\b g,P^\top\b1_n-\b b}
+\\=\exp(\b f/\vare)^\top(K\odot C)\exp(\b g/\vare)-\vare H(\t{diag}(e^{\b f/\vare})K\t{diag}(e^{\b g/\vare}))
+$$
+而又有
+$$
+-\vare H(\t{diag}(e^{\b f/\vare})K\t{diag}(e^{\b g/\vare}))=\vare\ip{P,\log P-1_{n\times m}}
+\\=\ip{\t{diag}(e^{\b f/\vare})K\t{diag}(e^{\b g/\vare}),\b f\b 1_m^\top+\b1_n\b g^\top-C-\vare1_{n\times m}}
+\\=-\exp(\b f/\vare)^\top(K\odot C)\exp(\b g/\vare)+\ip{\b f,\b a}+\ip{\b g,\b b}-\vare\exp(\b f/\vare)^\top K\exp(\b g/\vare)
+$$
+于是即知其对偶式为
+$$
+\t L_C^\vare(\b a,\b b)=\max_{\b f,\b g}\ip{\b f,\b a}+\ip{\b g,\b b}-\vare\exp(\b f/\vare)^\top K\exp(\b g/\vare)
+$$
+要求解这个无限制的最大化问题，一个想法是对 $\b f,\b g$ 分开来做 coordinate ascent。具体而言，令待优化式为 $Q(\b f,\b g)$，则
+$$
+\nabla_\b fQ(\b f,\b g)=\b a-\exp(\b f/\vare)\odot(K\exp(\b g/\vare))
+\\\nabla_\b gQ(\b f,\b g)=\b b-\exp(\b g/\vare)\odot(K\exp(\b f/\vare))
+$$
+**block coordinate ascent** 就是只在某几个坐标（在本问题下，对于 $(\b f,\b g)$ 的目标对，只在 $\b f$ 或 $\b g$）上跑坐标上升。此时问题是凸的，可以直接一步到位求最优解，也即 $\nabla_\b fQ(\b f,\b g)=\b0$，于是解得
+$$
+\b f^{(\ell+1)}=\vare\log\b a-\vare\log(K\exp(\b g^{(\ell)}/\vare))
+\\\b g^{(\ell+1)}=\vare\log\b b-\vare\log(K^\top\exp(\b f^{(\ell+1)}/\vare))
+$$
+而这个迭代其实和 Sinkhorn 是等价的：有 $(\b f^{(\ell)},\b g^{(\ell)})=\vare(\log\b u^{(\ell)},\log\b v^{(\ell)})$。
+
+此外=1，$\vare\log(K\exp(\b g^{(\ell)}/\vare))=(-\vare\log\sum(C_{i,j}-\b g^{(\ell)}_i)/\vare)_j$ 其实满足一个 **softmin** 的形式，也即
+$$
+\t{softmin}_\vare\b z=-\vare\log\sum_i\exp(-\b z_i/\vare)
+$$
+则有
+$$
+\b f^{(\ell+1)}_i=\t{softmin}_\vare(C_{i,j}-\b g_j^{(\ell)})+\vare\log\b a_i
+$$
+于是定义 $\t{Min}_\vare^\t{row}$ 为「以行为单位对矩阵求 softmin」，$\t{Min}_\vare^\t{col}$ 为「以列为单位对矩阵求 softmin」，则可以写作
+$$
+\b f^{(\ell+1)}=\t{Min}_\vare^\t{row}(C-\b1_n(\b g^{(\ell)})^{\top})+\vare\log\b a
+\\\b g^{(\ell+1)}=\t{Min}_\vare^\t{col}(C-\b f^{(\ell+1)}(\b1_m)^{\top})+\vare\log\b b
+$$
+注意到对于任何常数 $x$，均有 $\t{softmin}_\vare\b z=x-\vare\log\sum_i\exp(-(\b z_i-x)/\vare)$。于是定义 $S(\b f,\b g)_{i,j}=C_{i,j}-\b f_i-\b g_j$，则有
+$$
+\b f^{(\ell+1)}=\t{Min}_\vare^\t{row}S(\b f^{(\ell)},\b g^{(\ell)})+\b f^{(\ell)}+\vare\log\b a
+\\\b g^{(\ell+1)}=\t{Min}_\vare^\t{col}S(\b f^{(\ell+1)},\b g^{(\ell)})+\b g^{(\ell)}+\vare\log\b b
+$$
+如此迭代对于一切 $\vare$ 都是稳定的，因为 $S(\b f,\b g)$ 总是有界的。缺点就是计算 softmin 时比起矩阵乘法需要更多的 exp，因此显著更慢。同时，softmin 也难以并行。
+
+实际计算 log-sum-exp 也即 $\log\sum\exp(x_i)$ 时，必须减去 $x_\max$ 以保证数值稳定性。
+
+### Sinkhorn Divergence
+
+首先，熵对偶的最优解 $(\b f^*,\b g^*)$ 必然是原始问题的合法解，即合法的 Kantorovich 势。这是因为 $P_{i,j}=\exp(\b f/\vare)\exp(-C_{i,j}/\vare)\exp(\b g/\vare)\leq1$，于是 $\b f_i^*+\b g_j^*\leq C_{i,j}$。这意味着有
+$$
+\ip{\b f^*,\b a}+\ip{\b g^*,\b b}\leq\t L_C(\b a,\b b)
+$$
+同时，有
+$$
+\nabla\t L_C^\vare(\b a,\b b)=\begin{bmatrix}\b f^*\\\b g^*\end{bmatrix}
+$$
+
+------
+
+<span id="SinkhornDivergence"></span>令 $P^*$ 为熵正则化后问题的最优解，$(\b f^*,\b g^*)$ 为对偶的最优解，则可以定义两种 **Sinkhorn Divergence**：
+$$
+\f B_C^\vare(\b a,\b b)=\ip{C,P^*}=\exp(\b f^*/\vare)(K\cdot C)\exp(\b g^*/\vare)
+\\\f D_C^\vare(\b a,\b b)=\ip{\b f^*,\b a}+\ip{\b g^*,\b b}
+$$
+则满足
+$$
+\f D_C^\vare(\b a,\b b)\leq\t L_C^\vare(\b a,\b b)\leq\f B_C^\vare(\b a,\b b)
+$$
+同时有 $\f D_C^\vare(\b a,\b b)-\f B_C^\vare(\b a,\b b)=\vare(H(P^*)+1)$。
+
+但是问题是，它们均是最优解处的性质，而实际运行 Sinkhorn 算法时我们只会进行有限步。在进行有限步时，对偶迭代的 $(\b f^{(\ell)},\b g^{(\ell)})$ 仍然是合法的势，于是定义
+$$
+\f D_C^{(\ell)}(\b a,\b b)=\ip{\b f^{(\ell)},\b a}+\ip{\b g^{(\ell)},\b b}
+$$
+则有 $\f D_C^{(\ell)}(\b a,\b b)\leq\t L_C^\vare(\b a,\b b)$。
+
+但是，另一方面，原始迭代的 $P^{(\ell)}$ 只会满足单侧的约束，换言之不是合法的传输方案。通过取整可以造出满足约束的方案，并得到一个上界。
+
+与熵正则化距离 $\t L_C^\vare$ 不同，Sinkhorn 散度 $\f D_C^{(\ell)}$ 一般不是凸的，但确实是可微的，因此可以充当神经网络中的元件。
+
+### Generalized Sinkhorn
+
+历数对 OT 问题进行的 relaxation：
+
+- 最初，Monge 问题要求必须作为整体进行传输。
+- 然后，Kantorovich 问题放宽了整体性的要求，允许一个源向多个汇传输。
+- 熵正则化加入了熵项，对传输的「均匀性」提供了奖励，同时让优化具有了强凸性。
+
+但是，目前的规划仍然受限于 $\b a,\b b$ 两个边缘分布。如果更进一步呢？
+
+- 不再强制要求边缘分布，而是在不满足时施加惩罚。
+
+那么此时问题就变为
+$$
+\min_P\ip{C,P}-\vare H(P)+F(P\b 1_m)+G(P^\top\b1_n)
+$$
+朴素的熵正则化问题有 $F=\iota_\cur{\b a},G=\iota_\cur{\b b}$，其中
+$$
+\iota_\c C(\b x)=\begin{cases}0&(x\in\c C)\\+\infty&(\t{otherwise})\end{cases}
+$$
+而 Sinkhorn 可被扩展为 Bregman 式的交替迭代
+$$
+\b u\gets\dfrac{\t{Prox}_F^\t{KL}(K\b v)}{K\b v},\b v\gets\dfrac{\t{Prox}_G^\t{KL}(K^\top\b u)}{K^\top\b u}
+$$
+特别地，此处的 $\t{Prox}$ 可以看做是 [前文](#BregmanIteration) 的映射 $\t{Proj}$ 的一种扩展：有
+$$
+\t{Prox}_F^\t{KL}(\b u)=\arg\min_{\b u'}\t{KL}(\b u'\|\b u)+F(\b u')
+$$
+这个问题的对偶则是
+$$
+\max_{(\b f,\b g)}-F^*(\b f)-G^*(\b g)-\vare\sum_{i,j}\exp[(\b f_i+\b g_j-C_{i,j})/\vare]
+$$
+其中 $F^*,G^*$ 是 Fenchel 共轭。
+
+### Conclusion
+
+```mermaid
+graph LR
+    A[Kantorovich 规划]
+    B[熵正则化]
+    H[熵对偶]
+    C[uv 式 Sinkhorn]
+    D[Bregman 式 Sinkhorn]
+    E[fg 式 Sinkhorn]
+    F[Sinkhorn 下界]
+    G[Sinkhorn 上界]
+    I[广义 Sinkhorn]
+    J[广义 Sinkhorn 对偶]
+    A --正则化--> B
+    B <--对偶--> H
+    B --解法--> C
+    C <--等价--> D
+    H --解法--> E
+    E <--等价--> C
+    E <--等价--> D
+    E --推出--> F
+    C --推出--> G
+    B --松弛--> I
+    I <--对偶--> J
+```
+
+## IV. Wasserstein OT
+
+### $c$-Transform and $\bar c$-Transform
+
+首先将之前引入的离散场合的 $C$-Transform 扩展到连续场合。
+
+有 Kantorovich 对偶为
+$$
+\c E(f,g)=\int_\c Xf\d\alpha+\int g\d\beta+\iota_{\c R(c)}(f,g)
+$$
+其中 $\c R(c)=\cur{(f,g):f\oplus g\leq c}$，而 $\iota$ 是 indicator function。定义 $f^c(y)=\inf_xc(x,y)-f(x)$，$g^{\bar c}(x)=\inf_yc(x,y)-g(y)$。后者的 notation 是因为可以定义 $\bar c(x,y)=c(y,x)$。
+
+同离散场合一样，有 $f^c\in\arg\max_g\c E(f,g)$、$g^\bar c\in\arg\max_f\c E(f,g)$。同时，有
+$$
+\c L_c(\alpha,\beta)=\sup_f\int f\d\alpha+\int f^c\d\beta
+\\=\sup_g\int g^{\bar c}\d\alpha+\int g\d\beta
+$$
+换言之，其允许我们将对 $(f,g)$ 的双函数最大化问题，转化为对 $(f,f^c)$ 或 $(g^{\bar c},g)$ 的单函数最大化问题。
+
+###  General 1-Wasserstein
+
+我们考虑 $1$-Wasserstein 距离，即费用 $c$ 是某种距离 $d$ 时的距离。
+
+定义
+$$
+\t{Lip}(f)=\sup\dfrac{|f(x)-f(y)|}{d(x,y)}
+$$
+它是函数具有的 Lipschitz 连续性的下界；如果 $\t{Lip}(f)=+\infty$ 则函数并非 L-连续。
+
+定理：对于 $\c X=\c Y$、$c$ 是距离时，存在 $g$ 使得 $f=g^c$ 当且仅当 $f$ 是 $1$-Lipschitz 连续的。特别地，此时有 $f^c=-f$。
+
+证明：假设 $f=g^c$，则
+$$
+\begin{align*}
+|f(x)-f(y)|&=\left|\inf_{z\in\c X}d(x,z)-g(z)-\inf_{z\in\c X}d(y,z)-g(z)\right|
+\\&\leq \sup_{z\in\c X}|d(x,z)-d(y,z)|&&(|\inf f-\inf g|\leq\sup|f-g|)
+\\&\leq d(x,y)&&(\t{三角不等式})
+\end{align*}
+$$
+另一方面，假如有 $1$-Lipschitz 连续性，则有 $f(y)-d(x,y)\leq f(y)\leq f(y)+d(x,y)$；使用 $g=-f$，则有
+$$
+g^c(y)=\inf_xd(x,y)+f(x)\geq\inf_xd(x,y)+f(y)-d(x,y)=f(y)
+\\g^c(y)=\inf_xd(x,y)+f(x)\leq\inf_xd(x,y)+f(y)+d(x,y)=f(y)
+$$
+于是 $g^c=f$；同理可得 $f^c(y)\geq -f(y)$ 且 $f^c(y)\leq-f(y)$，于是 $f^c=-f$。由前一小节的技巧，即有
+$$
+\c W_1(\alpha,\beta)=\c L_c(\alpha,\beta)=\max_f\cur{\int f(\d\alpha-\d\beta):\t{Lip}(f)\leq1}
+$$
+这个式子表明 1-Wasserstein 距离其实是一种范数，且其对一切满足 $\int_\c X\alpha=\int_\c X\beta$ 的 $(\alpha,\beta)$ 均有效，而不一定要是正的。这种范数被称作 **Kantorovich-Rubinstein 范数**。
+
+在离散的场合，如果 $\alpha-\beta=\sum\b m_k\delta_{z_k}$ 其中 $\b m$ 是零和向量，则其也可以被写成
+$$
+\c W_1(\alpha,\beta)=\max_{\b f}\cur{\sum\b f_k\b m_k:\forall (i,j),|\b f_i-\b f_j|\leq d(z_i,z_j)}
+$$
+
+### 1-Wasserstein on Euclidean Space
+
+特别地，当 $\c X=\c Y=\R^d$ 也即是 Euclidean 空间时，Lipschitz 连续性可以被局部化：有
+$$
+\t{Lip}(f)=\sup\|\nabla f(x)\|_2=:\|\nabla f\|_\infty
+$$
+于是有等价形式
+$$
+\c W_1(\alpha,\beta)=\max_f\cur{\int f(\d\alpha-\d\beta):\|\nabla f\|_\infty\leq1}
+$$
+和对偶等价形式
+$$
+\c W_1(\alpha,\beta)=\min_{s:\R^d\to\R^d}\cur{\int \|s(x)\|_2\d x:\nabla\cdot s=\alpha-\beta}
+$$
+对偶等价形式被称作 **Beckmann 公式**。在 2D 的场合，$s$ 可以被看做是无旋的流量场。
+
+### 1-Wasserstein on Graph
+
+特别地，当考虑图论问题，而距离是最短路时，倘若直接套用标准的 OT 则需要计算昂贵的全源最短路以获得完整的 $c$ 矩阵。
+
+注意到 1-Lipschitz 在图论上的等价形式是 $|\b f_i-\b f_j|\leq w_{i,j}$，于是第一种等价可以写作
+$$
+\t W_1(\b a,\b b)=\max_\b f\cur{\sum\b f_i(\b a_i-\b b_i):|\b f_i-\b f_j|\leq w_{i,j}}
+$$
+这样的限制仅仅作用于所有边，省去了全源最短路的过程。
+
+而 Beckmann 形式则是
+$$
+\t W_1(\b a,\b b)=\min_\b s\cur{\sum w_{i,j}s_{i,j}:\nabla\cdot s=\b a-\b b,s\geq0}
+$$
+其中 $\nabla\cdot s$ 即为散度最朴素的定义，净流出量。
+
+可以发现，此时问题是一个简单的最小费用流问题，可以直接套用相关图论算法。
+
+## V. Dynamic OT
+
+### Benamou-Brenier Formulation
+
+在 Euclidean 空间且 $c(x,y)=\|x-y\|^2$ 的场合，OT 可以被解释为在连续时间 $[0,1]$ 中，由起始分布 $\alpha_0$ 到结尾分布 $\alpha_1$ 的连续动力学。令 $\alpha_t$ 为 $t$ 时刻的质量分布（是标量测度），$v_t$ 为速度场（是向量场），则满足质量守恒公式
+$$
+\dfrac{\p\alpha_t}{\p t}+\nabla\cdot(\alpha_tv_t)=0
+$$
+速度场关于 $\alpha_t$ 的模长被定义为
+$$
+\|v_t\|_{\ell^2(\alpha_t)}=\sqrt{\int\|v_t(x)\|^2\d\alpha_t(x)}
+$$
+而此时则有 $\c W_2^2(\alpha_0,\alpha_1)=\c L_c(\alpha_0,\alpha_1)$ 的等价形式（**Benamou-Brenier 公式**）：
+$$
+\c W_2^2(\alpha_0,\alpha_1)=\min_{\t{质量守恒且满足边界条件的}(\alpha_t,v_t)}\int_0^1\|v_t\|_{\ell^2(\alpha_t)}^2\d t
+$$
+这个优化是非凸的，因为质量守恒式中有乘积项 $\alpha_tv_t$。于是引入动量（是向量测度）$J_t=\alpha_tv_t$，则转化后的模型变为
+$$
+\c W_2^2(\alpha_0,\alpha_1)=\min_{\alpha_0,\alpha_1;\tfrac{\p\alpha_t}{\p t}+\nabla\cdot J_t=0}\int_0^1\d t\int\theta(\alpha_t(x),J_t(x))\d x
+$$
+其中
+$$
+\theta(a,b)=\begin{cases}\|b\|^2/a&(a>0)\\0&(a=0,b=0)\\+\infty&(\t{otherwise})\end{cases}
+$$
+而这个模型是凸的。
+
+------
+
+以上是通过流体力学视角（速度场）建立的。另一方面，由 Brenier 定理，$\alpha_0,\alpha_1$ 有至少一者绝对连续时存在 Monge Map $T$ 使得 $T_\sharp\alpha_0=\alpha_1$，此时动力学是唯一的（沿着 $T$ 的直线传输），可以写成 **McCann 插值** 的形式
+$$
+\alpha_t=((1-t)\t{Id}+tT)_\sharp\alpha_0
+$$
+
+### Discretization
+
+以上对连续流体的分析在被用于数值计算时需要被离散化。考虑 2D 的场合，此时时间被均分为 $T$ 个离散时间段，空间被切分成 $n_1\times n_2$ 的网格。此时借鉴流体力学中的 **Marker-and-Cell** 模型，将密度 $\b a$ 放在网格中央，动量 $\b J$ 放在网格边缘，于是可以自然定义微分算子们：
+
+- 时间导数 $(\p_t\b a)_{k,i}=\b a_{k+1,i}-\b a_{k,i}$。
+- 空间散度 $(\nabla\cdot J)_{k,i}=\t{右侧流出}-\t{左侧流入}+\t{上面流出}-\t{下面流入}$。
+- 而约束条件的离散形式针对每个格子设置。
+
+但是有一个问题：待优化的能量函数是 $|J|^2/a$，但 $J$ 定义在网格边缘而 $\b a$ 在中央，二者的位置并不重合。解决方法是插值，一般用线性插值。
+
+如此分析同样适用于图论的场合，此时仍然需要插值，但一般用对数插值。
+
+## VI. Statistical Divergences 
+
+除了 OT 以外，还有其它很多常见的衡量分布距离的统计量。
+
+### $\varphi$-Divergence
+
+一个函数 $\varphi:\R\to\R\cup\cur{+\infty}$ 是熵函数，如果其满足：
+
+- 下半连续且凸。
+- 定义域是 $[0,+\infty)$ 的子集，且至少包含一个非零点。
+- *一般需要保证 $\varphi(1)=0$ 以让下述 $\varphi$-散度的定义满足到自身的散度为零。*
+
+定义渐进斜率 $\varphi_\infty'=\lim_{x\to\infty}\varphi(x)/x$。如果其为 $\infty$，则其增长速率为超线性。
+
+定义非负测度间的 $\varphi$-散度为
+$$
+\c D_\varphi(\alpha\|\beta)=\int\varphi\left(\dfrac{\d\alpha}{\d\beta}(x)\right)\d\beta(x)+\varphi'_\infty\alpha^\bot(\c X)
+$$
+这里使用了 Lebesgue 分解定理：对于任何两个测度 $\alpha,\beta$ 都可以有分解 $\alpha=\alpha_\t{ac}+\alpha^\bot$，其中 $\alpha_\t{ac}$ 关于 $\beta$ 绝对连续，$\alpha^\bot$ 关于 $\beta$ 是 **奇异** (singular) 的（也即有质量的部分完全不交），而 $\alpha^\bot(\c X)$ 即为正交部分的总能量。
+
+特别地，对于离散场合，其简化为
+$$
+\t D_\varphi(\b a\|\b b)=\sum_{i\in\t{Supp}(\b b)}\varphi\left(\dfrac{\b a_i}{\b b_i}\right)+\varphi_\infty'\sum_{i\notin\t{Supp}(\b b)}\b a_i
+$$
+特别地，可以使用 Lebesgue 变换后的 $\varphi^*$ 获取另一种等价描述
+$$
+\c D_\varphi(\alpha\|\beta)=\sup_{f:\c X\to\R}\int f(x)\d\alpha(x)-\int\varphi^*(f(x))\d\beta(x)
+$$
+常见的 $\varphi$-散度包括：
+
+- KL 散度，此时熵为 $\varphi_\t{KL}(s)=s\log s-s+1$。其是超线性熵（这意味着如果 $\alpha$ 的支撑集不是 $\beta$ 的子集则散度为正无穷）。KL 散度诱导的测地线路径会倾向于保持质量覆盖——反观 OT 则倾向于平移峰值。离散 KL 散度是唯一一个既是 Bregman 散度又是 $\varphi$-散度的函数。
+- TVD，此时熵为 $\varphi_\t{TV}(s)=|s-1|$。TVD 是唯一一个既是范数又是 $\varphi$-散度的函数。TVD 意义下的收敛是强的收敛，因为在半径为 $R$ 的紧集 $\c X$ 下，有 $\c W_1(\alpha,\beta)\leq R\|\alpha-\beta\|_\t{TV}$。另一方面，TVD 只感知「重叠」而不感知「几何远近」。
+- Hellinger 距离，此时熵为 $\varphi_H(s)=(\sqrt s-1)^2$。计算结果是 $\f h^2(\alpha,\beta)=\int(\sqrt{\rho_\alpha}-\sqrt{\rho_\beta})^2\d x$。
+- JSD，此时熵为 $\varphi(s)=s\log s-(s+1)\log(s+1)$。
+- $\chi^2$ 距离，此时熵为 $\varphi_{\chi^2}(s)=|s-1|^2$，离散形式为 $\sum\dfrac{(\b a_i-\b b_i)^2}{\b b_i}$。
+
+```mermaid
+graph LR
+	A[1-Wasserstein]
+	B[TVD]
+	C[KL]
+	D[Hellinger]
+	E[chisquare]
+	D --d_H<=sqrt(χ²)--> E
+	C --KL<=log(1+χ²)--> E
+	D --d_H<=sqrt(KL)--> C
+	B --TV<=sqrt(KL/2)--> C
+	B --TV<=d_H--> D
+	D --d_H<=sqrt(2TV)--> B
+	B --TV<=sqrt(χ²)/2--> E
+	A --W₁<=d_maxTV--> B
+	B --TV<=W₁/d_min--> A
+```
+
+### IPM
+
+$\varphi$-散度通过比较每一点处的概率密度并以 $\varphi$ scale 来衡量差异。另一种思路是在若干测试函数中寻找最能区分二者的。具体而言，令 $B$ 为函数空间中的一个对称凸集，则定义
+$$
+\|\alpha-\beta\|_B=\sup_{f\in B}\cur{\int f\d\alpha-\int f\d\beta}
+$$
+其被称为 **dual norm**，因为它使用函数空间中的集合 $B$ 来定义其对偶空间（也即测度空间）上的范数。更丰富的 $B$ 让这个距离严格，而平滑的 $B$ 让这个距离宽容。
+
+- TVD 选取的 $f$ 是 $\|f\|_\infty\leq1$ 也即值域在 $[-1,1]$ 之间的全体 $f$。它过于严格，以至于无法区分不重叠分布的间距。
+- $\c W_1$ 选取的 $f$，由 Kantorovich-Rubinstein 对偶，是 $\t{Lip}(f)\leq1$。但它一般只能衡量等质量分布的间距。
+- 还有 Dudley Metric，$B=\cur{f:\|\nabla f\|_\infty\leq1\land\|f\|_\infty\leq1}$，同时限制斜率和幅度。也可以对二者求和并要求和 $\leq1$。
+
+------
+
+另一种思路是使用 RKHS。假如选取 $B$ 为关于 kernel $k$ 定义的 RKHS 上的单位球，则对应的
+$$
+\|\alpha\|_k^2=\int_{\c X\times\c X}k(x,y)\d\alpha(x)\d\alpha(y)
+$$
+而有 **Maximum Mean Discrepancy (MMD)** 公式：
+$$
+\|\alpha-\beta\|_k^2=\int k\d\alpha^2+\int k\d\beta^2-2\int k\d\alpha\d\beta
+$$
+使用 RKHS 不需要解任何最优化问题，而其离散场合就是简单的矩阵乘法。
+
+常见的 kernel 包括：
+
+- Gaussian Kernel $k(x,y)=\exp(-\|x-y\|^2/2\sigma^2)$。优势是足够 universal，样本够多即可检测一切差异；劣势是 $\sigma$ 是全局参数，无法同时捕捉不同尺度的特征。
+- Energy Distance $k(x,y)=-\|x-y\|^p$，其中 $0<p<2$。特别地，当 $p=2$ 时其仅比较分布的均值，不再是真正的度量。
+
+------
+
+还有一种场合是 Sobolev 空间 $H^1(\R^d)$，它要求函数本身和其梯度均 $\ell^2$ 可积。其上的范数为
+$$
+\|f\|^2_{H^1}=\|f\|_{\ell^2}^2+\|\nabla f\|_{\ell^2}^2
+$$
+此时选取 $B=\cur{f:\|f\|_{H^1}\leq1}$，其上定义的对偶范数被称作 $H^{-1}$ 范数。其也有 Benamou-Brenier 形式的写法
+$$
+\|\alpha-\beta\|^2_{H^{-1}(\R^d)}=\min_s\cur{\int\|s(x)\|^2_2\d x:\nabla\cdot s=\alpha-\beta}
+$$
+
+## VII. Variational Wasserstein Problems
+
+### Differentiable Wasserstein Distance
+
+假设有一个作为 Hypothesis Class 的参数化的分布集合 $\cur{\alpha_\theta\mid\theta\in\Theta}$，其中 $\Theta$ 是 Euclidean 空间的一个子集，即为全体合法参数。假设近似目标（数据分布）是 $\beta$，采取 Wasserstein 距离作为 loss，则可以有一个 ERM 式的优化目标
+$$
+\c E(\theta):=\c L_c(\alpha_\theta,\beta)
+\\\min_{\theta\in\Theta}\c E(\theta)
+$$
+特别地，当 $\theta$ 本身描述了一个分布（$\alpha_\theta=\theta,\Theta=\Sigma_n$）或描述了分布的线性组合（$\alpha_\theta=\sum_{i=1}^k\theta_i\alpha_i,\Theta=\Sigma_k$）时，这个优化是凸的；而当 $\theta\mapsto\alpha_\theta$ 的关系任意时，这个优化一般不是凸的。
+
+由泛化理论相关知识，一般需要先验知识（归纳假设）以保证优化的正常进行。
+
+- 如果 $\beta$ 服从某些简单的分布（如 Gaussian 或 1D 分布），那么这个问题具有显式解。
+
+否则，有两种典型的建模方式。
+
+- Eularian 方式假设 $\beta=\sum\b b_i\delta_{y_i}$，$\alpha_\theta=\sum\b a(\theta)\delta_{x_i}$，其中 $\cur{y_i},\cur{x_i}$ 为固定的点集：例如对全空间的网格划分（量化），或者连续空间中的有限个关键点（例如 word embedding）。参数分布 $\alpha_\theta$ 完全由权重向量 $\b a_\theta$ 描述，而实际的 $\b a_\theta$ 一般是稀疏的。
+
+    原始形式的 WD 是不可微的。但使用熵正则化近似，改为最小化 $\c E_\t E(\theta):=\t L_C^\vare(\b a(\theta),\b b)$，其中 $C_{i,j}=c(x_i,y_j)$。由 Sinkhorn 相关可知 $\nabla\t L_C^\vare(\b a,\b b)=(\b f^*,\b g^*)$，其中 $\b f^*,\b g^*$ 为唯一的熵对偶最优解。此外，这两个最优解满足 $\sum\b f^*_i=\sum\b g^*_j=0$ 的性质。
+    使用链式法则分析可知 $\nabla\c E_\t E(\theta)=\p\b a(\theta)^\top\b f$，其中 $\p\b a(\theta)$ 是 $n\times\dim(\Theta)$ 的 Jacobian。
+    其先验为支撑集的平滑、固定和低维性，且如前文所述，是凸优化问题。
+
+- 当空间维数很高且没有 embedding 时，网格划分是不切实际的。此时考虑建模 $\alpha_\theta$ 为数个关键点 $x(\theta)_1\sim x(\theta)_n$ 上的经验分布（一般是 uniform 的），即 $\alpha_\theta=\dfrac1n\sum\delta_{x(\theta)_i}$，而 $x:\Theta\to\c X^n$ 就是关键点映射，且 $\c X$ 假设是 Euclidean 的。于是有 $\c E_\t L(\theta):=\t L_{C(x(\theta))}^\vare(\b1_n/n,\b b)$，其中 $C(x)_{i,j}=c(x(\theta)_i,y_j)$。
+    此时定义 $\c R(C):=\t L_C^\vare(\b a,\b b)$，则可知 $\nabla\c R(C)=P^*$，其中 $P^*$ 为唯一的熵对偶最优解。同样链式法则可知，定义 $\c F(x):=L_{C(x)}^\vare(\b1_n/n,\b b)$，则 $[\nabla\c F(x)]_i=\sum_jP_{i,j}\nabla_1c(x_i,y_i)$，其中 $\nabla_1$ 是对第一维求梯度；然后 $\nabla\c E_\t L(\theta)=\p x(\theta)^\top\nabla\c F(x(\theta))$。
+    其先验为高维数据集中在稀疏的低维流形上，拥有稀疏的支撑集。代价是优化不再具有凸性。
+
+以上两种方式均可以通过 Sinkhorn 的精确解的方式描述 loss 的梯度，进而通过任何一阶优化手段求解。然而实际部署时往往不会跑 Sinkhorn 到收敛，而是只跑少量步，也即 [Sinkhorn Divergence](#SinkhornDivergence) 的场景。此时使用 $\f D_C^{(\ell)}(\b a(\theta),\b b)$ 或 $\f D_{C(x(\theta))}^{(\ell)}(\b a,\b b)$ 替代，且可以使用自动梯度简单求解，唯一的问题是需要更多空间。
+
+### Wasserstein Barycenter
+
+考虑一个广义带权重心问题：其中 $(x_s)_{s=1}^S$ 是数据点，$(\c X,d)$ 是定义了度量（更广义地，散度）的空间，$\cur{\lambda_s}$ 是归一权重，则计算
+$$
+\min_{x\in\c X}\sum_{s=1}^S\lambda_sd(x,x_s)^p
+$$
+特别地，当 $p=2$ 且 $d(x,y)=\|x-y\|_2$ 时，其退化为常规意义的均值。这种均值一般被称作 **Fréchet 均值** 或 **Karcher 均值**。
+
+一般的场合，这个问题会是复杂的非凸问题。然而在度量为 WD 的场合，就有如下的 **Wasserstein 重心**：
+$$
+\min_{\b a\in\Sigma_n}\sum\lambda_s\t L_{C_s}(\b a,\b b_s)
+$$
+其中 $\b b_s\in\Sigma_{n_s}$，$C_s\in\R^{n\times n_s}$。可以发现，它允许被求均值的每个点具有不同的维数！
+
+不过一般而言，我们还是希望所有的 $n_s=n$，且 $C_s=C=D^p$，此时问题简化为
+$$
+\min_{\b a\in\Sigma_n}\sum\lambda_s\t W_p^p(\b a,\b b_s)
+$$
+这个问题其实是个线性规划问题：其等效于
+$$
+\min_{\b a\in\Sigma_n,(P_s\in\R^{n\times n_s})}\cur{\sum\lambda_s\ip{P_s,C_s}:\forall s,P_s\b1_{n_s}=\b a,P_s^\top\b1_n=\b b_s}
+$$
+但是问题是把 $P_s$ 加到优化里会让这个优化问题过于复杂，因此不能直接使用常规通用求解器。
+
+除了对 Gaussian 或 1D 的场合显式分析以外，另一种方法是熵正则化并变成凸优化问题。使用 KL 散度写法后，变成
+$$
+\min_{\cur{P_s}}\cur{\sum_s\lambda_s\vare\t{KL}(P_s\|K_s):\forall s,P_1\b1_{n_1}=\dots=P_S\b1_{n_S},P_s^\top\b1_n=\b b_s}
+$$
+其中 $K_s=\exp(-C_s/\vare)$ 是 Gibbs Kernel。这仍然可以用交替投影的方式求解：最优的 $P_s=\t{diag}(\b u_s)K_s\t{diag}(\b v_s)$，而
+$$
+\b v_s^{(\ell+1)}=\dfrac{\b b_s}{K_s^\top\b u_s^{(\ell)}}
+\\\b a^{(\ell+1)}=\prod(K_s\b v_s^{(\ell+1)})^{\lambda_s}
+\\\b u_s^{(\ell+1)}=\dfrac{\b a^{(\ell+1)}}{K_s\b v_s^{(\ell+1)}}
+$$
+这可以仍然可以通过 Lagrange 乘子法处理。
+
+最后，其还可以被进一步扩展到图上。一张图 $G$ 的所有节点被分成已知的 $V$ 和未知的 $U$ 两类。所有点都有 $\b b_x$ 的特征，而 $V$ 中全部已知、$U$ 中全部未知。所有边上都有代价矩阵 $C_{r,s}$，计算结果即为
+$$
+\min_{\cur{\b b_u}_{u\in U}}\sum_{(r,s)}\t L_{C_{r,s}}(\b b_r,\b s)
+$$
+特别地，朴素 Wasserstein 重心可以被解释为星形图上确定中心点特征。
+
+这个过程会将已知点的信息通过图的结构传播到远处，因此得名 **Wasserstein Propagation**。
+
+特别地，它是一种广义的谱聚类。朴素的谱聚类对输入的向量列 $\cur{f_i}$ 定义了 Euclidean 空间上的 Dirichlet 能量
+$$
+\t E(f)=\sum_{(i,j)}w_{i,j}\|f_i-f_j\|^2
+$$
+而 Wasserstein Propagation 将其扩展到概率分布列 $\cur{\mu_i}$，并定义了 Wasserstein 流形空间上的 Dirichlet 能量
+$$
+\t E(f)=\sum_{(i,j)}w_{i,j}\c W_2^2(\mu_i,\mu_j)
+$$
+
+### Wasserstein Gradient Flow
+
+Wasserstein 距离可以取代 Bregman 散度，用于求解概率单纯形上的函数 $F(\b a)$ 的最小值，得到一个 Mirror Descent 式的式子
+$$
+\b a^{(\ell+1)}=\arg\min_{\b a}\t W_p(\b a,\b a^{(\ell)})^p+\tau F(\b a)
+$$
+或者更一般地，用于求 $\c M_+^1(\c X)\to\R$ 的函数 $F$ 的最值
+$$
+\alpha^{(\ell+1)}=\arg\min_{\alpha}\c W_p(\alpha,\alpha^{(\ell)})^p+\tau F(\alpha)
+$$
+这个公式被称作 **Jordan-Kinderlehrer-Otto Scheme**。
+
+> [!NOTE]
+>
+> 使用 Bregman 散度导出的会是 AdaBoost 式的 $\alpha^{(\ell+1)}(x)\propto\alpha^{(\ell)}(x)\exp(-\tau\nabla F(\alpha)(x))$ 的式子。它意味着概率分布的 **垂直运动**：分布凭空从一处移到另一处，完全没有利用背景空间的拓扑性质。
+>
+> 另一方面，JKO 方案描述了概率分布的 **水平运动**：分布在空间中逐渐漂移，不会瞬移，更贴近物理事实。
+
+当步长 $\tau\to0$ 并定义时间参数 $t=\ell\tau$ 时，其逐渐近似为连续的梯度流，在 $p=2$ 的 Euclidean 空间下，其表现为 **连续性方程**：
+$$
+\dfrac{\p\alpha_t}{\p t}=\nabla\cdot(\alpha_t\nabla F'(\alpha_t))
+$$
+当 $F$ 是关于 Lebesgue 测度的负相对熵也即 $F(\alpha)=-\t{KL}(\alpha\|\lambda)$ 时，其变为
+$$
+\dfrac{\p\alpha_t}{\p t}=\Delta\alpha_t
+$$
+其中 $\Delta$ 是 Laplacian。
+
+------
+
+JKO 是一种 **隐式** 方案，因为其满足
+$$
+x^{(\ell+1)}=\arg\min_xd(x,x^{(\ell)})^2+\tau F(x)
+$$
+的格式；而 **显式** 方案则做一个线性近似以简化计算：
+$$
+x^{(\ell+1)}=\arg\min_xd(x,x^{(\ell)})^2+\tau\ip{\nabla F(x^{(\ell)}),x}
+$$
+显式方案一般更容易计算，但代价是不稳定，同时容易退化为 Coordinate Descent。
+
+------
+
+梯度流是 Euler 的视角。如果切换为 Lagrange 视角，使用 $n$ 个粒子来参数化分布，最小化某种能量：
+
+- 线性泛函 $F(\alpha)=\int V\d\alpha$，如势能。转成粒子形式就是 $F(\alpha)=\dfrac1n\sum V(x_i)$。
+- 二次相互作用泛函 $F(\alpha)=\int W(x,y)\d\alpha(x)\d\alpha(y)$，如引力/斥力。转成粒子形式就是 $F(\alpha)=\dfrac1{n^2}\sum W(x_i,y_i)$。
+- 熵，只对连续测度有定义。这使得必须使用其它东西近似，比如到平均最近邻对数距离，以衡量拥挤程度。
+
+当距离足够近时，2-Wasserstein 距离约等于 Euclidean 距离，因此 Lagrange 视角下的 Wassertein 梯度流等效于对粒子的位置向量做 Euclidean 梯度流。
+
+另一方面，当目标函数 $F$ 非凸或不可微时（如 NN 近似），则必须使用隐式更新。
+
+> [!TIP]
+>
+> 或者，也可以使用 ML 视角，把 kNN 换成可微的 NCA，这样就可以继续使用显式也即梯度法了。
+
+### Minimum Kantorovich Estimator
+
+考虑一个 ERM 问题
+$$
+\min_{\theta\in\Theta}\c L(\alpha_\theta,\beta)
+$$
+其中 $\beta$ 是 **离散** 的经验分布 $\beta=\dfrac1n\sum\delta_{x_i}$，而 $\c L$ 是定义在一个离散分布和一个任意分布间的误差。
+
+当 $\alpha$ 绝对连续时，存在密度 $\rho_\theta$，此时可以定义 MLE loss
+$$
+\c L_\t{MLE}(\alpha_\theta,\beta)=-\sum\log\rho_\theta(x_i)
+$$
+当经验分布的采样 $n$ 充分多时，$\c L_\t{MLE}(\alpha,\beta)\to\t{KL}(\alpha,\bar\beta)$，其中 $\bar\beta$ 是 population distribution。
+
+然而，如果 $\alpha$ 不存在密度或是不好算密度，MLE 就难以计算。例如生成式模型，如果被解释为一个基分布 $\zeta$ 的前推：
+$$
+\alpha_\theta=(h_{\theta})_\sharp\zeta
+$$
+就会导致密度中存在孤立点或者 intractable。
+
+此时则需要把其替换成 weak metric，也即满足形式
+$$
+\c L(\alpha,\beta)=\sup_{(f,g)\in\c R}\cur{\int f\d\alpha+\int g\d\beta}
+$$
+特别地，dual norm 中 $\c R=\cur{(f,-f):f\in B}$，而 OT 的 Kantorovich Duality 中 $\c R(c)=\cur{(f,g):f\oplus g\leq c}$。因此，它们都是合法的弱度量。使用 Wasserstein 距离的 ERM 即被称作 **Minimum Kantorovich Estimator**。
+
+令 $f_\theta$ 为 $\theta$ 时的最优 $f$，定义 $\c E(\theta)=\c L(\alpha_\theta,\beta)$，使用 Danskin 定理可知
+$$
+\nabla\c E(\theta)=\int[\p h_\theta(x)]^\top\nabla f_\theta(x)\d\alpha_\theta(x)
+$$
+其中 $\p h_\theta(x)$ 是关于 $\theta$ 的 Jacobian，而 $\nabla f_\theta(x)$ 是关于 $x$ 的梯度。这提供了通过一阶方法进行优化的可能性。此外，OT 的场合也可以切换到原始问题并得到另一种可能更简单的模式。
+
+最后，OT 的费用函数 $c$ 有时需要进行一些 metric learning，以适应数据的特定分布。这可以使用 metric learning 中的经典方法，或是针对已知的最优运输 $P$ 反推等。

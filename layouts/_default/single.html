@@ -1,0 +1,13 @@
+{{ define "main" }}
+{{ $m := partial "metadata.html" . }}
+<article>
+  <header class="article-header"><h1>{{ $m.realTitle }}</h1>
+    {{ with $m.realDescription }}<p>{{ . }}</p>{{ end }}
+    {{ with $m.date }}<time datetime="{{ . }}">{{ . }}</time>{{ end }}
+  </header>
+  <div class="prose">{{ .Content }}</div>
+</article>
+{{ if .Store.Get "hasMath" }}<script defer src="{{ "js/math.js" | relURL }}"></script>{{ end }}
+{{ if .Store.Get "hasMermaid" }}<script type="module" src="{{ "js/mermaid.js" | relURL }}"></script>{{ end }}
+{{ partial "giscus.html" . }}
+{{ end }}

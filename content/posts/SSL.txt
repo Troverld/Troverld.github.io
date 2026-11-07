@@ -1,0 +1,1416 @@
+$$
+\newcommand{\eps}{\epsilon}
+\newcommand{\cur}[1]{\left\{#1\right\}}
+\newcommand{\b}{\boldsymbol}
+\newcommand{\c}{\mathcal}
+\newcommand{\t}{\text}
+\newcommand{\E}{\mathop{\mathbb E}\limits}
+\newcommand{\d}{\mathrm d}
+\newcommand{\P}{\mathop{\mathbb P}\limits}
+$$
+
+### I. 基于重建的自监督
+
+这一类方法实现自监督的方式是破坏样本，然后重建之。
+
+> [!CAUTION]
+>
+> <font color="red">因为 train 时的样本是破坏后的，但是 inference 时的样本是完整的，所以它们统统都是 pretrain 方法，不能实现 zero-shot 特征提取，必须 tune。</font>
+
+#### Word2Vec
+
+CBOW：用上下文预测中心词。
+
+Skip-Gram：用中心词预测上下文。
+$$
+J(\theta)=\dfrac1T\sum_{i=1}^T\sum_{-C\leq j\leq C,j\neq0}\log P(w_{i+j}\mid w_i)
+$$
+为了避免在大词表上算 softmax，可以使用 **负采样** 技巧，将多分类转成二分类，也即判断词对是否是真实的上下文对。
+$$
+J(\theta)=-\log\sigma(w_O,w_I)-\sum_{i=1}^k\E_{w_i}\log\sigma(-(w_i,w_I))
+$$
+
+> [!TIP]
+>
+> 可以发现这玩意已经有 CLIP 的雏形了。
+
+#### ELMo
+
+双向 LSTM 结构。
+$$
+J(\theta)=\sum \log P(w_t\mid w_{1:t-1})+\log P(w_t\mid w_{t+1:T})
+$$
+
+> [!TIP]
+>
+> 可以发现这玩意是一个双向自回归的结构。事实上自回归同样属于一种常规的自监督方法。
+
+#### BERT
+
+预测被 `[MASK]` 的 token。
+
+#### BEiT
+
+BERT 的图像界镜像。
+
+- 将 patch 的 40% mask 为可学习的 `[MASK]` 向量，其与 patch 的原始形状相同。
+- mask 并非随机选择，而是 **block-wise** 的，先随机 block size，再随机长宽比，最后随机方位，比起纯随机更加完整，类似 impainting。有助于学习空间结构，但更适合低掩码率。
+- 将 mask 后的完整序列，包括可见的和 `[MASK]` 的，一起送入 ViT。
+- ViT 类似 BERT 是纯 encoder 架构，输出是过线性层。
+- 不追求像素级重建，只要求重建到 discrete VAE (称作 tokenizer) 提供的离散 class，loss 是 CE。
+- 在 finetune/下游任务时，丢弃 linear head，直接将未 mask 的 patch 提供给 encoder。**pretrain 和 tune 时的输入长度是相同的，但后者没有 mask。** 
+
+```mermaid
+flowchart LR
+	A[patch]
+	B[masked patch]
+	C[patch]
+	D[...]
+	E[encoder-only ViT]
+	F[linear head]
+	G[discrete token]
+	A --> E
+	B --> E
+	C --> E
+	D --> E
+	B --dVAE--> G
+	E --> F
+	F --predict--> G
+```
+
+#### Wav2Vec 2.0
+
+> [!TIP]
+>
+> 后文涉及到其基础版 Wav2Vec 1.0，是基于正负样本的方法。但因为 2.0 换成了 BERT 式方法，所以被放到此处。当然，2.0 也保留了一部分正负样本的特征。
+
+- 因为模态是波形，所以先做 1D 卷积滤波，得到更低频的表示 $z_t$，波长约 20ms。
+- 使用 BEiT 式 transformer encoder，得到特征 $c_t$。
+- Mask 策略是 **Span Masking**，随机时刻作为起点然后 mask 之后连续的 $M=10$ 个 token，约 200ms 的窗口。
+- 把 $z_t$ 过 **可学习的 quantizer**（相对地，BEiT 是 frozen 的 dVAE）量化到离散向量 $q_t$。使用 Gumbel Softmax 处理不可微性。
+
+Loss 包括两部分：
+
+- 继承了 1.0 时的 contrastive loss：对 $c_t$，以 $q_t$ 作为正样本，其它窗口的 $\tilde q_t$ 作为负样本。
+- 熵项，鼓励码本均衡利用。
+
+#### MAE
+
+虽然任务与 BEiT 相似但是策略大为不同。
+
+- 将 patch 的 75% mask。
+- 被 mask 后的序列中的 mask 不提供给 ViT，仅提供原始序列（加上 position embedding）。
+- ViT 是 encoder-decoder 架构，`[MASK]` 在 decoder 环节加入，用以提供输出位置。因为 encoder 的 token 数远少于 decoder，所以 encoder 可以很深，而 decoder 一般较浅。
+- 追求像素级重建，loss 是 MSE。
+- 在下游任务时，丢弃 decoder head，直接将完整的 patch 提供给 encoder。**pretrain 和 tune 时的输入长度是不同的。**tune 有两种模式：**全量 finetune**，或者冻结 encoder 然后外接线性层 (**linear probing**)。显然前者效果更好。
+
+```mermaid
+flowchart LR
+	A[patch]
+	B[masked patch]
+	H[mask]
+	C[patch]
+	D[...]
+	E[encoder]
+	F[decoder]
+	G[recon patch]
+	A --> E
+	B --> H
+	B --X--> E
+	C --> E
+	D --> E
+	B --MSE--> G
+	E --> F
+	H --> F
+	F --predict--> G
+```
+
+#### VideoMAE
+
+图像场景的 MAE。
+
+- 因为视频在时间轴上高度冗余，为了防止模型简单对比相邻帧而复写，mask 率提高到 90\~95%。使用 3D patch。
+- 同时，使用 **tube masking** 策略：在时间维度上的掩码位置是固定的，第一帧 mask 则之后所有帧统统 mask，进一步防止泄露。
+- 后续工作指出，**纯粹随机 masking** 在其它架构上表现相当甚至更好，因此 masking 策略并没有定论。
+- 使用全局时空注意力，允许所有 patch 自由交互（而不是时空拆开的方案）
+
+#### AudioMAE
+
+把 Mel Spectroram 当成 $T\times F$ 的单通道图像，patchfy 为 $16\times16$ 后 80% 掩码。
+
+与视觉 MAE 不同，音频场合 tune 的时候最好保留适度的 mask (20%)，作为一种 data augmentation，防止模型过拟合，同时减少 train-to-tune gap。
+
+在 train 时，最优的 mask 方式是纯随机，而在 tune 时，最优的 mask 是同时抹去一整行和一整列 (Time+Freq)。
+
+> [!TIP]
+>
+> 图像领域一般常见的 randcrop 等增强方法已经足够，不需要 mask 增强。
+
+#### PointMAE
+
+3D 点云重建。模态是 $(x,y,z)$ 点集。
+
+- Patchfy：使用 Farthest Point Sampling 选取中心点，然后从中心点出发跑 kNN 得到 patch。位置向量是中心点坐标。
+- Masking：60%-80%。
+- Recon：masked patch 中的 3D 坐标。因为点云是无序的，使用 **Chamfer 距离**：预测集中每个点找真实集中最近点，真实集再找预测集，求和。
+
+#### MultiMAE
+
+处理 **pixel-aligned** 的多种模态。认为图片包含多种信息：
+
+- RGB 信息。
+- 深度信息。
+- segmentation 信息：pixel 到离散类别索引（依赖于预训练数据集）的映射。
+
+其中后两者如果缺乏真实数据，要依靠其它模型得到 pseudo label。
+
+- patchfy：三张图以相同粒度分割。
+- masking：混在一起，90+% mask。需要 **modelity embedding** 标记出处。
+- recon：RGB 和 depth 的 MSE，segmentation 中的 CE。
+
+#### M3AE
+
+与 MultiMAE 重名的工作，着重于图像与文本的对齐。
+
+- 图像 MAE 式 mask，文本 BERT 式 mask。
+- 把未 mask 的图像 patch 和未 mask 的文本 token 拼一块扔给同一个 encoder。
+- 补充 mask 后扔给 decoder。
+- Recon：图像的 MSE 和文本的 CE。
+- 是 **联合重建** 任务。
+
+#### MAViL
+
+视频和音频的对齐。
+
+- 视频 3D patchfy 后应用 80% 随机 mask。
+- 音频转成 Mel 频谱后 2D patchfy 并应用 80% 随机 mask。
+- 把它们各自过单模态 encoder 后，再过联合 encoder 然后重建，允许它们在在联合 encoder 中交流。
+- 除此之外，还引入对比 loss。
+    - 把视频以固定 clip-size（如 2.56s）切片，以 clip 为尺度将 patch 分别提供给两个 encoder，然后两个单模态 encoder 的输出 feature 分别池化得到 clip-wise 的图像特征和音频特征。（联合 encoder 只负责重建）
+    - 把相同 clip 的特征对当作正样本，不同 clip 间当作负样本跑对比 loss。
+    - 也可以把同 clip、同模态但不同 mask 的特征对当作正样本。
+- 还有 WM 式互相预测的 loss，让 masked student 去预测 complete teacher 的 feature。
+- 是 **多模态重建 + 模态内对比 + 跨模态对比 + 自举** 任务。
+
+#### Conclusion
+
+| 模型 | 输入形状 | Patch | Mask | 重建目标 (Target) |
+| :--: | :--: | :--: | :--: | :--: |
+| **Word2Vec** | 1D 序列 | tokenization |        slide window        | one-hot ID / negative sampling |
+| **ELMo** | 1D 序列 | tokenization | implicit | 下一个/上一个单词 ID |
+| **BERT** | 1D 序列 | tokenization | 15% 随机掩码 | CE，原始单词 ID |
+| **BEiT** | 2D 图像 | 2D patchfy + 可训练 `[MASK]` | 40% block-wise 掩码 | dVAE 离散 token |
+| **Wav2Vec 2.0** | 1D 波形 | 1D 卷积降频 + 可训练 `[MASK]` | 50% span 掩码 | 可训练的离散 token，其它位置当负样本 |
+| **MAE** | 2D 图像 | 2D patchfy + 丢弃 `[MASK]` | 75% 随机掩码 | 归一化 MSE，原始像素值 |
+| **VideoMAE** | 3D 视频 | 3D Patchfy | 90-95%，tube/随机掩码 | MSE，原始像素值 |
+| **AudioMAE** | 2D 频谱 | 2D 频谱块 | 80% 随机掩码 | 归一化 Mel 频谱数值 |
+| **PointMAE** | 3D 点集 | FPS 采样 + kNN 聚类 | 60-80% 随机掩码 | Chamfer Distance，局部点云坐标 |
+| **MultiMAE** | 2D RGB depth segmentation |      2D 同粒度 patchfy       | 95% 混合随机掩码 | RGB 像素 / 深度值 / 分割类别 |
+| **M3AE** | 2D 图像 + 1D 文本 | 2D patchfy + 1D tokenization | 图像随机掩码 + 文本 [MASK] | 像素值 (MSE) + 文本 Token (CE) 联合重建 |
+| **MAViL** | 3D 视频 + 2D 频谱 | inner-clip 3D + 2D 异粒度 patchfy | 视频 80% + 频谱 80% | 多模态重建 + 跨模态/单模态池化特征对比损失 + 自举 |
+
+核心挑战：
+
+- 数据具有天生的冗余度，impainting 或 inter/extrapolation 常常是容易的，因此往往需要极高的 mask rate 才能确保模型没有走捷径。mask rate 取决于信息冗余度：语言 (15%) < 图像 (75%) < 音频 (80%) < 视频 (90%+)，同时特定的 mask pattern 能进一步降低模型走捷径的可能。
+- MSE loss 的天生问题，会导致模型对高频噪声 overfit，而不是专注于真正重要的关键语义。
+- Train-Tune-Inference Gap，依赖于 tune，zero-shot 时效果不佳，就算 linear probing 效果仍然不好，必须全量 tune，无法做 frozen feature extractor。
+- 擅长捕捉局部结构，但缺乏全局、多尺度语义理解。
+
+核心优势：
+
+- 不依赖于具体的模态，容易扩展，定义自然。
+- 模型处于一个好的 meta-learning 状态，fine-tune 的潜力优于对比学习。
+- 利用了 curse of dimension，维数越高越可以 mask 掉更多的部分，实际计算量增长较慢，天生适应对高维的处理（反观对比学习对此敏感）。当然此时用像素级 MSE 做 loss 也会受影响，需要用更抗干扰的 loss。
+
+### I½. 基于信号-噪声分类的统计估计
+
+作为下一节的铺垫，本节讨论以下问题：
+
+- 如何学习 $p_\theta(x)$ 来拟合真实的未知数据分布 $p_\t{data}(x)$？
+
+本节涉及到的算法使用同一个思想：
+
+- 与已知的噪声分布 $p_\t{noise}$ 在后验意义下区分。
+
+#### NCE
+
+考虑样本分布 $p_\t{data}$ 和噪声分布 $p_\t{noise}$，以 $1:k$ 的比率混合二者后采样 $x$，则 $x$ 来自真实数据的概率为
+$$
+p(x)=\dfrac{p_\t{data}(x)}{p_\t{data}(x)+kp_\t{noise}(x)}
+$$
+现在把 $p_\t{data}$ 用模型分布 $p_\theta$ 近似，然后代入 BCE 得到 NCE
+$$
+\c L=-\E_{x\sim p_\t{data}}\log p(x)+k\E_{x\sim p_\t{noise}}\log(1-p(x))
+$$
+实际实现时，一般 parameterize $p_\theta=\t{softmax}(f_\theta)$，于是 $\log p_\theta(x)=f_\theta(x)-\log Z$。为了避免学习复杂的配分函数，把它用一个可学习常数 $c_\theta$ 替代，得到一个未归一化的分布 $\log p_\theta(x):=f_\theta(x)+c_\theta$。
+
+那么定义 $\ell(x)=\log p_\theta(x)-\log kp_\t{noise}(x)=f_\theta(x)+c_\theta-\log k-\log p_\t{noise}(x)$，则有
+$$
+\sigma(\ell)=\dfrac1{1+\exp(-\ell)}=\dfrac1{1+kp_\t{noise}(x)/p_\t{data}(x)}=p(x)
+$$
+于是便得到实际使用的式子
+$$
+\c L=-\E_{x\sim p_\t{data}}\log\sigma(\ell(x))+k\E_{x\sim p_\t{noise}}\log(1-\sigma(\ell(x)))
+$$
+可以证明，当这该 loss 被最小化时，有 $p_\theta$ 渐进收敛于 $p_\t{data}$。
+
+#### Multi-Task NCE (InfoNCE)
+
+NCE 的 $k$ 个负样本是独立的，本质上是同一个二选一实验重复了 $k$ 次；换成 $k+1$ 选一能增大样本效率。
+
+具体地，考虑包含一个正样本和 $k$ 个负样本的集合 $X=\cur{x_i}$，令正样本的编号是 $d$，则有
+$$
+\P[d=i\mid X]=\dfrac{\P[X\mid d=i]\P[d=i]}{\sum_j\P[X\mid d=j]\P[d=j]}
+$$
+可以认为 $X$ 事先被 shuffle 过，每个元素是正样本的概率相等，且样本相互独立，于是有
+$$
+\P[X\mid d=i]=p_\t{data}(x_i)\prod_{j\neq i}p_\t{noise}(x_j)
+\\\P[d=i\mid X]=\dfrac{\P[X\mid d=i]}{\sum_j\P[X\mid d=j]}=\dfrac{\tfrac{p_\t{data}(x_i)}{p_\t{noise}(x_i)}}{\sum\tfrac{p_\t{data}(x_j)}{p_\t{noise}(x_j)}}
+$$
+仍然考虑 $\log p_\theta(x)=f_\theta(x)+c_\theta$ 的 parameterization，不同的是此处 $c_\theta$ 因为可以上下抵消，所以直接令 $\ell(x)=f_\theta(x)-\log p_\t{noise}(x)$，然后
+$$
+\P[d=i\mid X]=\dfrac{\exp(\ell(x_i))}{\sum\exp(\ell(x_i))}=\t{softmax}(\ell(X))_i
+$$
+于是实际的 loss 是
+$$
+\c L=-\E\log\t{softmax}(\ell(X))_\t{pos}
+$$
+
+#### Conclusion
+
+本节的两个算法将在下一节中变成特征学习的形式。
+
+### II. 基于负样本的自监督
+
+这一类方法实现自监督的方式是拉近正样本，推开负样本。它们面临的问题通常包括：
+
+- 不够强的负样本效果不好。解决方案包括采样更多的负样本（面临维数灾难），找更强负样本（但有时会引入额外先验），隐藏容易区分的信号。
+- 如果通过随机采样的方式找负样本，找来的是否真的是负样本要打问号：两张很像但略有不同的图像到底是正样本还是负样本？
+
+> [!CAUTION]
+>
+> <font color="red">与上一节的破坏-重建方法不同，理论上本节的方法都开罐即食，不论是后面接 linear probe 做分类还是作为特征提取器安装在更复杂 pipeline 中都可以；实际上在 CLIP 前都称不上 base model，都需要 tune；CLIP tune 也能更好对齐。</font>
+
+#### Siamese Network
+
+开山之祖。目标是学一个特征提取函数 $G_W(\cdot)$。
+
+令 $D_W$ 为距离，则：
+
+- 对于正样本，希望其接近，使用标准 $\ell_2$ loss $\dfrac12D_W^2$。
+- 对于负样本，希望其远离，但无限制远离无意义，引入 margin $m$ 并使用 hinge loss $\dfrac12\max(0,m-D_W)^2$。
+
+这个 loss 被称为 **contrastive loss**，是对比学习的第一个 loss。
+
+> [!TIP]
+>
+> 对该算法的常见描述是「包含两个结构完全相同的 encoder」。这其实是早期表述，事实上它们就是同一个网络。
+>
+> 然而，如果尝试在其中整合一些现代方法，一个重要的问题会导致它们的计算不一定相同，就是 **batch normalization**，此时 $x_1,x_2$ 通过 BN 可以交互信息。
+>
+> 解决方案包括：
+>
+> - **shuffle BN**，强制把正样本放到不同的 GPU 上。
+> - **Sync BN**，跨 GPU 计算全局 $\mu,\sigma$，用大 bsz 稀释信息泄露。
+> - 撤掉 BN，换成 LN 或 GN。
+
+#### Triplet Loss
+
+希望把 anchor $a$ 向正样本 $p$ 拉近、远离负样本 $n$。具体地，在 $D(f(a),f(p))$ 和 $D(f(a),f(n))$ 间造一个 margin $\alpha$，所以仍然有一个 hinge loss 式的
+$$
+L=\max(0,\|f(a)-f(p)\|^2-\|f(a)-f(n)\|^2+\alpha)
+$$
+第一次在同一个 loss 中包含正负样本。
+
+- 因为 bsz 太小，分类太容易，所以其极度依赖更困难的负样本，被称作 **mining**。
+- 采样效率太低。
+- bsz 小意味着抗风险能力不足，遇到 outlier 训练可能就崩了。
+
+#### CPC (InfoNCE)
+
+回忆起作为信号-噪声分类的 NCE：
+$$
+\c L=-\E\log\t{softmax}(\ell(X))_\t{pos}
+$$
+现在考虑一种具体的 interpretation：
+
+- 有两个随机变量 $X,Y$，我们希望衡量二者的互信息 $I(X;Y)$。
+- 令正样本对服从联合分布 $(x,y)\sim p(x,y)$，而负样本服从边缘分布 $x\sim p(x)$。
+
+在固定 $y$ 时，这就相当于 $p_\t{data}(x)=p(x\mid y),p_\t{noise}(x)=p(x)$。按照前文的分析，此处需要一个
+$$
+\ell(x,y)=\log p_\t{data}(x)-\log p_\t{noise}(x)=\log\dfrac{p(x\mid y)}{p(x)}=\log\dfrac{p(x,y)}{p(x)p(y)}
+$$
+> [!TIP]
+>
+> 有时这个量也被称作 critic。它和 RL 中的 critic 的共同点在于，都是对一个状态的评估。
+
+那么 NCE 就是
+$$
+\c L=-\E\log\dfrac{\exp\ell(x_\t{pos},y)}{\sum\exp\ell(x_i,y)}
+$$
+注意到互信息恰好就是 $\E\log\dfrac{p(x,y)}{p(x)p(y)}$，通过一些推导后可以得到
+$$
+I(X,Y)\geq\log(k+1)-\c L
+$$
+这个式子同时给出两个启示：
+
+- 最小化 loss 就是在最大化互信息。
+- 需要更大的 batchsize 才能有更大的互信息，且互信息随 batchsize 增长的速率仅仅是对数级别，scale 效果不好。
+
+在 CPC 这个特定的框架下：
+
+- $Y$ 是历史数据的压缩 latent $c_t$。
+- $X$ 是单个时刻数据 $x_t$ 的 encoder 结果 $z_t$。
+- 正样本是 $(c_t,z_{t+k})$（留出 $k$-step gap 以防止作弊）。
+- 负样本是随机选取的 $z$。
+- 负样本选取效果，从高到低：
+    - 同一个 speaker 的样本（适当的强度）
+    - 同一个 sequence 中的样本（伪负样本太多）
+    - 混合 speaker 的样本（强度不足）
+- 相似度直接是 $z^\top Wc$ 也即某种双线性型，强迫 capability 集中在 encoder 和压缩 latent 中，以促进表征学习。
+
+#### SimCLR
+
+基础仍然是 InfoNCE loss，不过具体使用方式有所变化：
+
+- 正样本对是同一张图片的不同增强方式。证明了增强在这个任务上的重要性。
+- 相似度是 feature **通过 MLP 投影** 后的余弦相似度。
+- 首次 ablation 证明了 MLP 投影的重要性：因为它损失了部分信息，所以下游应用时一般要把投影层扔掉。（CPC 中没过这个投影）
+- 使用温度 $\tau$ 控制平滑程度。
+
+需要很大的 bsz，因为没有 memory bank 或等价物。
+
+#### InstDisc
+
+时间其实比 SimCLR 更早。之所以把 SimCLR 放在前面是因为它没加 memory bank。
+
+第一个提出把 **所有其它样本** 而不是 **不同类别样本** 当成负样本的工作。
+
+- 负样本来自 **memory bank**，其中记录了 **所有图片** 上一次被计算时的特征。训练完当前 batch 后，用新特征替换。后续变体也有用特征的 EMA 替换的。
+- 为了防止训练不稳定，显式地加了一个 regularization，控制当前特征与 replay buffer 特征的间距。
+- 使用余弦相似度。
+
+#### MoCo
+
+- 用队列替换 memory bank，一方面节省空间，另一方面一定程度可以保证特征的时效性。
+- 用 momentum encoder 生成特征，减少 tail-chasing 问题。因此不需要用前述 regularization。
+
+#### MoCo-V2
+
+把 SimCLR 核心的思想：更强大的增强方式和 MLP 投影头融入 MoCo。不需要大的 bsz。
+
+#### Wav2Vec
+
+把 CPC 搬到了音频域的工作，使用 CNN 而非 RNN 提取。
+
+#### CLIP
+
+在海量跨模态数据上学习 zero-shot base model 的工作。配对的文本-图像描述是正样本，不匹配的是负样本。文本和图像使用独立的 encoder，仅在最后算 InfoNCE 时耦合。
+
+使用若干防坍塌的 trick：
+
+- 可学习的温度，自动调整。
+- 特征归一化。
+- 不用 momentum encoder（因为有两个 encoder，给哪个用呢？），而是大力堆 bsz。
+
+#### ALIGN
+
+CLIP 的更大更强 scale 版本。
+
+- 用的数据比 CLIP 更狂野，几乎不怎么清洗。
+- latent dim 更高，以承接大规模数据的更丰富信息。
+
+被认为拥有和 Word2Vec 一样的「图像 + 文本描述 = 更匹配的图像」的效果。
+
+#### SigLIP
+
+把要算归一化分母的 InfoNCE 换成了二分类任务，也即对每一对样本计算「是正样本对还是负样本对」。
+$$
+\sum\log\sigma\Big(z_{i,j}(t\b x_i^\top\b y_j+b)\Big)
+$$
+其中：
+
+- $\b x_i^\top\b y_j$ 是相似度。
+- $t,b$ 是可学习的 scale 和 bias，自适应调整。一般将 $t$ 初始化为较大值，增强模型的置信度；而 $b$ 给模型提供一个默认的「所有对都更是负样本」的 bias，因为负样本数目确实远多于正样本。但是 $b$ 的设置必须精准，不能真的总是把所有对打成负样本。
+- $z_{i,j}$ 在匹配时为 $1$，不匹配时为 $-1$。
+
+它对 scaling 非常友好，但也有缺点：
+
+- 丧失了排他性，在需要细粒度判别的任务上可能出现模棱两可的情况。
+- 对难负样本的辨别力减弱。
+- 拿不到归一化概率分布，因此如果要分类需要手动归一化，此时往往不如 CLIP 稳定。
+
+Ablation 显示 SigLIP 能抗各种扰动，比如说图片损坏、文本损坏、图像-文本不对其之类的东西，说明其更能处理野生数据。
+
+#### CoCa
+
+> [!TIP]
+>
+> 从这里往下的模型，其实更主要的任务都是在做 VLM 而不是 Feature Learning 了。此时 Contrastive Loss 仅仅是作为一个辅助训练的 Loss。当然其也有 Feature 的产出，想拿来做 Feature Extractor 也不是不行，只不过有点大材小用了。
+
+在处理多模态数据时，除了 CLIP 式的 **对齐** 任务，另一派是 **生成** 式：
+
+- 用一个 Encoder 提取图像特征后，把它的 patch 特征序列作为文本 Decoder 输入 token 的一部分或 cross-condition 融入 Decoder，然后要求 Decoder 输出对应的文本 caption。
+
+CoCa 把两个东西缝一块。
+
+- Encoder 输入图像 $I$，输出全局特征 $V_\t{global}$ 和 patchwise 特征 $\cur{V_\t{patch}}$。
+- Decoder 输入文本 $T_{1:n}$，先经过若干单模态的 self-attention 层（有 attn mask），得到全局特征 $e_\t{global}$ 和 tokenwise 特征 $\cur{e_{1:n}}$。
+- $e_\t{global}$ 和 $V_\t{global}$ 通过对比 loss 对齐。
+- Decoder 在单模态层后再过若干多模态层，此时 $\cur{V_\t{patch}}$ 被 Cross-Attention 进去。输出是 Next Token Logit $P(T_i\mid T_{1:i-1},V_\t{patch})$。
+- 对比 loss 和 Next Token CE 被联合优化。
+- 同时能检索、零样本分类，也是一个合格的 VLM，可以做视觉回答。
+
+注意，此处 patchwise 特征 $\cur{V_\t{patch}}$ 虽然通过 Cross-Attention 可以被隐式训练，但因为没有显式约束，所以并不是好的局部特征。
+
+```mermaid
+graph LR
+	A[Image]
+	B[Encoder]
+	C[Image Global Feature]
+	D[Image Patchwise Features]
+	E[Text]
+	F[Unimodal Decoder Layers]
+	G[Text Global Feature]
+	K[Text Tokenwise Features]
+	H[Contrastive Loss]
+	I[Multimodal Decoder Layers]
+	J[Next Token CE Loss]
+	A --> B
+	B --> C
+	B --> D
+	E --> F
+	F --> G
+	F --> K
+	C --> H
+	G --> H
+	D --> I
+	K --> I
+	I --> J
+```
+
+#### LocCa
+
+进一步引入局部监督信号，即 Bounding Box $B=[x,y,w,h]$ 和对应的 caption。
+
+- 一方面，它可以在 $\cur{V_\t{patch}}$ 上面接一个用 $B$ 作为 query 的轻量级 attn 层得到 $V_\t{region}$。
+- 另一方面，它可以作为单模态 Decoder 的可选输入，此时得到的 $e_{\t{global}\mid B}$ 和 $e_{1:n\mid B}$ 即为 regional 特征。
+- 于是自然可以引入两个新 loss：将 $e_{\t{global}\mid B}$ 和 $V_\t{region}$ 配对的对比 loss，以及 $P(T_i\mid T_{1:i-1},V_\t{region},B)$ 的 regional next token CE loss。
+- 原论文写法是直接提供完整的 $\cur{V_\t{patch}}$ 并让 decoder 自己从中提取，但这样做对 decoder 压力太大，不推荐；更好的做法是如此处所说接一个 $B$ 的 extractor。
+
+此处的 patchwise 特征因为直接有 regional 信号辅助训练，所以更具有局部性，且可以通过 BB query head 直接提取有意义的局部图像特征。
+
+```mermaid
+graph LR
+	A[Image]
+	B[Encoder]
+	C[Image Global Feature]
+	D[Image Patchwise Features]
+	E[Text]
+	F[Unimodal Decoder Layers]
+	G[Text Global Feature]
+	K[Text Tokenwise Features]
+	H[Contrastive Loss]
+	I[Multimodal Decoder Layers]
+	J[Next Token CE Loss]
+	L[Region Queries]
+	M[Image Regional Features]
+	N[Regional Contrastive Loss]
+	A --> B
+	B --> C
+	B --> D
+	E --> F
+	L -.-> F
+	F --> G
+	F --> K
+	C --> H
+	G --> H
+	D --> M
+	L -.-> M
+	M --> N
+	G --> N
+	M --> I
+	K --> I
+	I --> J
+```
+
+#### SigLIP 2
+
+若干集大成者的改进。
+
+- 架构上支持动态分辨率和原生长宽比，没有强制缩放。
+- 使用了高度混合的 loss。
+    - LocCa 式的 captioning loss 和 contrastive loss，后者使用 SigLIP 提高扩展性。
+    - MAE 式的 masked prediction loss。
+    - BYOL 式的预测 EMA teacher loss。
+
+
+#### BLIP
+
+另一种缝合多种 loss 的方法。
+
+首先，其引入 **CapFilt** 机制，有一个 **Captioner** 关于图片合成相关文本、一个 **Filter** 同时把原始数据和合成数据中不匹配的文本过滤，相当于从噪声中提炼干净数据集。
+
+其包括以下部件：
+
+- Visual Encoder，输入 $I$，输出全局的 $V_\t{global}$ 和局部的 $\cur{V_\t{patch}}$。
+- 文本模块。其包括以下三个部件，全部共享权重：
+    - Unimodal Text Encoder，类似 BERT 架构，输入 $T$，输出 $e_\t{global}$ 和 $\cur{e_{1:n}}$，$e_\t{global}$ 和 $V_\t{global}$ 用对比 loss 训练。
+    - Image-grounded Text Encoder，输入 $T$，用 cross-attn 把 $\cur{V}$ 注入，输出融合后的特征 $e_\t{mul}$，后接一个二分类器判是否匹配。
+    - Image-grounded Text Decoder，输入 $T_{<t}$，用 cross-attn 注入 $\cur{V}$，用 masked self-attn，输出 next token logit，训练目标是 next token CE。
+- Captioner 由 Image-grounded Text Decoder 担任；Filter 由 Image-grounded Text Encoder 担任，小于某阈值就丢弃。
+
+特别地，共享权重采用以下模式：
+
+```mermaid
+graph LR
+	A[Input] --> B[Self-Attn]
+	B --> C[Add&Norm]
+	C --> D[Cross-Attn]
+	D --> E[Add&Norm]
+	E --> F[FFN]
+	F --> G[Add&Norm]
+```
+
+- Unimodal Encoder：Self-Attn 是 full 的，Cross-Attn 层跳过。
+- Multimodal Encoder：Self-Attn 是 full 的，Cross-Attn 正常过。
+- Multimodal Decoder：Self-Attn 是 masked 的，Cross-Attn 正常过。
+
+```mermaid
+graph LR
+	A[Image]
+	B[Encoder]
+	C[Image Global Feature]
+	D[Image Patchwise Features]
+	E[Text]
+	subgraph shared-weights
+	F[Unimodal Text Encoder]
+	I[Image-grounded Text Encoder]
+	J[Image-grounded Text Decoder]
+	end
+	G[Text Global Feature]
+	H[Contrastive Loss]
+	S[Match Score]
+	T[Next Token CE Loss]
+	U[Filter]
+	V[Captioner]
+	A --> B
+	B --> C
+	B --> D
+	E --> F
+	F --> G
+	C --> H
+	G --> H
+	E --> I
+	E --> J
+	D --> I
+	D --> J
+	I --> S
+	J --> T
+	S --> U
+	T --> V
+```
+
+#### BLIP-2
+
+BLIP 的 Encoder 和 Decoder 都是 from scratch 的。BLIP-2 直接用 frozen 的模型，但训练转接口 Q-Former 作为二者间的翻译官。
+
+```mermaid
+graph TD
+	subgraph Input
+	Q1[Query]
+	T1[Text]
+	end
+	A1["(Masked)Self-Attn + Add&norm"]
+	Q1 --> A1
+	T1 --> A1
+	V1[Visual Features]
+	subgraph Intermediate1
+	Q2[Query]
+	T2[Text]
+	end
+	A1 --> Q2
+	A1 --> T2
+	A2["Cross-Attn + Add&Norm"]
+	Q2 --> A2
+	V1 --> A2
+	subgraph Intermediate2
+	Q3[Query]
+	T3[Text]
+	end
+	A2 --> Q3
+	T2 --> T3
+	A3["FFN + Add&Norm"]
+	Q3 --> A3
+	T3 --> A3
+	subgraph Output
+	Q4[Query]
+	T4[Text]
+	end
+	A3 --> Q4
+	A3 --> T4
+```
+
+如图所示，以上是一个 Q-Former Block 的架构。
+
+- 第零层的 Query 是固定长度、可训练的 embedding token，Text 是文本输入。
+- 在 Unimodal 中，Query 和 Text 在 self-attn 中互相不可见，内部完全可见；此时 Query 和 Text 全程无交集，Query 只负责在 cross-attn 中从图像 Encoder 中注入信息。
+- 在 Multimodal Encoder 中，Query 和 Text 在 self-attn 中互相完全可见，内部也完全可见。
+- 在 Multimodal Decoder 中，Query 内部完全可见，Text 可以看到 Query 但 Query 看不到 Text，Text 内部有 causal mask，只能看到之前的 token。
+- 训练的 Loss 仍是经典三板斧：Unimodal 的对比损失；Encoder 的匹配损失；Decoder 的自回归损失。
+
+也就是说，Q-Former 类似一个轻量级的 BLIP 中的 from-scratch 模型。
+
+- 在其训练好后，认为 Query Token 已经具备了询问 Visual Feature 的能力。
+- 于是把最终层的 Query 输出过一个 MLP 后直接 LLaVA 式和 Text Prompt 拼一起注入 Pretrained LLM，继续训，此时只训 Q-Former 和 MLP。同时，**前面的三个 loss 不再启用，Q-Former 的 text 分支被剥离，只作为图像翻译器**。
+- Q-Former 会自动将图像特征翻译为大模型能听懂的输入。因此 LLM 的具体形式并不重要，可以是 encoder-decoder 也可以是 decoder-only。
+
+#### Conclusion & Theoretical Analysis
+
+**Class Collision**，也即伪负样本的出现，只要足够罕见，就无伤大雅。这表明，过多的负样本反倒会导致这种现象增加，反倒是有害的；理论上存在最优的负样本数目。
+
+下游分类任务的 loss 直接被自监督 loss 所 bound。这意味着正样本更像，类内集中度更高，则自监督 loss 更低，下游任务表现自然更佳。
+
+在正负样本的特定 toy case 下（例如正样本服从某种分布，负样本均匀分布），对比学习在噪声-信号框架下的最优解，其概率密度服从参数为距离的 sigmoid 函数。因此，对比学习某种程度上会隐式进行聚类。
+
+|      论文       |      核心贡献      |                           具体技巧                           |
+| :-------------: | :----------------: | :----------------------------------------------------------: |
+| Siamese Network |  Contrastive Loss  |               显式拉开/拉近 feature 的绝对距离               |
+|  Triplet Loss   |    Triplet Loss    |                 拉开正负 feature 的相对距离                  |
+|       CPC       |      InfoNCE       |                 使用 softmax，最大化正样本项                 |
+|     SimCLR      |   数据增强 + MLP   | 使用不同数据增强方法当作正样本对<br />用 MLP 做特征降维，下游任务时丢弃<br />不使用 memory bank，硬堆 bsz |
+|    InstDisc     |    memory bank     | 所有其它样本都是负样本，存储其上次计算的特征<br />用 EMA 降低特征变化速率，需要显式正则化 |
+|      MoCo       |  momentum + queue  | 用 queue 省空间且提高时效性<br />用 momentum encoder 降低特征变化速率，不需要显式正则化<br />相比 SimCLR 需要更小的 bsz |
+|      CLIP       |       跨模态       |                            跨模态                            |
+|      ALIGN      |      野生数据      |             证明了野生数据也没问题，量大管饱就行             |
+|     SigLIP      |    Sigmoid Loss    |            用 sigmoid 取代 softmax，不再依赖 bsz             |
+|      CoCa       |  generative loss   |                        引入生成式任务                        |
+|      LocCa      | Regional Grounding |                   使用 Region 信息辅助训练                   |
+|    SigLIP 2     |    Hybrid Loss     |                  缝了 MAE、SigLIP 和 LocCA                   |
+|      BLIP       |  CapFilt + Hybrid  | 缝了对比 Loss、匹配 Loss 和自回归 Loss。同时用匹配 Loss 洗数据。 |
+|     BLIP-2      |  Frozen Unimodal   | 把单模态基座模型冻结，训转接头学会提取图像特征，并翻译为 LLM 理解的输入 |
+
+核心挑战：
+
+- bsz 问题：
+    - 需要大 bsz 提高分类难度，学习足够重要的特征。
+    - 但大 bsz 同时会带来更多的伪负样本。
+    - 虽然有工作给出了一些理论保证，但实际实现时仍然需要权衡。
+- 数据增强问题：
+    - 完全依赖对数据增强的先验 (SimCLR 验证)。
+    - 错误的增强策略会带来错误的 inductive bias；增强策略经常无法跨数据集迁移。
+- 擅长做 instance discrimination，但如果没有好的 label，与下游的语义聚类是冲突的，特征空间比较散。
+- 容易作弊，学习到区分正负样本的捷径（所以依赖强力数据增强）。
+- 收敛太慢。
+
+```mermaid
+graph TD
+	subgraph Hinged Loss
+		A[Siamese Network]
+		B[Triplet Loss]
+		A --> B
+	end
+	subgraph InfoNCE Loss
+		C[CPC]
+		B -.InfoNCE.-> C
+		D[SimCLR]
+		C --projector+augmentation--> D
+		E[InstDisc]
+		C --Instance Negative + Memory Bank--> E
+		F[MoCo]
+		E --Momentum Encoder + Queue--> F
+		G[Wav2Vec]
+		C --wave modal--> G
+		I[MoCo-V2]
+		F --> I
+		D -. adapted .-> I
+		J[CLIP]
+		D --multi-modal--> J
+		K[ALIGN]
+		J --wild data--> K
+	end
+	subgraph Bootstrapping Loss
+		O8[BYOL]
+	end
+	subgraph SigLIP Loss
+		L[SigLIP]
+		J --pairwise comparison--> L
+	end
+	subgraph Recon Loss
+		O1[MAE]
+		O2[BEiT]
+	end
+	subgraph Predictive Loss
+		O3[VLM]
+	end
+	subgraph Filtering
+	O4[Match Loss]
+	end
+	subgraph Hybrid Losses
+		S1[Wav2Vec 2.0]
+		O2 -.-> S1
+		G --> S1
+		S2[CoCa]
+		J --contrastive loss--> S2
+		O3 --Next Token CE loss--> S2
+		S3[LocCa]
+		S4[SigLIP 2]
+		O8 -->S4
+		S2 --regional supervision--> S3
+		L --> S4
+		O1 --> S4
+		S3 --> S4
+		S5[BLIP]
+		S2 --Contrastive + AR Loss--> S5
+		O4 --CapFilt--> S5
+		S6[BLIP 2]
+		S5 --Frozen Base Model + Q-Former--> S6
+	end
+```
+
+### III. 仅使用正样本的半监督/自监督
+
+这一类方法不再依赖负样本，因此 bsz 不需要太大，下游迁移效果也更好。
+
+但是其核心挑战在于如何避免 trivial solution，往往需要特定的设计或强力正则化技术。同时，其仍然需要好的数据增强防止退化。
+
+#### Π-Model
+
+较为古老的半监督方法。
+
+数据集：$\c D_l$ 的有标注版本和 $\c D_u$ 的无标注版本。实际是半监督方法。
+
+模型：$f_\theta(x)$，输入图片，输出 logit / prob。
+
+首先是经典的 supervised loss
+$$
+\c L=\E_{(x,y)\sim\c D_l}d(y,f_{\theta_t}(\t{aug}_u(x)))
+$$
+其中 $d$ 是某种 loss，一般直接取 CE。
+
+然后，引入 **consistency loss**
+$$
+\c L=\E_{x\sim\c D_l\cup\c D_u}d\Big(f_{\theta_t}(\t{aug}_u(x)),f_{\theta_t}(\t{aug}_v(x))\Big)
+$$
+其中 $\t{sg}$ 是 stopgradient，$\t{aug}_u$ 和 $\t{aug}_v$ 是两种不同的增强方式，$d$ 是某种概率单纯形上的距离，可以是 KL 或 MSE；论文更推荐 MSE，因为它比起 KL 更抗离群值，毕竟伪标签还是不太稳定的。
+
+两个 loss 通过一个 $\lambda$ 结合，consistency loss 需要 annealing 以保证训练初期不会被它带偏。
+
+作为半监督方法，其没有额外引入正则化方法：监督信号本身就可以防止坍塌。
+
+#### Temporal Ensembling
+
+把 $f_{\theta_t}(\t{aug}_v(x))$ 换成历史信息的 EMA $\hat z$，loss 变为
+$$
+\c L=\E_{x\sim\c D_l\cup\c D_u}d\Big(f_{\theta_t}(\t{aug}_u(x)),\t{sg}(\hat z)\Big)
+$$
+更加稳定。
+
+#### Mean Teacher
+
+把输出的 EMA 换成模型的 EMA。令 $\hat\theta_t$ 为 $\theta_t$ 的 EMA，loss 变为
+$$
+\c L=\E_{x\sim\c D_l\cup\c D_u}d\Big(f_{\theta_t}(\t{aug}_u(x)),\t{sg}[f_{\hat\theta_t}(\t{aug}_v(x))]\Big)
+$$
+
+> [!TIP]
+>
+> 这几种方法都是半监督方法，共性为：
+>
+> - 不需要额外的正则化方法。
+> - consistency loss 需要 annealing。
+> - 因为本质上是半监督，所以需求直接是 $f_{\theta_t}$ 的 logit / prob，而不是 feature。
+
+#### DeepCluster
+
+Mean Teacher 让当前模型对齐到 EMA 的 teacher；而 DeepCluster 则希望其对齐到 K-mean 产生的 **pseudo label**。
+
+数据集：**无标注样本**，因为由半监督切换为自监督方法。
+
+模型：$f_\theta$ 是 encoder，输入图片、输出 feature；$g_\phi$ 是 MLP classifier head，输入 feature，输出 logit。
+
+算法分为多轮，每一轮：
+
+- 求出当前 feature 列表 $z_i=f_\theta(\t{aug}(x_i))$。
+
+- 求 k-mean 聚类，得到 pseudo label $c_i$。
+
+- 固定 pseudo label，用标准 CE 训练
+    $$
+    \c L=\sum\t{CE}(c_i,\t{softmax}(g_\phi(f_\theta(\t{aug}(x_i)))))
+    $$
+
+与 Mean Teacher 不同，因为没有有监督信号，很容易退化。加上跨轮时重新 k-mean，标号没有明显继承关系，因此跨轮的 classifier head 需要重置。使用 Sobel 滤波等图像增强技巧预处理也有帮助。
+
+> [!TIP]
+>
+> 作为自监督方法，DeepCluster 需要的是 feature 而不是 logit，所以分开了 $f_\theta$ 和 $g_\phi$。
+
+#### SwAV
+
+引入 **swapped prediction** 技巧，在两个不同视角间交叉预测 pseudo label。
+
+- mean center 使用矩阵 $C\in\R^{D\times K}$ 描述，每一列代表一个聚类中心，称为 **prototype**。
+- 输入 $x_i$ 过 feature extractor 得到特征 $z_i$。
+- pseudo label 是 soft 的 sinkhorn，把同一个 batch 中的所有 feature 尽量平均地分配到 prototype 上，保证负载均衡。令 $z_i\mapsto q_i$，其中 $q_i$ 是一个 $K$ 维概率向量。这个向量是 stop-gradient 的。
+- 特征 $z_i$ 关于 $C$ 的 center 用 softmax 距离，得到 $p_i$。prototype 通过 $p_i$ 被 BP。
+
+则 loss 是
+$$
+\c L=\t{CE}(q_1,p_2)+\t{CE}(q_2,p_1)
+$$
+其中 $(p_1,q_1)$ 和 $(p_2,q_2)$ 分别是同一物体的两个不同视角 $x_1,x_2$ 生成的 prediction 和 label。
+
+其另一个贡献是 **Multi-Crop 方法**，允许同一个物体获取更多视角 $x_{1:n}$，其中 $x_1,x_2$ 是主视角，之后的是局部视角，然后再要求局部视角预测全局，总 loss 为
+$$
+\c L=\sum_{i\in\cur{1,2}}\sum_{j\in[n],j\neq i}\t{CE}(q_i,p_j)
+$$
+
+```mermaid
+graph LR
+	A[x_1]
+	B[x_2]
+	C[x_k]
+	E[z_1]
+	F[z_2]
+	G[z_k]
+	H[p_1]
+	I[p_2]
+	J[p_3]
+	K[q_1]
+	L[q_2]
+	A --f--> E
+	B --f--> F
+	C --f--> G
+	E --sinkhorn--> K
+	F --sinkhorn--> L
+	E --"softmax"--> H
+	F --"softmax"--> I
+	G --"softmax"--> J
+	H --predict--> L
+	I --predict--> K
+	J --predict--> L
+	J --predict--> K
+```
+
+> [!TIP]
+>
+> 其核心仍然是 feature $z_k$ 而不是 pseudo label 或 softmax label。
+
+#### DINO
+
+SwAV 通过 sinkhorn 保证 pseudo label 不坍塌；而 DINO 则不搞这么麻烦：
+
+- 丢弃 mean label 机制，模型直接输出 logit。
+- 通过 EMA teacher 生成 pseudo label，仍然 stop gradient。
+- teacher 和 student 的 logit 过 softmax 分别得到 pseudo label 和 prediction。 
+- teacher 需要额外进行以下处理防止坍塌：
+    - centering，在进入 softmax 前，每个 class 的 logit 减去这一维的 batch mean 的历史 EMA，防止这一维度输出过大，模型坍缩到单一维度上。
+    - sharpening，使用更低的 temperature，强制放大 logit 的差异，防止坍塌为均匀分布。
+- 不需要 BN，也对大 bsz 没那么依赖。
+- 继承并发扬了 multi-crop 方法，以至于大家提到 multi-crop 想到的反倒是 DINO 而不是 SwAV。
+
+> [!TIP]
+>
+> 当然模型不会直接拿 logit 当 feature，实际使用标准工程方案：模型输出 feature，然后过 MLP projection 得到 logit，下游应用时扔掉 MLP。
+
+> [!NOTE]
+>
+> 在正负样本的模式中，虽然不像 DINO 一样强制使用 logit 和概率单纯形上的 loss，但正如 SimCLR 所表明的，还是需要 MLP projection。
+
+#### iBOT
+
+破坏-重建式方法容易学局部特征，但全局语义不擅长；交叉预测方法则擅长全局特征，对局部信息则不甚敏感。iBOT 缝合了二者。
+
+- 结合 BEiT 的思想，student 拿到的是 masked input，teacher 拿到的是 complete input。
+- student 和 teacher 各自输出全局 logit（被 `[CLS]` token 代理）和 patch logit。
+- 全局 logit 使用 DINO 式的 swapped prediction，让 $\t{student}_\t{global}(\tilde x_1)$ 去预测 $\t{teacher}_\t{global}(x_2)$。
+- patch logit 使用 BEiT 式的 masked prediction，让 $\t{student}_\t{patch}(\tilde x_1)$ 去预测 $\t{teacher}_\t{patch}(x_1)$：因为 patch 是 coordinate based 的信息，所以必须限制在相同视图。
+- 为提升判别能力，patch feature 和 global feature 都过 **相同的 MLP projection head** 得到 logit，要求 local 也具有 global 级别的能力。
+- 虽然 MLP 共享，但是 patch 和 global 的 **centering 估计量** 是独立的：global 的 center 只看 `[CLS]` 的数据，而 patch 的 center 看所有 patch 的均值。
+
+> [!TIP]
+>
+> 如果站在 BEiT 的角度，则 iBOT 可以看做是用 teacher model 替代 quantizer。
+
+#### DINO-V2
+
+在 iBOT 基础上，引入 **Kozachenko-Leonenko Entropic Regularization** (KoLeo Regularization)：令 $\cur{z_i}$ 为 batch 中所有归一化 feature，则
+$$
+\c L=-\dfrac1n\sum_{i=1}^n\log\min_{j\neq i}\|z_i-z_j\|
+$$
+这个式子的优化依靠 Danskin 定理。
+
+除此之外，还作出如下修改：
+
+- 撤去 iBOT 中的 `[CLS]`-patch 共享 MLP head 的方法，使用独立的 head。
+- 重新搬出 SwAV 的 sinkhorn 方法，在 teacher 侧移除 centering + sharpening 技巧。具体地，teacher 侧直接以 $B\times K$ 的 batch-logit 数组为 cost 跑 sinkhorn，得到 $q_i$ 被 stop gradient；student 侧仍然正常跑 softmax 得到 $p_i$。
+- 该方法没有如 SwAV 一样显式地维护 k-mean prototype：因为 MLP projection 的最后一层正是隐式的 prototype。
+
+#### BYOL
+
+网络架构：
+
+- Encoder $f_\theta$，将输入变为下游应用的 feature。
+- Projector $g_\theta$，SimCLR 式的 MLP head。
+- Predictor $h_\theta$，BYOL 保证 **非对称性** 的核心。
+
+对于正样本对 $(x,x')$，希望让 online network 的 $h_\theta\circ g_\theta\circ f_\theta(x)$ 来预测 EMA target 的 $\t{sg}[g_{\hat\theta}\circ f_{\hat\theta}(x')]$。
+
+除此之外，**没有使用任何防止坍塌的技巧**。为什么它还能 work？
+
+- 随机初始化的神经网络的输出并不是完全噪声：它包含了网络本身架构提供的微弱先验。如果用另一个网络来预测其输出，则相当于过滤其噪声、提取该架构对应的在不同数据加强模式下均不变的先验信号。
+- predictor 引入非对称性，避免了到常数解的坍塌。
+- EMA 也一定程度可以防止坍塌。
+- Batch Normalization 曾一度被认为是防止坍塌的关键，但后续有工作指出不这么搞照样能行。
+
+#### SimSiam
+
+撤掉了 EMA，直接如同 Siamese Network 一样让两次 pass 分别预测，即：
+
+- $h_\theta\circ g_\theta\circ f_\theta(x_1)$ 预测 $\t{sg}[g_{\hat\theta}\circ f_{\hat\theta}(x_2)]$。
+- $h_\theta\circ g_\theta\circ f_\theta(x_2)$ 预测 $\t{sg}[g_{\hat\theta}\circ f_{\hat\theta}(x_1)]$。
+
+为什么这也塌不了？见下述分析。
+
+#### Analysis: Non-Collapse Theory of BYOL
+
+令 $x,y$ 是一对不同数据增强 / MDP 的前后时刻，则它们通过某种 $y\sim P^\pi(\cdot\mid x)$ 关联。然后对以下 toy case 分析：
+
+- 缝合 encoder 和 projector，并用单个矩阵 $\Phi$ 刻画。
+- predictor 用矩阵 $P$ 刻画。
+
+全局最优解是
+$$
+\min_{\Phi,P}\E_{x\sim d(\cdot),y\sim P^\pi(\cdot\mid x)}\|P^\top\Phi^\top x-\Phi^\top y\|^2
+$$
+易知坍塌是其静态最优解，因此防止坍塌必然是动态特性。
+
+但是，如果满足以下二条件：
+
+- $P$ 的学习率远大于 $\Phi$，也即，任意时刻 $P$ 都可以被视作当前 $\Phi$ 下的最优 $P^*$。这可以通过让 $P$ 是轻量级网络实现。
+- $\Phi^\top y$ 被 sg。
+
+则朴素的 GD
+$$
+\Phi_{t+1}\gets\Phi_t-\eta\nabla_{\Phi_t}\E_{x\sim d(\cdot),y\sim P^\pi(\cdot\mid x)}\|P^\top\Phi^\top x-\t{sg}(\Phi^\top y)\|^2
+$$
+可以保证不坍塌。
+
+> 证明：
+>
+> - 假设 $x\sim d(\cdot)$ 经过白化使得协方差为对角阵，也即 $\E[xx^\top]=I$。
+> - 令 $\E[xy^\top]=T$。
+> - 令 $\Sigma=\E[(\Phi^\top x)(\Phi^\top x)^\top]=\E[\Phi^\top\Phi]=\Phi^\top\Phi$。
+>
+> 使用 ODE 建模。固定 $\Phi$ 时，最优的 $P^*$ 由最小二乘知为
+> $$
+> P^*=\E[\Phi^\top xx^\top\Phi]^{-1}\E[\Phi^\top xy^\top\Phi]
+> \\=\Sigma^{-1}\Phi^\top T\Phi
+> $$
+> 于是把 GD 换成 ODE 知
+> $$
+> \dot\Phi=-\Phi P^*(P^*)^\top+T\Phi(P^*)^\top
+> $$
+> 而
+> $$
+> \dot\Sigma=\dot\Phi^\top\Phi+\Phi^\top\dot\Phi
+> \\\Phi^\top\dot\Phi=-\Phi^\top\Phi P^*(P^*)^\top+\Phi^\top T\Phi(P^*)^\top
+> \\=(\Phi^\top T\Phi-\Sigma P^*)(P^*)^\top=0
+> \\\dot\Sigma=0
+> $$
+> 于是知该设置下表征的协方差矩阵不变，因此不可能坍塌！
+
+协方差矩阵确定了 $\Phi$ 的长度和夹角，因此梯度下降被限制为 **旋转**。那么它到底怎么转呢？
+
+> 假设 $\Phi$ 初始化为单位阵，此时 $\Sigma=\Phi^\top\Phi=I$，$P^*=\Phi^\top T\Phi$。
+>
+> 假设 $T$ 是对称矩阵（这在 $x,y$ 是同一个图片的两种增强的场合必然成立），则 $P^*$ 必然也是对称矩阵。
+>
+> 于是 $\dot\Phi=-\Phi P^*(P^*)^\top+T\Phi(P^*)^\top$ 可以变为
+> $$
+> \dot\Phi=(T\Phi-\Phi P^*)P^*
+> \\=(T\Phi-\Phi\Phi^\top T\Phi)P^*=(I-\Phi\Phi^\top)TP^*
+> $$
+> 其中 $(I-\Phi\Phi^\top)$ 是 **正交投影算子**，其作用于向量的结果是将该向量投影到 $\Phi$ 的 **正交补空间** 中，由此进一步印证 $\Phi$ 的增量始终与之垂直，只旋转、不坍塌。
+>
+> 极值点处 $\dot\Phi=0$。假设 $P^*$ 是满秩的，则有
+> $$
+> T\Phi-\Phi P^*=0
+> $$
+> 若 $P^*$ 的特征分解是 $P^*=U\Lambda U^\top$，则有
+> $$
+> T\Phi U=\Phi U\Lambda
+> $$
+> 令 $V=\Phi U$，则有 $TV=V\Lambda$。因此，**$\Phi$ 的列空间会对齐 $T$ 的特征空间**。
+>
+> 相关 PCA 分析可知，该系统的稳定点会是 $T$ 的前 $d$ 个主成分张成的特征空间。这表明该系统能过滤掉小特征值部分，对应随机的高频噪声。
+
+既然只需要 $P$ 快速适应以及 sg 两个条件，那么 ema target 之类其实并无必要，这篇论文提出了直接训两个独立网络然后交叉预测的策略，并声称这更鲁棒。
+
+> [!NOTE]
+>
+> 当然，本节中的所有分析都基于 **线性网络** 这个假设。这自然是因为真实的模型动力学太复杂，只能使用线性近似。
+
+#### Barlow Twins
+
+除了交叉预测以外，另一种做法是显式施加约束以防止坍塌。
+
+对于一个 batch $X$，令其过两种增强分别得到 $X^A$ 和 $X^B$，过 encoder 和 projector 得到 $Z^A$ 和 $Z^B$。$Z^A$ 和 $Z^B$ 各自在 batch 维度归一化，然后在特征维度上算互相关矩阵
+$$
+C_{i,j}=\dfrac1n\sum_k z_{k,i}^Az_{k,j}^B
+$$
+希望：
+
+- $C_{i,i}\to1$，因为事先做过归一化。这表明所有 $z_k^A$ 和 $z_k^B$ 在第 $i$ 维高度相关。
+- $C_{i,j}\to0$，保证特征的不同维数不相干，避免坍塌。
+
+实际使用的 loss 因此写成
+$$
+\sum(1-C_{i,i})^2+\lambda\sum_{i\neq j}C_{i,j}^2
+$$
+
+#### VICREG
+
+Barlow Twins 必须遵循 Siamese 的结构，即 $Z^A$ 和 $Z^B$ 必须由同一个网络得到，没法用 EMA 等手法，不够通用。而 VICREG 则将其扩展到一般场景。
+
+顾名思义，VICREG 由 V、I 和 C 三项组成。
+
+- Variance：在 batch 内部，要求每一维的 batchwise 标准差在目标标准差 $\gamma$ 以上，用一个 Hinge Loss 约束。（pass 内部统计量，不需求 Siamese）
+- Invariance：就是标准的、配对正样本间的 L2 loss。（虽然是 cross-pass 统计量，但允许一侧是 frozen target）
+- Covariance：batch 内部各维数的协方差中，非对角线元素的平方和。（pass 内部统计量，不需求 Siamese）。
+
+因此，比起 Barlow Twins，其最主要的改动为：
+
+- 把 inter-batch 的 correlation 换成了 intra-batch 的 variance 和 covariance。
+
+同时，它可以作为一个辅助防坍塌的插件，应用于所有前述方法中，促进特征各个维数的解耦，以及维数内部的非均匀性。
+
+> 特别地，如果它和 Barlow Twins 一样，两次 pass 都是 up-to-date 的，那么各自内部的 VC 和之间的 I 都会贡献；而如果有一次是 EMA 的，那么只有 up-to-date 那一侧的 VC 和之间的 I 会贡献。
+
+#### Conclusion
+
+|        模型         |                     核心贡献                      |                           具体描述                           |                    对象                    |
+| :-----------------: | :-----------------------------------------------: | :----------------------------------------------------------: | :----------------------------------------: |
+|       Π-Model       |                 Consistency Loss                  | $d\Big(f_{\theta_t}(\t{aug}_u(x)),f_{\theta_t}(\t{aug}_v(x))\Big)$<br />半监督，$f$ 直接是 logit |             Siamese 式特征距离             |
+| Temporal Ensembling |             Frozen EMA target feature             | $d\Big(f_{\theta_t}(\t{aug}_u(x)),\t{sg}(\hat z)\Big)$<br />半监督 |                EMA 特征距离                |
+|    Mean Teacher     |             Frozen EMA target network             | $d\Big(f_{\theta_t}(\t{aug}_u(x)),\t{sg}[f_{\hat\theta_t}(\t{aug}_v(x))]\Big)$<br />半监督 |              EMA 网络特征距离              |
+|     DeepCluster     |              k-mean as pseudo label               | 每一轮用 k-mean 对特征聚类，然后用 MLP 预测<br />聚类结果在轮间没有一致性，MLP 要重置<br />自监督 |                聚类标号预测                |
+|        SwAV         |         Sinkhorn 负载均衡<br />Multi-Crop         | 用 sinkhorn 把同一个 batch 中的特征均匀分配到所有 center<br />多视角交叉预测，局部预测整体 |             sinkhorn 分布预测              |
+|        DINO         |              centering + sharpening               | 直接用 MLP projection 到 logit<br />引入 frozen EMA network<br />teacher 要减去历史 EMA 做 centering，用更低温度做 sharpening | teacher 的 centering + sharpening 分布预测 |
+|        iBOT         |          masked prediction + shared MLP           | 引入 BEiT 的 masked loss<br />让 `[CLS]` 和 patch MLP 共享参数，但 centering 统计量独立 | teacher 的 centering + sharpening 分布预测 |
+|       DINO-V2       | sinkhorn + independent MLP + KoLeo Regularization | 回归 sinkhorn<br />MLP 不共享参数<br />对 $\min\|z_i-z_j\|$ 优化防止坍塌 |             sinkhorn 分布预测              |
+|        BYOL         |                  prediction only                  |     只需要 sg + MLP predictor<br />其它额外技巧都非必须      |                 EMA target                 |
+|       SimSiam       |                   remove target                   |             移除 EMA，使用 Siamese 架构交叉预测              |             Siamese 式 target              |
+
+```mermaid
+graph TD
+subgraph Semi-Supervised Preface
+A[Π-Model]
+B[Temporal Ensembling]
+C[Mean Teacher]
+O1[ ]
+style O1 fill:none,stroke:none,color:none
+end
+subgraph Pseudo Labels
+D[Deep Cluster]
+O2[ ]
+style O2 fill:none,stroke:none,color:none
+end
+subgraph Anti-Collapsing
+L[Barlow Twins]
+M[VICREG]
+O4[ ]
+style O4 fill:none,stroke:none,color:none
+end
+subgraph Swapped Prediction
+E[SwAV]
+F[DINO]
+end
+subgraph Recon+Swapped
+G[iBOT]
+H[DINO-v2]
+end
+subgraph Reconstruction
+O3(BEiT)
+end
+subgraph Simplified Siamese
+I[BYOL]
+J[SimSiam]
+K(Non-Collapse Theory)
+end
+O1 -. Consistency Loss .-> A
+A --Frozen EMA target feature-->B
+B --Frozen EMA target network-->C
+O2 -. k-mean as pseudo label .->D
+D --Sinkhorn as pseudo label + Multi-Crop-->E
+E --centering + sharpening-->F
+O3 --masked prediction--> G
+F --shared MLP + independent centering--> G
+E -. sinkhorn .-> H
+G --independent MLP + KoLeo Regularization--> H
+C -. Predictor + EMA target + SG .-> I
+I -- No target, cross prediction--> J
+J --EMA + SG suffices--> K
+C --EMA target as pseudo label + MLP for logit-->F
+O4 -. diagonalize batch correlation .-> L
+L --decoupled statistics--> M
+```
+
+核心挑战：
+
+- 没有负样本提供斥力，导致平凡解也即坍塌往往成为全局最优解；而模型的有效性依赖特定架构（非对称性、SG、EMA 等）、特定技巧（swapped-prediction 等）或特定辅助正则化项（sinkhorn / centering + sharpening / VICREG）。同时对超参的敏感性也很高（虽然一般比对比学习强，但不如 MAE）
+- 无法摆脱对数据增强的先验。
+- 没有负样本的排斥力无法保证特征空间的均匀性，往往需要额外正则化保证利用率。
+
+核心优势：
+
+- 和对比学习相似甚至更胜一筹的开罐即食能力，能涌现出好的聚类能力。
+- 摆脱了负样本的种种问题，对 bsz 的需求不是很大（虽然 DINO 中的 centering 统计量，sinkhorn 的路由均衡，VICREG 在 batch 维度的归一化之类一定程度会增大对 bsz 的需求）
+- 如前文中分析，其本质上在做隐式 PCA，对高频随机噪声滤波。对比学习在建模排斥力，而正样本学习是一个自举系统的特征点。
+
+### IV. 编码器-预测器协同的世界模型
+
+> [!CAUTION]
+>
+> <font color="red">Disclaimer：存在两种略有区别的 World Model 定义。一种是更贴近 RL 的，而另一种是更贴近表征学习的。本文显然只会考虑后者。</font>
+
+World Model 的目标和架构都很贴近前文提到的 BYOL。但与之根本的不同点，在于 World Model 的 **Predictor** 可以是一个重量级的模型，甚至可以看做整个模型的核心。而正如前文所述，BYOL 的 Predictor 为了保证适应力，避免坍塌到恒同映射，必须保持轻量级。
+
+#### I-JEPA
+
+- **BYOL** 式架构：Encoder 和 Predictor。
+- 使用 EMA 构建 Target。术语约定：**Context Encoder** 是当前模型，**Target Encoder** 是 EMA 模型。
+- 目标类似 **DINO** 的 Multi-Crops：在图片中采样一个大的 Context Block 丢给 Context 获取特征，采样一堆 Target Block 丢给 Target 获取特征（**实际执行起来类似 MAE**），然后要求 Context Feature 过 Predictor 后贴近 Target Feature。
+- 有类似 MAE 的 **position embedding** 和 Context Feature 一同提供给 Predictor。
+
+与 MAE 的区别：
+
+- 如果把 Predictor 当成 MAE 的 Decoder，那么 Predictor 的目的是在 **Latent Space** 中重建 Target Feature，Loss 也是 Latent L2 Loss；而 Decoder 的目的是在 **Pixel Space** 中重建 Masked Block，Loss 是 Pixel MSE。这是因为，LeCun 认为 Pixel 的无用信息太多，不够本质，对理解图像本质没有帮助。
+- Mask 方式和比例都不同：I-JEPA 使用 **Multi-Block Masking**，挖掉的是连续大块的区域。
+
+与 BYOL 的区别：
+
+- BYOL 的特征粒度是 **图像** 级别的，同一个图像的两个不同增强方式希望有相同的 feature；而 I-JEPA 的特征粒度是 **Block** 级别的。
+- BYOL 的 Predictor 是轻量级的；I-JEPA 的 Predictor 是重量级的，但因为输入除了 Feature 还有目标位置的 Position Embedding，所以并不容易坍塌。
+
+与 DINO 的区别：
+
+- DINO 虽然有 multi-crops，但它的目标仍然是所有 crop（不管是局部还是全局）都共享共同的 feature；而 I-JEPA 的特征粒度是 Block 级别的。
+- 其它分析同 BYOL。
+
+#### V-JEPA
+
+把 I-JEPA scale 到 video 领域的工作。大体 framework 没有区别，不过注意到 video 领域天然意味着 **因果关系**，V-JEPA 一定程度允许基于当前时刻的 feature 以及目标时刻进行将来状态的预测，更贴近 RL 范式。
+
+#### V-JEPA 2
+
+进一步 scale V-JEPA。
+
+- 支持与音频的融合。
+- 使用层次化结构，增强更长跨度预测的能力。
+- 使用 VICREG 防坍塌。
+- 使用更重型的 Predictor 实现，增强能力。
+
+#### LLM-JEPA
+
+把 I-JEPA 搬到 LLM 模态的工作。但是 framework 区别较大：
+
+- Image 天然可以使用不同 mask 块来描述局部信息；但 LLM 这么做不太好，解决方案是把自然语言文本和其代码实现对应，或者和其 SQL 代码对应，或者同一概念的两种 paraphrasing。
+- 其 loss 是传统 Next-Token Prediction 基础上加上一个不同表达间的预测 loss
+
+$$
+\sum\c  L_\t{NTP}(\t{Text}_{1:i-1},\t{Text}_i)+\lambda d(\t{Pred}(\t{Enc}(\t{Text})),\t{Enc}(\t{Code}))
+$$
+
+- Encoder 是 Transformer 最后一层的 latent，Predictor 通过插入特殊 `[pred]` token，这个 token 最后一层的 latent 会被丢入一个 **轻量级** predictor。
+- 为什么 predictor 要轻量级，与 I-JEPA 的结论不同？因为 LLM-JEPA 是基于预训练 LLM 的，其 encoder 已经很强，如果再搭配上强 decoder 则其可能坍塌为死记硬背。
+- 实际使用时把 text 和 code 一起输入，但是使用 attention mask 避免信息泄露。成本是朴素 LLM 的两倍。
+
+#### NextLat Transformer
+
+除了用 $x_{1:t}\to h_t\to x_{t+1}$ 的常规 NTP 外，还增加一个由 latent 到 latent 的预测：
+$$
+\|\t{Pred}(h_t,\t{Emb}(x_{t+1}))-\t{sg}(h_{t+1})\|^2
+$$
+其中 $\t{Pred}$ 是轻量级 MLP。
+
+该论文证明了结论：NextLat 强制 hidden state 收敛到足以预测未来的 **belief state**。这导致其虽然架构保持 attention，但 latent 演化类似 RNN，强迫在 $h_t$ 中压缩所有噪声。
+
+其另一个优势是，$\t{Pred}$ 天然可以作为轻量级的特征空间预测器，可以快速自举来连续预测多步 latent 和 prediction，大幅加速推理。
+
+#### Conclusion
+
+World Model 在建模各个部分之间的关系。其中的 Encoder 和 Predictor 满足 VIB 框架 $X\to Z\to Y$，其中 $X$ 是输入，$Z$ 是 latent，$Y$ 是目标。
+
+- 当环境中充满高频噪声时，如果 Predictor 很弱，则 Encoder 会在 latent 中保留大量原始细节，不能充分压缩；因此为了保证 Encoder 能专注于提取高层语义，Predictor 需要有足够的表达能力。同时，各个部分的 Encoded Feature 区别很大，Predictor 要正确理解 Feature 间的关系也需要高容量。
+- 当环境中信息密度高，或者 $X,Y$ 本身相似，如果 Predictor 很强，则其可以绕过 latent 中的有效信息，仅凭微弱的信号甚至位置编码就能还原；因此为了保证 Encoder 不「懒惰」，必须限制 Predictor 容量，逼迫 Encoder 将预测收敛为 Belief State。
+
+如果从不确定性角度理解：
+
+- 如果 $X\to Y$ 是困难的，Predictor 需要足够重才能建模不确定性。
+- 如果 $X\to Y$ 是简单的，Predictor 需要足够轻才能仅作为等价性的建模。
+
+### INF. 总结
+
+对整篇文章的内容加以总结。
+
+#### 训练目标
+
+重建：由已知区域对掩码区域进行像素级复原 (MAE) / 离散 token 预测 (BEiT)。
+
+对比：在特征空间上拉近正样本对，推远负样本对。
+
+自举：正样本对的特征可以互相预测 (BYOL) / 正样本对的全局特征投影到的分布贴近 (DINO)。
+
+WM：用上下文特征预测目标区域特征。
+
+#### 表征偏好
+
+重建：像素级复原意味着对 **高频细节**、**局部纹理** 和 **几何空间关系** 的关注，而全局的抽象语义被丢弃或掩藏；BEiT 式离散重建略微过滤噪音。不论哪种方法，生成的特征都是 **局部** 的。
+
+对比：强迫抹除局部细节，把一张图的 **所有视角、增强和等价描述** 全部坍缩为一个独特的、与所有其它样本均不同的向量，具有极端的不变性；丢弃任何无法在数据增强中幸存的局部高频特征，仅保留最主要的部分（例如，CLIP 的对齐会丢弃一切无法被自然语言描述的特征）；特征被负样本在超球面上均匀排斥。总是生成 **全局特征**。（当然，如 LocCa 等也可以通过 region 方法获得局部特征，不过那其实更贴近 VLM 模式了）
+
+自举：因为没有负样本，天然的聚类特性和可分性；BYOL 式因为仍基于全局数据增强，倾向于对图像生成不变的 **全局特征**，而 DINO 式因为有 multi-crop + ViT 所以会自发关注图像中 **明确的主体** 而忽略对预测无关的 **背景**，且能生成 **局部特征**。
+
+WM：丢弃了 MAE 式的高频噪声预测，保留了 MAE 式严格的空间位置关系，能生成高质量 **局部特征**，甚至展现出与时序一致性、上下文推断。
+
+总结：
+
+- 信息颗粒度：MAE(最高频)->I-JEPA(进入隐空间)->DINO(关注主体)->SimCLR/CLIP(关注最上层抽象语义)
+- 空间聚焦度：MAE/BEiT(局部位置信息)->I-JEPA/DINO(跨区域的位置信息)->SimCLR/CLIP(全局统一，过滤位置信息)
+
+#### 下游应用
+
+重建：因为表征太高频细碎，linear probing 或 clustering 的效果均极差 (BEiT 的 linear probing 会稍微好一点，但仍然不太能要）；需要 tune，tune 后潜力巨大 (因为表征中编码了巨量信息)。
+
+对比：linear probing 因为负样本的排斥力所以高度可分，非常适合；clustering 因为样本比较散所以可能不如自举；因为过度关注全局特征所以 tune 的上限不高，在涉及到局部特征的下游任务上可能不如 MAE；CLIP 因为有文本监督所以可以实现真正的 zero-shot；SigLIP 因为没有 softmax 强制一对一所以上限更高。
+
+自举：linear probing 的效果与对比方法相当，clustering 则因为天然聚类性效果极佳；BYOL 和 SimSiam 因为同样关注全局信息所以表现类似对比式，而 DINO 尤其擅长局部信息，甚至特征可以实现 zero-shot 聚类。
+
+WM：linear probing 因为丢弃了高频信息所以表现尚可，clustering 同理；tune 的上限继承了 MAE，同时因为已经具有初步抽象语义所以收敛速度远快于 MAE，而且也不像 MAE 一样依赖全参数 tune。
+
+#### 批次大小
+
+重建：完全 intra-sample 操作，bsz 只与优化器有关。
+
+对比：需要极大 bsz 以保证足够的 hard negative。有 momentum queue 或 memory bank 等方法在保证等效 bsz 不变的前提下减少计算 bsz。特别地，SigLIP 这种方法因为转成了单个样本打分所以与 bsz 解耦，小 bsz 也能训。
+
+自举：BYOL 需要一定的 bsz 才能通过 BN 防坍塌 (当然也可以通过其它手段避免)；DINO 则是为了负载均衡和 centering 统计量等也需要一定的 bsz。
+
+WM：继承了 MAE 的 intra-sample 性质，bsz 只与优化器有关。
+
+#### 数据增强
+
+重建：不太需要甚至要避免过强的数据增强，因为 masking 本身就是一种非常暴力的数据增强，尤其是在 mask rate 很大的时候如果额外再增强就会让重建困难，同时因为训练目标是像素级重建所以颜色抖动/模糊等操作会让重建图像脱离真实数据流形。
+
+**单模态** 对比/自举：极度依赖数据增强，因为数据增强几乎是唯一一种确定正样本关系的方法，尤其需要靠颜色抖动/灰度化防靠比对色彩作弊、靠模糊防高频纹理作弊；DINO 的 multi-crop 更是这种思想的极致。
+
+**多模态** 对比则恰好相反，排斥过强数据增强，因为不同模态本身已经提供了极强的正样本对，如果再应用加强反倒可能导致错配。
+
+WM 类似重建，把不需要强数据增强作为核心卖点。
+
+#### 病态分析
+
+分析共七种可能的病态场景。
+
+**完全坍塌**：所有输入均得到相同特征。
+
+- 重建：不可能，不然像素级重建任务无法完成。
+- 对比：不可能，因为负样本会被推开。
+- 自举：很可能，要通过 SG/EMA/BN/Centering 等种种魔法处理。
+- WM：很可能，一方面继承自举的相关技巧，另一方面在 predictor 中插入位置信息也能防止坍塌。
+
+**维度坍塌**：虽然不同输入的特征不同，但集中在某个低维流形中，大部分维数被限制，特征表现能力极差。
+
+- 重建：不太可能，因为像素级重建目标是高频的，如果特征向量是低秩的则难以提供足够的信息量。
+- 对比：非常可能。一方面是开大 bsz 并挖掘难负样本，强迫不能通过低维特征区分；另一方面使用 SimCLR 式的 projector，允许投影后出现坍塌，但投影前的真实特征保持信息丰富。
+- 自举：非常可能。一方面继承 projector 机制，另一方面 sharpening 锐化 teacher，或者 DINO-v2 中的 KoLeo 与 sinkhorn，以及 VICREG 之类均有助于遏制。
+- WM：有可能，靠 predictor 和其中的位置信息撑开维度，也会显式使用 VICREG。
+
+**恒等映射**：encoder 原样输出特征或只提取边缘，强大的 decoder 脑补或 inpainting 完成任务。
+
+- 重建：非常可能。一方面靠高 mask rate 避免照抄周边像素，另一方面故意使用非对称架构削弱 decoder，逼迫 encoder 提取深层特征。
+- 对比/自举：不可能，因为它们没有 decoder 也不在重建。
+- WM：有可能，尤其是 context 和 target 重叠的场合，因此必须保证二者无交，同时 predictor 的深度需要权衡。
+
+**捷径学习**：输出的特征对某些噪声/边缘/色调过拟合，毫无语义。
+
+- 重建：可能但接受，允许 encoder 记忆高频噪声以重建，因此需要 tune 把这部分噪声洗掉。
+- 对比/自举：非常可能，唯一手段是靠数据增强 (SimCLR 证明)。
+- WM：有可能，因此 mask 时需要保证一定的时空间隔，迫使模型进行更深层的理解。
+
+**语义坍塌**：虽然不同类别彼此独立，但是类内的所有细节特征如姿态和方位被完全丢弃。
+
+- 重建/WM：不可能，反倒是走向反面 (也即保留过量噪声的捷径学习)。
+- 单模态对比/自举：非常可能，但这是与语义不变性的权衡，靠调控数据增强力度保留适当可识别细节来决定。
+- 多模态对比/自举：不太可能，因为文本提供一部分监督。
+
+**枢纽节点**：极少数样本的特征在度量空间中与所有样本均相似，导致检索与聚类崩溃。
+
+- 重建：不可能，因为未 tune 的 MAE 特征度量毫无意义。
+- 对比：不太可能，因为 InfoNCE 强制特征均匀分布；SigLIP 则因为不用 InfoNCE 稍微有可能一点，但只要数据多就大体可以避免。
+- 自举：有可能，通过 centering、KoLeo、sinkhorn 和 VICREG 可以基本避免。
+
+**模态鸿沟**：各个模态的特征不完全重叠，尤其是在某些特定的降维下。
+
+- 单模态：显然不可能。
+- 多模态 (CLIP)：几乎总是发生，因为 InfoNCE 只负责拉近样本对，不负责拉近样本分布。解决方案要靠更深度的 cross-attention 融合。SigLIP 一定程度可以缓解，因为其对两个模态分布的约束更松，允许它们更对齐地重叠。
+
+#### 规模扩展
+
+**输入维度**：图像分辨率/视频时长增加。
+
+- 重建：MAE 式因为丢弃大部分 patch 所以极其适合；BEiT 式则因为不扔所以 scale 不好。
+- 对比：首先本身和 BEiT 一样要处理完整输入已经是减分项了；还需要额外保证大 bsz，更是灾难；同时模型更容易走捷径。特别地，CLIP 因为文本很难对局部图像特征指导，所以一般 pretrain 必须在低分辨率场合训练，高分辨率靠后期 tune。SigLIP 对高分辨率的支持更好。事实上，目标是 **全局特征** 的对比式方法天然无法适应更高的分辨率——因为更多的信息量也没用，全局特征的表达能力太差了！
+- 自举：BYOL 式和 CLIP 一样，因为全局特征的问题，该有的问题都有。与之相对的，DINO 的 multi-crop 策略能产生非常精细的局部特征，DINO-V2 更是引入 BEiT 式重建任务，总之虽然成本很高，但能力增长也是恐怖的。
+- WM：MAE 式的计算效率，DINO 式的精细局部语义，天然适合 scale。
+
+**patch size**：调小 patchsize 获取更精细的监督。
+
+- 重建：理论可行，但过小的 patch 的重建毫无意义，这相当于在重建噪点。
+- 对比：因为在学全局特征，调小 patchsize 没有性价比，反正最后只会被 pool 到单一输出。
+- 自举：DINO 特别偏爱小 patchsize，能实现更精细的聚类，区分更细节的零部件，当然代价是计算量飙升。
+- WM：有助于更精细的推理，同时不像 MAE 一样要预测噪声，可以提升密集任务上的性能。
+
+**latent dim**：
+
+- 重建：MAE 的 latent 被高频噪声占满，因此 latent scale 时，高级语义的维度占比反倒下降，需要 tune 更久才能把噪声清洗；BEiT 的表达能力则受限于离散的 tokenizer，过高的 latent 会饱和。
+- 对比：高维空间中的距离度量丧失意义，因此就算 latent dim 可以 scale，也必须依赖 projector 构建低维 bottleneck，限制了 latent 的表现力。同时，大的 latent 意味着要更高的 bsz 才能刻画清晰的边界。
+- 自举：BYOL 式和对比式有相同的度量丧失意义、依赖 projector 的问题；DINO 式则因为 centering + sharpening 的技巧，高维 latent 反倒会鼓励特征解耦、稀疏化，每一个 dim 对应一个独特的特征。
+- WM：更高的 latent 意味着 predictor 要预测的 target 更精细，平衡 encoder 与 predictor 会更加困难。
+
+**数据量**：尤其是未经清洗的野生数据。
+
+- 重建：虽然不会因为低质量噪点数据崩溃，但是会对噪声过拟合，特征会被高频垃圾占满。
+- 对比：CLIP 式因为有文本为锚点，所以只要保证配对正确就能任意 scale，学会处理某些罕见概念，这是后续工作 (如 ALIGN) 证明的；但是如果真的强行用野生数据，则电费和 GPU 费太高了，因此事实上数据清洗还是有必要的。而 SimCLR 式因为正样本对纯粹靠数据增强，但野生数据上的数据增强常常失效，比如 crop 图片的两个部分没有任何关联，强行拉近没有任何意义。
+- 自举：Garbage-in, Garbage-out 的切实体现。BYOL 式类似对比场景，而 DINO 的成功更是依赖它的数据清洗 pipeline。
+- WM：比重建更优的解法，隐空间过滤了噪声，而杂乱、无主体的图片刚好成为 WM 学习真实世界中数据联系的最优样本。
+
+**模型大小**：比如 ViT-Base 到 ViT-Giant。
+
+- 重建：MAE 很容易 scale，但一方面只能 scale encoder（不然 decoder 会接管），另一方面重建任务的瓶颈有限，很容易饱和；增大的 model size 也需要更长时间的 tune。而 BEiT 式则仍然受限于 tokenizer。
+- 对比：CLIP 式符合 Chinchilla 式的 Scaling Law，但是巨型 CLIP 的 softmax 等环节容易爆炸，需要更多工程技巧；SigLIP 同理服从 Scaling，但因为不用算 softmax 所以更稳定一些；纯视觉模态则很容易走捷径，需要伴随更强的数据增强。
+- 自举：太容易塌了，不管是 BYOL 还是 DINO 都依赖一堆防坍塌的工程技巧，换大模型只会让训练更麻烦；但如果真训成功了，潜力会是极强的。
+- WM：像 MAE 一样容易 scale，但不会遇到瓶颈；比 DINO 稳定很多。
+
+**Epoch 数量**：同一个样本需要过几遍才能让模型学会且不至于过拟合。
+
+- 重建：几乎不可能过拟合，可以任意增加 Epoch 数，而且确实需要增加，因为 mask 太多了，高级语义的涌现速度极慢。
+- 对比：单模态需要较多的 epoch 以遍历所有增强方法，但不能无限增加，过量仍然会导致过拟合；多模态则必须 single-pass，不能 scale epoch 只能 scale 数据量，因为文本太容易过拟合了。
+- 自举：在中小数据集（如 ImageNet）需要较多的 epoch 数，但 epoch 太多会导致 teacher 的 EMA 更新非常迟钝乃至收敛，Sinkhorn 的聚类也可能过拟合，因此大规模数据集上的 epoch 数通常较低。
+- WM：比 MAE 的收敛速度快很多，而且同样受益于 mask，不容易过拟合。
+
+**GPU 数**：并行友好度，即对 batch 内部通信的依赖程度。
+
+- 重建：不需要 batch 通信，随便做 data parallel，只需要标准的 all-reduce 即可。
+- 对比：通信噩梦，需要大量的 all-gather 交换 batch 信息。当然 SigLIP 除外。
+- 自举：虽然理论上 multi-crop 是单张图片内部的任务，但一般 2+8 的视角会导致 10 次 forward，单卡一般承受不了。如果再加上 DINO 中的 Sinkhorn 和 KoLeo 之类 batchwise 正则化项，通信压力不亚于对比式。
+- WM：和 MAE 一样适合 scale。
+
+**下游应用**：理论上，pretrain 模型越强，zero-shot 能力应当相应变强，更能开罐即食。
+
+- 重建：反倒需要 tune 更久才能把噪声洗掉。
+- 对比：确实能 scale，乃至成为强大的 base model；甚至 tune 会破坏一个训好的 CLIP。
+- 自举/WM：适当的 tune 或 linear probe 即可。

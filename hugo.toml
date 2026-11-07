@@ -1,0 +1,36 @@
+baseURL = 'https://troverld.github.io/'
+defaultContentLanguage = 'zh'
+locale = 'zh-CN'
+title = 'Troverld'
+hasCJKLanguage = true
+disableKinds = ['taxonomy', 'term', 'RSS']
+enableRobotsTXT = true
+
+[mediaTypes.'text/markdown']
+suffixes = ['md', 'markdown', 'mdown', 'txt']
+[mediaTypes.'text/plain']
+suffixes = []
+
+[markup.goldmark.renderer]
+unsafe = true
+[markup.goldmark.extensions]
+strikethrough = true
+table = true
+taskList = true
+[markup.goldmark.extensions.extras.superscript]
+enable = true
+[markup.goldmark.extensions.passthrough]
+enable = true
+[markup.goldmark.extensions.passthrough.delimiters]
+block = [['$$', '$$'], ['\[', '\]']]
+inline = [['$', '$'], ['\(', '\)']]
+[markup.highlight]
+noClasses = false
+
+[params]
+description = '文字与笔记'
+[params.giscus]
+repo = 'Troverld/Troverld.github.io'
+repoId = ''
+category = 'Announcements'
+categoryId = ''

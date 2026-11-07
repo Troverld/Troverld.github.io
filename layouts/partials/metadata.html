@@ -1,0 +1,44 @@
+{{- $filename := .Title -}}
+{{- with .File }}{{ $filename = .ContentBaseName }}{{ end -}}
+{{- $entry := dict -}}
+{{- with hugo.Data.metadata -}}
+  {{- if reflect.IsMap . -}}
+    {{- with $.File -}}
+      {{- $candidate := index hugo.Data.metadata (strings.TrimPrefix "posts/" .Path) -}}
+      {{- if reflect.IsMap $candidate }}{{ $entry = $candidate }}{{ end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $publicTitle := $filename -}}
+{{- $publicDescription := "" -}}
+{{- $realTitle := $filename -}}
+{{- $hasRealTitle := false -}}
+{{- $realDescription := "" -}}
+{{- range $key := slice "public_title" "public_description" "real_title" "real_description" -}}
+  {{- $value := index $entry $key -}}
+  {{- if eq (printf "%T" $value) "string" -}}
+    {{- $value = strings.TrimSpace $value -}}
+    {{- if $value -}}
+      {{- if eq $key "public_title" }}{{ $publicTitle = $value }}{{ end -}}
+      {{- if eq $key "public_description" }}{{ $publicDescription = $value }}{{ end -}}
+      {{- if eq $key "real_title" }}{{ $realTitle = $value }}{{ $hasRealTitle = true }}{{ end -}}
+      {{- if eq $key "real_description" }}{{ $realDescription = $value }}{{ end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if not $hasRealTitle -}}
+  {{- $headings := findRE `(?m)^#\s+[^\r\n]+` .RawContent 1 -}}
+  {{- with $headings }}{{ $realTitle = replaceRE `^#\s+` "" (index . 0) }}{{ end -}}
+{{- end -}}
+{{- if not $realDescription }}{{ $realDescription = $publicDescription }}{{ end -}}
+{{- $date := "" -}}
+{{- with $entry.date -}}
+  {{- if eq (printf "%T" .) "string" -}}
+    {{- if findRE `^\d{4}-\d{2}-\d{2}$` . -}}
+      {{- $parsed := try (time.AsTime .) -}}
+      {{- if not $parsed.Err }}{{ $date = . }}{{ end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if and (not $date) (not .Date.IsZero) }}{{ $date = .Date.Format "2006-01-02" }}{{ end -}}
+{{- return (dict "publicTitle" $publicTitle "publicDescription" $publicDescription "realTitle" $realTitle "realDescription" $realDescription "date" $date) -}}

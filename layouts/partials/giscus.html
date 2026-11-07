@@ -1,0 +1,8 @@
+{{ $g := .Site.Params.giscus }}
+{{ if and $g.repo $g.repoId $g.category $g.categoryId }}
+<section class="comments" aria-label="评论">
+  <button id="load-comments" type="button" data-repo="{{ $g.repo }}" data-repo-id="{{ $g.repoId }}" data-category="{{ $g.category }}" data-category-id="{{ $g.categoryId }}">加载评论</button>
+  <p id="comments-status" role="status"></p><div id="giscus"></div>
+</section>
+<script defer src="{{ "js/comments.js" | relURL }}"></script>
+{{ end }}

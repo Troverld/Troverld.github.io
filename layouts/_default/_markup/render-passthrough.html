@@ -1,0 +1,24 @@
+{{- .Page.Store.Set "hasMath" true -}}
+{{- $inner := .Inner -}}
+{{- /* Goldmark passthrough retains source quote prefixes on continuation lines.
+     Count containers at the opening delimiter; never strip mathematical > signs. */ -}}
+{{- if findRE `\n[\t ]*>` $inner -}}
+  {{- $lines := split (os.ReadFile .Position.Filename) "\n" -}}
+  {{- $lineIndex := sub .Position.LineNumber 1 -}}
+  {{- if lt $lineIndex (len $lines) -}}
+    {{- $opening := index $lines $lineIndex -}}
+    {{- $prefix := substr $opening 0 (sub .Position.ColumnNumber 1) -}}
+    {{- $containers := findRE `^[\t ]*(?:(?:[-+*]|[0-9]+[.)])[\t ]+|>[\t ]*)*` $prefix 1 -}}
+    {{- with $containers -}}
+      {{- $depth := len (findRE `>` (index . 0)) -}}
+      {{- range seq $depth -}}
+        {{- $inner = replaceRE `(\n[\t ]*)>[\t ]?` "$1" $inner -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- if eq .Type "block" -}}
+<div class="math-block">\[{{ $inner }}\]</div>
+{{- else -}}
+<span class="math-inline">\({{ $inner }}\)</span>
+{{- end -}}

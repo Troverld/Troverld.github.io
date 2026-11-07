@@ -1,0 +1,519 @@
+$$
+\newcommand{\b}{\boldsymbol}
+\newcommand{\c}{\mathcal}
+\newcommand{\bc}[1]{\b{\c{#1}}}
+\newcommand{\btimes}{\mathbin{\bar\times}}
+\newcommand{\bmat}[1]{\begin{bmatrix}#1\end{bmatrix}}
+\newcommand{\t}{\text}
+\newcommand{\ip}[1]{\left<#1\right>}
+$$
+
+### O. Notation
+
+- 向量用小写粗体表示：$\b a$。其中的成员如 $a_i$。
+
+- 矩阵用大写粗体表示：$\b A$。其中的成员如 $a_{i,j}$。
+
+- 更高维张量用手写粗体表示：$\bc X$。其中的成员如 $x_{i,j,k}$。
+
+- 大写字母 $N$ 尽量用于且仅用于表示高维张量的维数。
+
+- 元素列用上标表示：$\b A^{(n)}$。
+
+- 下标默认 1-indexed。
+
+- 高维张量可以通过固定下标得到低维张量：如 $\b A$ 的第 $i$ 行是 $\b a_{i,:}$，第 $j$ 列是 $\b a_{:,j}$。因为默认向量是列向量，所以也可以简写为 $\b a_j$。
+
+- 更高维张量的 1D 下标提取的专有名词是 **纤维** (fiber)，例如 $\b x_{:,j,k}$ 或 $\b x_{i,:,k}$。纤维默认是列向量。
+
+- 2D 下标提取的专有名词是 **切片** (slices)。
+
+- 范数默认是 Euclidean 范数
+    $$
+    \|\bc X\|=\sqrt{\sum_{i_1=1}^{I_1}\dots\sum_{i_N=1}^{I_N}x_{i_1,\dots,i_N}^2}
+    $$
+    1D 时是 $\ell^2$ 范数，2D 时是 Frobenius 范数。内积是范数诱导内积。
+
+- **秩一张量** 是可以被写成 1D 向量外积的张量：
+    $$
+    \bc X=\b a^{(1)}\circ\b a^{(2)}\circ\dots\circ\b a^{(N)}
+    $$
+
+- 张量被称作 **立方** (cubical) 的，如果每一维下标范围均相同。在此基础上是 **对称** 或称 **超对称** 的，如果关于所有下标排列取值相同。对称也可以仅限于某几个维度。
+
+- 张量被称作 **对角** (diagonal) 的，如果只在所有下标全部相同的位置非零。
+
+- **矩阵化** (matricization)：把张量拍扁。存在更一般的拍扁方法，不过此处只考虑拍扁为矩阵的方法，则保留第 $n$ 维的所有纤维为列向量的矩阵化记作 $\b X_{(n)}$。拍扁的顺序并不重要——只要它是自洽的。
+
+- 张量-矩阵乘法：只考虑张量在第 $n$ 维上乘以矩阵，也即对于 $\bc X\in\R^{I_1\times\dots\times I_N}$ 和矩阵 $\b U\in\R^{J\times I_n}$，定义
+    $$
+    (\bc X\times_n\b U)_{i_1,\dots,j,\dots,i_N}=\sum_{i_n=1}^{I_n}x_{i_1,\dots,x_n}u_{j,i_n}
+    $$
+    得到的是 $(I_1,\dots,J,\dots,I_N)$ 维张量。写成矩阵化形式即为
+    $$
+    \bc Y=\bc X\times_n\b U\iff\b Y_{(n)}=\b U\b X_{(n)}
+    $$
+    不同维上的乘法有交换律：
+    $$
+    \bc X\times_m\b A\times_n\b B=\bc X\times_n\b B\times_m\b A\quad(n\neq m)
+    $$
+    同一维上的乘法有结合律：
+    $$
+    \bc X\times_n\b A\times_n\b B=\bc X\times_n(\b B\b A)
+    $$
+
+- 张量-向量乘法：乘完后第 $n$ 维会 collapse 掉，得到低一阶的张量，记作 $\bc X\btimes_n\b v$。
+
+- 矩阵的 **Kronecker 积**：定义在 $\b A\in\R^{I\times J}$ 和 $\b B\in\R^{K\times L}$ 之间。
+    $$
+    \b A\otimes\b B=\bmat{a_{1,1}\b B&\dots&a_{1,J}\b B\\\vdots&\ddots&\vdots\\a_{I,1}\b B&\dots&a_{I,J}\b B}
+    \\=\bmat{\b a_1\otimes\b b_1&\dots&\b a_1\otimes\b b_L&\dots&\b a_J\otimes\b b_L}
+    $$
+
+- 矩阵的 **Khatri-Rao 积**：定义在 $\b A\in\R^{I\times K}$ 和 $\b B\in\R^{J\times K}$ 之间。
+    $$
+    \b A\odot\b B=\bmat{\b a_1\otimes\b b_1&\dots&\b a_K\otimes\b b_K}
+    $$
+
+- 矩阵的 **Hadamard 积**：用 $\b A*\b B$ 表示。
+
+### I. CP Decomposition
+
+**CP 分解**：把高阶张量分解为秩一张量和的一种方法
+$$
+\bc X\approx\sum_{i=1}^r\b a_i^{(1)}\circ\dots\circ\b a_i^{(N)}
+$$
+如果选择归一化并带上权重 $\b\lambda$，则可以记作
+$$
+\bc X\approx[\b\lambda;\b A^{(1)},\dots,\b A^{(N)}]
+$$
+此时有
+$$
+\b X_{(n)}\approx\b A^{(n)}\b\Lambda(\b A^{(N)}\odot\dots\odot\b A^{(n+1)}\odot\b A^{(n-1)}\odot\dots\odot\b A^{(1)})^\top
+$$
+其中 $\b\Lambda=\t{diag}(\b\lambda)$ 是 $\b\lambda$ 的对角矩阵。
+
+需要注意的是，CP 分解仅仅是一套框架，有很多种具体的分解方式（例如 2D 时的奇异值分解和秩分解）都服从该格式。
+
+#### I. Tensor Rank
+
+定义：张量的 **秩**，记作 $\t{rank}(\bc X)$，是其能写成秩一张量和的最小值；满足 $r=\t{rank}(\bc X)$ 的 CP 分解称为 **秩分解**。
+
+特别地，就算是实张量，其实秩和复秩也可能不同，这一点与矩阵的场合不一样。而且，求解张量秩是一个 NP-Hard 问题，最常见的方法是往各种 CP 分解模型上套。
+
+在矩阵的场合，$I\times J$ 矩阵的 **最大秩**（所有矩阵中秩最大的）是 $\min(I,J)$，而 **典型秩**（Lebesgue 测度意义下 non-negligible 的秩）同样是 $\min(I,J)$——换言之，低秩矩阵是零测的。
+
+然而，在张量的场合，情况则不然：
+
+- 最大秩往往大于典型秩。
+- 在复秩的场合，典型秩是唯一的；然而实秩的典型秩常常非唯一。
+- 例如，$2\times2\times2$ 的正态张量中，$2$-秩张量占比 $79\%$ 而 $3$-秩张量占比 $21\%$；$1$-秩张量是零测的。
+
+最大秩必然不超过 $\min_i(\prod I_n/I_i)$，但这是唯一通用的结果。施加某些特定限制后（比如说特定形状、特定对称性）可以有更紧的界。
+
+特别地，对称张量 $\bc X\in\R^{I\times\dots\times I}$ 存在所有 $\b A^{(n)}$ 全部相同的 CP 秩，且其复秩 w.p.$1$ 为
+$$
+\left\lceil\dbinom{I+N-1}N/I\right\rceil
+$$
+除了某几个特定反例外。
+
+特别地，张量的秩分解常常是唯一的（而矩阵则不然）。例如，考虑 SVD
+$$
+\b X=\b U\b\Sigma\b V^\top
+$$
+随便选一个正交矩阵 $\b W$ 就可以构造出 $\b A=\b U\b\Sigma\b W,\b B=\b V\b W$ 等一系列本质不同的秩分解。
+
+然而，张量秩分解常常关于列重排与积为 $1$ 的标量缩放意义下是唯一的。形式化地，定义矩阵的 $k$-秩为最大的使得任意 $k$ 列都线性无关的 $k$，则存在唯一分解的充分条件是
+$$
+\sum k_{\b A^{(n)}}\geq 2R+(N-1)
+$$
+特别地，其在 $N=2,N=3$ 时同样是必要的。
+
+#### II. Low Rank Approximations
+
+矩阵场景，**Eckart-Young 定理** 保证了 SVD 是 Frobenius 范数意义下最佳的低秩逼近。然而，张量场景则不然：存在三阶张量的 $1$-秩逼近和 $2$-秩逼近毫无关系。推论是低秩逼近的所有项必须同步求出，而不能逐步求解。
+
+事实上，最优的低秩逼近甚至不一定存在。称一个张量是 **退化** (degenerate) 的，如果它能被低秩分解任意逼近（但代价是分解中某些项的范数任意大，另一些项的范数任意小）。
+
+这直接导出结论：Euclidean 范数意义下，极限的秩可能大于序列秩的上确界；以及对应的 **边界秩** (border rank) 概念，即任意逼近所需的最少秩一矩阵数。
+
+#### III. CP Algorithms
+
+虽然以上传达了很多悲观结论（求 CP 是 NP-Hard 的；可能存在任意接近的低秩逼近），但仍然可以设计好的 CP 算法。
+
+考虑一个 3D 张量 $\bc X\in\R^{I\times J\times K}$ 场景，目标是求出 $R$-秩最优逼近 $\hat{\bc X}=[\b\lambda;\b A,\b B,\b C]$。考虑一个 coordinate descent 算法，每次固定所有其它成员，优化剩下的一个成员。
+
+形式化地，例如固定 $\b B,\b C$ 优化 $\b A$ 时，目标就是
+$$
+\min_{\hat{\b A}}\|\b X_{(1)}-\hat{\b A}(\b C\odot\b B)^\top\|_F
+$$
+其中 $\hat{\b A}$ 被解释为 $\b A\t{diag}(\b\lambda)$。则最优解可以用 MP 逆显式写出来，为
+$$
+\hat{\b A}=\b X_{(1)}[(\b C\odot\b B)^\top]^\dagger
+$$
+特别地，Khatri-Rao 积的 MP 逆有展开形式，因此可以只用对 $R\times R$ 矩阵求 MP 逆。求出最优 $\hat{\b A}$ 后，即可归一化得到 $\b A$ 与 $\b\lambda$。
+
+多维的场合同样可以遵循这一套 Coordinate Descent 方法。
+
+这个称为 **Alternating Least Squares** (ALS) 的方法听起来很对，但是有种种缺陷：
+
+- 收敛需要很多迭代。
+- 并不保证收敛到全局最优解，甚至不保证收敛到鞍点（Coordinate Descent 的通病）。
+- 最终解高度依赖于初值。
+
+因此有一系列改进方法，略过不表。
+
+### II. Tucker Decomposition
+
+**Tucker 分解**：另一种分解方式。对于 $\bc X\in\R^{I_1\times\dots\times I_N}$ 和 $\bc G\in\R^{J_1\times\dots\times J_N}$ 以及 $\b A^{(n)}\in\R^{I_n\times J_n}$，有
+$$
+\bc X\approx\bc G\times_1\b A^{(1)}\times\dots\times_N\b A^{(N)}
+\\=\sum_{j_1=1}^{J_1}\dots\sum_{j_N=1}^{J_N}g_{j_1,\dots,j_N}\bigcirc_{n=1}^{N}\b a^{(n)}_{j_n}
+\\=:[\bc G;\b A^{(1)},\dots,\b A^{(N)}]
+$$
+CP 分解是 $\bc G$ 为对角立方张量时的特例。
+
+Tucker 分解写成纤维形式是
+$$
+\b X_{(n)}=\b A^{(n)}\b G_{(n)}(\b A^{(N)}\otimes\dots\otimes\b A^{(n+1)}\otimes\b A^{(n-1)}\otimes\dots\otimes\b A^{(1)})^\top
+$$
+可以发现把 $\b G_{(n)}$ 换成 $\b\Lambda$ 就是 CP 分解的纤维形式。
+
+特别地，张量 $\bc G$ 被称作 Tucker 分解的 **核心张量** (core tensor)。
+
+#### I. Tucker Algorithms
+
+定义：$\bc X$ 的 $n$-秩为 $\t{rank}_n(\bc X)=\t{rank}(\b X_{(n)})$。若令 $R_n=\t{rank}_n(\bc X)$，则可以称 $\bc X$ 是一个 秩-$(R_1,\dots,R_N)$ 张量。
+
+对于 $R_n=\t{rank}_n(\bc X)$，总是存在核心矩阵形状为 $(R_1,\dots,R_N)$ 的 Tucker 分解；而如果在某一维上 $R_n<\t{rank}_n(\bc X)$，则该 Tucker 分解总是不精确的，也即 **截断 Tucker 分解**。一个求 $(R_1,\dots,R_N)$-Tucker 分解的方法为 **Higher-Order SVD** (HOSVD)：
+
+- 令 $\b A^{(n)}$ 为 $\b X_{(n)}$ 的前 $R_n$ 个左奇异向量。
+- 令 $\bc G=\bc X\times_1(\b A^{(1)})^\top\times\dots\times_N(\b A^{(N)})^\top$。
+
+只要全体 $R_n\geq\t{rank}_n(\bc X)$，则这个分解就是精确的；但是和 SVD 不同，它不提供最优近似。
+
+虽然 HOSVD 不提供最优近似，但它能显式写出误差界。如果要获取最优近似，则等效于求以下优化问题：
+$$
+\min_{\bc G,\b A^{(1)},\dots,\b A^{(N)}}\|\bc X-[\bc G;\b A^{(1)},\dots,\b A^{(N)}]\|
+\\\t{s.t. }\bc G\in\R^{R_1\times\dots\times R_N}
+\\\b A^{(n)}\in\R^{I_n\times R_n}\t{ and columnwise orthogonal}
+$$
+而它可以直接脱离张量语境写成矩阵形式
+$$
+\min_{\bc G,\b A^{(1)},\dots,\b A^{(N)}}\|\t{vec}(\bc X)-(\b A^{(N)}\otimes\dots\otimes\b A^{(1)})\t{vec}(\bc G)\|
+$$
+由最小二乘法，在固定全体 $\b A$ 时，可以显式写出最优的 $\bc G$，反向还原回张量形式就是
+$$
+\bc G=\bc X\times_1(\b A^{(1)})^\top\times\dots\times_N(\b A^{(N)})^\top
+$$
+此时有
+$$
+\|\bc X-[\bc G;\b A^{(1)},\dots,\b A^{(N)}]\|^2
+\\=\|\bc X\|^2-2\ip{\bc X,[\bc G;\b A^{(1)},\dots,\b A^{(N)}]}+\|[\bc G;\b A^{(1)},\dots,\b A^{(N)}]\|^2
+\\=\|\bc X\|^2-2\ip{\bc X\times_1(\b A^{(1)})^\top\times\dots\times_N(\b A^{(N)})^\top,\bc G}+\|\bc G\|^2
+\\=\|\bc X\|^2-\|\bc G\|^2
+$$
+于是问题等效于最大化 $\|\bc G\|$。在固定除 $\b A^{(n)}$ 外的全体 $\b A$ 时，可以令
+$$
+\b W=\b X_{(n)}(\b A^{(N)}\otimes\dots\otimes\b A^{(n+1)}\otimes\b A^{(n-1)}\otimes\dots\otimes\b A^{(1)})
+$$
+则有
+$$
+\|\bc G\|=\|(\b A^{(n)})^\top\b W\|
+$$
+于是显式写出最优的 $\b A^{(n)}$ 即为 $\b W$ 的左奇异向量。或者写成张量形式就是
+$$
+\bc Y:=\bc X\times_1(\b A^{(1)})^\top\times\dots\times_{n-1}(\b A^{(n-1)})^\top
+\\\times_{n+1}(\b A^{(n+1)})^\top\times\dots\times_N(\b A^{(N)})^\top
+$$
+然后 $\b A^{(n)}$ 是 $\b Y_{(n)}$ 的左奇异向量。
+
+总结为以下的 **Higher-Order Orthogonal Iteration** (HOOI) 算法：
+
+- 使用 HOSVD 初始化。
+- 每次选一维 $n$ 计算 $\bc Y$ 然后用 $\b Y_{(n)}$ 的左奇异向量更新 $\b A^{(n)}$。
+- 迭代充分多次后终止。
+
+和 ALS 一样，它不保证收敛到全局最小值甚至鞍点。
+
+#### II. Non-Uniqueness
+
+Tucker 分解显然不唯一，一个最简单的修正就是给 $\b A^{(n)}$ 和 $\bc G$ 同时乘以一个 $R_n\times R_n$ 的可逆矩阵。
+
+但是反过来说，给定一个 Tucker 分解，我们可以尝试对 $\bc G$ 进一步化简，以解耦其相互作用或减少存储空间。
+
+在 2D 场景，我们会试图把 $\b G$ 对角化（这也是为什么我们不用 Tucker 分解在 2D 时的对应物：把 $\b G$ 对角化就得到了 SVD）；然而张量场景，$\bc G$ 一般是没法对角化的。取而代之的是，有一些把 $\bc G$ 尽量多的位置消成零或很小值的方法。
+
+### III. Einsum
+
+不论是张量-矩阵乘法还是张量-向量乘法，都仅仅是一批特殊的张量-张量乘法。来看看 **Einstein 求和约定**。
+
+经典约定为：
+
+- 等式两侧各出现一次的指标是 **自由指标** (free index)，作为输出。
+- 等式某侧连续出现两次的指标是 **哑指标** (dummy index)，遍历并求和。
+
+例：
+
+- 矩阵乘法：
+    - 传统写法：$c_{i,j}=\sum_k a_{i,k}b_{k,j}$。
+    - Einsum 写法：$c_{i,j}=a_{i,k}b_{k,j}$。
+    - 代码写法：`ik, kj -> ij`。
+- 批量矩阵乘法：
+    - 传统写法：$c_{b,i,j}=\sum_k a_{b,i,k}b_{b,k,j}$。
+    - Einsum 写法：
+        - $\forall b,(c_b)_{i,j}=(\b A_b)_{i,k}(\b B_b)_{k,j}$。
+        - $c_{b,i,j}=\delta_{b,u,v}a_{u,i,k}b_{v,k,j}$。
+    - 广义 Einsum 写法：$c_{b,i,j} = a_{b,i,k}b_{b,k,j}$
+    - 代码写法：`bik, bkj -> bij`。
+
+可以发现，这两种 Einsum 都非常丑陋，这是因为 Einsum 本来是用来刻画多重线性映射的，所以只允许某侧出现两次或两侧各出现一次。**广义 Einsum** 或代码中则使用 **Arrow Convention**：
+
+- 只在箭头左侧出现的符号被求和压平。
+- 在箭头左右都出现的符号被保留。
+- 只在箭头右侧出现的符号会报错（虽然你可以把它解释为广播，但问题是不知道要广播几次）。
+
+继续看例子。
+
+- 迹：
+    - 传统写法：$s=\sum a_{i,i}$。
+    - Einsum 写法：$s=a_{i,i}$。
+    - 代码写法：`ii -> `。
+- 3D CP 分解：
+    - Einsum 写法：$x_{i,j,k}=\lambda_ra_{i,r}b_{j,r}c_{k,r}$。
+    - 代码写法：`r, ir, jr, kr -> ijk`。
+- 3D Tucker 分解：
+    - Einsum 写法：$x_{i,j,k}=g_{u,v,w}a_{i,u}b_{j,v}c_{k,w}$。
+    - 代码写法：`uvw, iu, jv, kw -> ijk`。
+
+- Self Attn：
+    - 代码写法：`bhid, bhjd -> bhij`。
+
+特别地，python 中有一个小技巧。
+
+- 省略箭头和输出：直接写 `ij, jk`， 这样会自动挑出所有只出现一次的符号（在这个例子中是 `i` 和 `k`）并把它们按照字母表顺序排列作为输出。
+
+### IV. Penrose Graphical Notation
+
+另一种表达方式是 Penrose 图记号 (Penrose Graph Notation)。
+
+在 **经典 Penrose 图记号** 中：
+
+- 一个 $N$ 维张量被表示为度数为 $N$ 的节点，其中每一条边可以连接另一个节点，或者不连向任何节点。
+- 任两个有空闲出边的节点都可以合并空闲边，表示关于这一对边做 Einsum。
+- 所有节点（不一定连通）共同构成 Einsum 产出张量，其空闲出边数即为其维度。
+
+例如，矩阵乘法如下，它有两个自由边，于是产出张量是 2D 的。
+
+```
+----A----B----
+```
+
+向量外积如下，产出张量是 2D 的。
+
+```
+----A    B----
+```
+
+矩阵迹如下，产出张量是 0D（标量）。
+
+```
+--A--
+|   |
+-----
+```
+
+然而经典 Penrose 图只等效于经典 Einsum。如果要描述 Hadamard 积等结构，要么引入额外的 $\delta$ 节点（上文看到过这样的操作），要么使用超图描述，其中每条边连接一组节点且有至多 $1$ 的出度，此时即为 **广义 Penrose 图记号**。
+
+向量 Hadamard 积：
+
+```
+A---
+   |---
+B---
+```
+
+批量矩阵乘法：
+
+```
+   |
+---A---
+|     |---
+---B---
+   |
+```
+
+特别地，Penrose 图还可以被用于建模计算顺序对复杂度的影响：合并两个节点的复杂度开销为 $D^N$ 其中 $N$ 是合并后新节点的度数。按照合适的顺序合并可以最小化开销——但找到最佳合并顺序本身与 Penrose 图的树宽挂钩，因此是 NP-Complete 的。
+
+### V. TT Decomposition
+
+另一种常见分解是 **张量列** (Tensor-Train) 分解。物理学则会称为 **Matrix Product State** (MPS)。
+
+目标是把张量 $\bc X\in\R^{I_1\times \dots\times I_N}$ 的每个位置写成 $R_0\times R_1,\dots,R_{N-1}\times R_N$ 的一堆矩阵的连乘，且需要满足 $R_0=R_N=1$ 的 **open boundary condition**。形式化地，定义 $\bc G^{(n)}\in\R^{R_{n-1}\times I_n\times R_n}$，则记作
+$$
+\bc X\approx[\bc G^{(1)},\dots,\bc G^{(N)}]
+$$
+全体 $\bc G^{(n)}$ 被称为 TT 分解的 **核心** (cores)，$R_1,\dots,R_{N-1}$ 称为 **TT 秩**。
+
+Einsum 写法：
+$$
+x_{i_1,\dots,i_N}\approx g^{(1)}_{\alpha_0,i_1,\alpha_1}g^{(2)}_{\alpha_1,i_2,\alpha_2}\dots g^{(N)}_{\alpha_{N-1},i_N,\alpha_N}
+$$
+特别地，因为边界条件，所以必有 $\alpha_0=\alpha_N=1$，它们可以看做是不求和的哑指标。 
+
+Penrose 图写法：
+
+```
+|    |          |      |
+G1---G2---...---GN-1---GN
+```
+
+除了 $\bc G^{(1)}$ 和 $\bc G^{(N)}$ 退化为二阶张量以外，中间的全都是三阶，连乘出来的就是目标的 $N$ 阶张量。
+
+线性代数写法：沿第二维的切片矩阵记作 $\b G_i^{(n)}=\b G^{(n)}_{:,i,:}$。
+$$
+x_{i_1,\dots,i_N}\approx\b G^{(1)}_{i_1}\dots\b G^{(N)}_{i_N}
+$$
+或者，令其沿一、三两维的切片向量为 $\b g^{(n)}_{\alpha_{n-1},\alpha_n}=\bc G^{(n)}_{\alpha_{n-1},:,\alpha_n}$，则有
+$$
+\bc X\approx\sum_{\alpha_{0}=1}^{R_0}\dots\sum_{\alpha_N=1}^{R_N}\b g^{(1)}_{\alpha_0,\alpha_1}\circ\dots\circ\bc g^{(N)}_{\alpha_{N-1},\alpha_N}
+$$
+另一种场景是 **closed boundary condition**，此时要求 $R_0=R_N$，Einsum 下是
+$$
+x_{i_1,\dots,i_N}\approx g^{(1)}_{\alpha_N,i_1,\alpha_1}g^{(2)}_{\alpha_1,i_2,\alpha_2}\dots g^{(N)}_{\alpha_{N-1},i_N,\alpha_N}
+$$
+Penrose 图下是
+
+```
+   |    |          |      |
+---G1---G2---...---GN-1---GN---
+|                             |
+-------------------------------
+```
+
+线性代数下是
+$$
+x_{i_1,\dots,i_N}\approx\t{tr}(\b G^{(1)}_{i_1}\dots\b G^{(N)}_{i_N})
+\\\bc X\approx\sum_{\alpha_1=1}^{R_1}\dots\sum_{\alpha_N=1}^{R_N}\b g^{(1)}_{\alpha_N,\alpha_1}\circ\dots\circ\b g^{(N)}_{\alpha_{N-1},\alpha_N}
+$$
+在 AI 界的常见称呼是 **张量环** (Tensor-Ring) 分解。
+
+事实上，还存在更高维的、使用 mesh (open boundary) 或 torus (closed boundary) 描述的架构，物理学家称为 **Projected Entangled Pair States** (PEPS)，但 AI 界并不关心。
+
+#### I. TT-SVD
+
+Tucker 分解需要的是 mode-$n$ 展开，mode-$n$ rank 与精确 Tucker 分解挂钩。而 TT 分解需要的是 **前缀展开**。定义
+$$
+\b X_{[n]}\in\R^{(I_1\dots I_n)\times(I_{n+1}\dots I_N)}
+$$
+是前缀展开。
+
+定理：存在 $R_n=\t{rank}(\b X_{[n]})$ 的精确 TT 分解。
+
+> 首先有 SVD $\b X_{[1]}=\b U\b V^\top$，其中 $\b U\in\R^{I_1\times R_1}$ 是列正交矩阵，且 $\b V\in\R^{I_2\dots I_N\times R_1}$ 满足 $\b V=\b A_{[1]}^\top\b U$。
+>
+> $\b V$ 可以被还原为 $N-1$ 维的张量 $\bc V\in\R^{I_2R_1\times I_3\times\dots\times I_N}$。则可以证明 $\t{rank}(\b V_{[n]})\leq\t{rank}(\b A_{[n+1]})$，因为有以下 Einsum 形式
+> $$
+> v_{((i_2,j_1),i_3,\dots,i_{n+1}),(i_{n+2},\dots,i_N)}=a_{(i_1,\dots,i_{n+1}),(i_{n+2},\dots,i_N)}u_{i_1,j_1}
+> $$
+> 而矩阵乘法不可能扩大秩。事实上因为 $\b U$ 是正交的，所以其保持秩。
+>
+> 于是即可再拆分为 $\b V_{[1]}=\b S\b T^\top$，$\b T=\b V_{[1]}^\top\b S$，不断递归下去，即可归纳得证。
+
+这个证明给出 **TT-SVD** 方法：
+
+- 初始化 $\bc X^{(1)}=\bc X\in\R^{I_1\times\dots\times I_N}$，输入目标秩 $R_1,\dots,R_{N-1}$，并取 $R_0=R_N=1$。
+- 枚举 $n=1,\dots,N$：
+    - 此时 $\bc X^{(n)}\in\R^{I_nR_{n-1}\times I_{n+1}\times\dots\times I_N}$。
+    - 计算截断 SVD $\b X^{(n)}_{(1)}\approx\b U^{(n)}(\b V^{(n)})^\top$，其中 $\b U^{(n)}\in\R^{I_nR_{n-1}\times R_n}$。
+    - 将 $\b U^{(n)}$ reshape 为 $(R_{n-1},I_n,R_n)$，作为 $\bc G^{(n)}$。
+    - 将 $\b V^{(n)}$ reshape 为 $(I_{n+1}R_n,I_{n+2},\dots,I_N)$，作为 $\bc X^{(n+1)}$。
+
+这个做法在目标秩等于前缀展开秩时给出完美 TT 分解，在小于时给出近似 TT 分解。
+
+TT-SVD 对应着 Tucker 分解场景的 HOSVD；Tucker 分解有 HOOI 也即 Coordinate Descent，那 TT-SVD 也应该有，而且不止一种。
+
+这是因为，TT 分解有两种不同的目标：
+
+- 秩固定，最小化误差。此时 TT-SVD 场合即为求前 $R_n$ 对奇异向量。
+- 误差固定，最小化秩。此时 TT-SVD 场合即为舍弃奇异值过小的部分。
+
+也因此有两种不同的 Coordinate Descent：
+
+- **TT-ALS**：定秩求精，来回扫。
+- **TT-DMRG**：来自量子物理，将两个相邻矩阵合并，然后 SVD 拆分并舍入，同样来回扫。
+
+下一节将展开来分析怎么扫。
+
+#### II. TT-Rounding
+
+使用 TT 格式可以有效压缩存储。但是，两个 TT 格式存储的张量进行运算后，维数会膨胀，因此需要一些在不展开为完整张量的前提下削减维数的方法。
+
+形式化地，TT-SVD 给出的是 **左规范型**：每个 $\bc G^{(n)}\in\R^{R_{n-1}\times I_n\times R_n}$ 在被 reshape 为 $(R_{n-1}I_n,R_n)$ 后都是列正交的；而 TT-Rounding 证明了以下方法可以提供有误差保障的舍入：
+
+- 先转成 **右规范型**：从右往左扫，每次把 $\bc G^{(n)}$ reshape 到 $(R_{n-1},I_nR_n)$ 后，将其分解为 $(R_{n-1},R_{n-1})$ 方阵与 $(R_{n-1},I_nR_n)$ 行正交阵的积，然后把 $(R_{n-1},R_{n-1})$ 吸收进 $\bc G^{(n-1)}$ 中。分解可以使用 LQ 分解（此时方阵是下三角的），但也可以使用其它方式得到。
+- 然后再跑 TT-SVD：从左往右扫，对 $\bc G^{(n)}$ SVD 后，截断到目标精度，然后 reshape $\b U$ 作为新的 $\bc G^{(n)}$，$\b V$ 则被吸收入 $\bc G^{(n+1)}$。 
+
+事实上，这一套理论与 TT-ALS / DMRG 适配：这两种方法均要求当前扫描位置的左侧全是左规范型，右侧全是右规范型。
+
+- TT-ALS 就是左右扫。
+- TT-DMRG 会先把 $\bc G^{(n)},\bc G^{(n+1)}$ 相乘并 reshape 到 $(R_{n-1}I_n,I_{n+1}R_{n+1})$，然后对它 SVG 并舍入以确定 $R_n$。
+
+#### III. TT Operations
+
+本节详细来分析一下如何在 TT 格式下进行各种运算。假设在 $\bc X=[\bc G^{(1)},\dots,\bc G^{(N)}]$ 与 $\bc Y=[\bc F^{(1)},\dots,\bc F^{(N)}]$ 之间进行，秩分别为 $(R_1,\dots,R_{N-1})$ 与 $(S_1,\dots,S_{N-1})$，沿第二维的切片矩阵为 $\b G_i^{(n)}=\b G^{(n)}_{:,i,:}$。
+
+- 加法：$\b H^{(n)}_i=\b G^{(n)}_i\oplus\b F^{(n)}_i\in\R^{(R_{n-1}+S_{n-1})\times(R_n+S_n)}$。
+
+- 与秩一张量内积：也即计算
+    $$
+    \sum_{i_1,\dots,i_N}x_{i_1,\dots,i_N}u_{i_1}^{(1)}\dots u^{(N)}_{i_N}
+    $$
+    展开其实可以发现等于
+    $$
+    \sum_{i_1,\dots,i_N}(u_{i_1}^{(1)}\b G_{i_1}^{(1)})\dots(u_{i_N}^{(N)}\b G_{i_N}^{(N)})
+    $$
+
+- Hadamard 积：$\b H^{(n)}_i=\b G^{(n)}_i\otimes\b F^{(n)}_i\in\R^{(R_{n-1}S_{n-1})\times(R_nS_n)}$
+
+- 内积：先算 Hadamard 积，再与全 $1$ 张量内积。不过其实不用重建出完整 Hadamard 积，因为公式是
+    $$
+    \ip{\bc X,\bc Y}=\sum_{i_1,\dots,i_N}(\b G_{i_1}^{(1)}\otimes\b F_{i_1}^{(1)})\dots(\b G_{i_N}^{(N)}\otimes\b F_{i_N}^{(N)})
+    \\=\sum_{i_1}(\b G_{i_1}^{(1)}\otimes\b F_{i_1}^{(1)})\dots\sum_{i_N}(\b G_{i_N}^{(N)}\otimes\b F_{i_N}^{(N)})
+    $$
+    于是第一项是向量，只需要计算一堆 Kronecker 积-向量积即可，不需要计算完整的矩阵乘法。
+
+### INF. Conclusion
+
+CP 分解：
+$$
+x_{i_1,\dots,i_N}=\lambda_ra_{i_1,r}^{(1)}\dots a_{i_N,r}^{(N)}
+$$
+
+- 精确分解的 CP 秩是 NP-Hard 的。
+- 近似算法：ALS，任意初始化后 coordinate descent。没有误差界。
+
+Tucker 分解：
+$$
+x_{i_1,\dots,i_N}=g_{j_1,\dots,j_N}a_{i_1,j_1}^{(1)}\dots a_{i_N,j_N}^{(N)}
+$$
+必然存在 $R_n\leq\t{rank}_n(\bc X)=\t{rank}(\bc X_{(n)})$ 的分解。
+
+- 精确分解的 Tucker 秩就是 mode-$n$ 秩。
+- 精确算法：$\b A^{(n)}$ 的左奇异向量。近似场景有误差界。
+- 近似算法：先取左奇异向量后再 coordinate descent。
+
+TT 分解：
+$$
+x_{i_1,\dots,i_N}=g^{(1)}_{j_0,i_1,j_1}\dots g^{(N)}_{j_{N-1},i_N,j_N}
+$$
+
+- 精确分解的 TT 秩就是前缀秩。
+- 精确算法：SVD 后不断 reshape 左奇异向量作为核心，reshape 右奇异向量以进一步分解。近似场景有误差界。
+- 近似算法：coordinate descent / 联合 coordinate descent。
+
+分解下的加法对应直和，秩以加法膨胀；Hadamard 积对应 Kronecker 积 / Khatri-Rao 积，秩以乘法膨胀。消去膨胀后的秩：
+
+- CP 格式：低秩逼近是 NP-Hard 的，不常用。
+- Tucker 格式：直接 HOSVD / HOOI 即可，Tucker 格式对秩的压缩幅度并不明显。
+- TT 格式：压缩最明显，因此也需要专门的 TT-Rounding 方法。

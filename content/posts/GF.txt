@@ -1,0 +1,746 @@
+$$
+\newcommand{\R}{\mathbb R}
+\newcommand{\cur}[1]{\left\{#1\right\}}
+\newcommand{\b}{\boldsymbol}
+\newcommand{\c}{\mathcal}
+\newcommand{\t}{\text}
+\newcommand{\ip}[1]{\left<#1\right>}
+\newcommand{\E}{\mathop{\mathbb E}}
+\newcommand{\p}{\partial}
+\newcommand{\d}{\mathrm d}
+\newcommand{\vare}{\varepsilon}
+\newcommand{\bmat}[1]{\begin{bmatrix}#1\end{bmatrix}}
+\newcommand{\i}{\texttt i}
+$$
+
+## From Euclidean to Metric
+
+### Gradient flows in the Euclidean space
+
+首先考虑标准 Euclidean 空间下的 GF：有足够光滑的函数 $F:\R^n\to\R$ 和初始点 $\b x_0$，则 GF 可以被描述为 **Cauchy 问题**
+$$
+\begin{cases}
+\dot{\b x}(t)=-\nabla F(\b x(t))&(t>0)
+\\\b x(0)=\b x_0
+\end{cases}
+$$
+当 $\nabla F$ 有 Lipschitz 连续性（换言之，$F$ 有 L-光滑性）时，其有唯一解。
+
+当函数不可微时但具有凸性时，考虑使用次微分替代。此时需要绝对连续曲线 $\b x(t)$ 使得
+$$
+\begin{cases}
+\dot{\b x}(t)\in-\p F(\b x(t))&(\t{a.e. }t>0)
+\\\b x(0)=\b x_0
+\end{cases}
+$$
+次微分具有以下性质：
+
+- 在可微处退化为梯度。
+- 处处是凸集。
+- 在有限实值区域的内点上非空。
+- 特别地，定义 $\p^\circ F(\b x)$ 为其中范数最小者。因为其是凸集上凸范数的最小者，所以是唯一的。
+
+命题：对于不可微凸函数的场景，令存在 $\b x_1,\b x_2$ 两条曲线满足次微分 GF 式，则有 $\|\b x_1(t)-\b x_2(t)\|\leq\|\b x_1(0)-\b x_2(0)\|$ 处处成立。特别地，它表明了 Cauchy 问题的唯一解，因为此时两曲线具有相同起点。
+
+证明：定义 $g(t)=\dfrac12\|\b x_1(t)-\b x_2(t)\|^2$ 并对其求导得到
+$$
+g'(t)=(\b x_1(t)-\b x_2(t))\cdot(\dot{\b x}_1(t)-\dot{\b x}_2(t))
+$$
+现在使用凸函数的性质：对于 $\b p_1\in\p F(\b x_1)$ 和 $\b p_2\in\p F(\b x_2)$，有 $(\b x_1-\b x_2)\cdot(\b p_1-\b p_2)\geq0$，即证。
+
+也可以考虑 semi-convex 的场景：$\lambda$-凸指 $F(\b x)-\dfrac\lambda2\|\b x\|^2$ 具有凸性。在 $\lambda>0$ 时这是强凸性，而 $\lambda<0$ 时其弱于凸性。具有可微性时，其等效于 $\t D^2F\succeq\lambda I$。GF 的很多理论都对半凸场景同样适用；而另一方面，半凸性又是一个足够通用的场景：有界集上的所有凸函数都相对于某个足够负的 $\lambda$ 具有半凸性。半凸函数的次微分是
+$$
+\p F(\b x)=\cur{\b p:F(\b y)\geq F(\b x)+\b p\cdot(\b y-\b x)+\dfrac\lambda2\|\b y-\b x\|^2}
+$$
+换言之，有 $\p F(\b x)=\p(F-\dfrac\lambda2\|\cdot\|^2)(\b x)+\lambda\b x$。
+
+半凸性时的结论是 $(\b x_1-\b x_2)\cdot(\b p_1-\b p_2)\geq\lambda\|\b x_1-\b x_2\|^2$，代入 $g$ 时得到 $g'(t)\leq-2\lambda g(t)$，于是 $g(t)\leq g(0)\exp(-2\lambda t)$。特别地，当 $\lambda>0$ 也即具有强凸性时，令 $\tilde{\b x}$ 为唯一最小值点，则对任意 GF $\b x(t)$ 和 $\tilde{\b x}$ 处保持静止的曲线（它也是合法解！）应用这个式子得到 $\|\b x(t)-\tilde{\b x}\|\leq\exp(-\lambda t)\|\b x(0)-\tilde{\b x}\|$，也即指数收敛性。
+
+命题：对于任意曲线 $\b x(t)$，只要 $t\mapsto\b x(t)$ 和 $t\mapsto F(\b x(t))$ 都在 $t_0$ 处可微，$\p F(\b x(t_0))$ 就会属于与 $\dot{\b x}(t_0)$ 平行的超平面。
+
+> [!NOTE]
+>
+> 注意这里 $F(\b x(t))$ 强调是关于 $t$ 可微而非关于 $\b x(t)$ 可微——如果是后者那次微分就直接是梯度了！
+>
+> 另一方面，GF 的解通常是绝对连续的，因此其 a.e. 可微，而复合的 $F(\b x(t))$ 一般也同理，因此这个条件一般远弱于 $F$ 的可微性。
+
+证明：考虑 $\b p\in\p F(\b x_0)$，令 $g(t)=F(\b x(t))-F(\b x(t_0))-\b p\cdot(\b x(t)-\b x(t_0))-\dfrac\lambda2\|\b x(t)-\b x(t_0)\|^2$，则由次微分性质有 $g(t)\geq0$；而 $g(t_0)=0$ 所以 $t_0$ 取得最小值。而 $g(t)$ 在 $t_0$ 处可微故导数为零，因此
+$$
+\left.\dfrac{\d}{\d t}F(\b x(t))\right|_{t=t_0}-\b p\cdot\left.\dot{\b x}(t)\right|_{t=t_0}-\left.\lambda(\b x(t)-\b x(t_0))\cdot\dot{\b x}(t)\right|_{t=t_0}=0
+\\\left.\dfrac{\d}{\d t}F(\b x(t))\right|_{t=t_0}=\b p\cdot\dot{\b x}(t_0)
+$$
+则这意味着所有 $\b p$ 在 $\dot{\b x}(t_0)$ 上的投影长度均相同，换言之处于一个仿射超平面中，证毕。
+
+进一步，一方面由 GF 式有 $\dot{\b x}(t_0)\in-\p F(\b x(t_0))$，所以 $\dot{\b x}(t_0)$ 本身就是合法的超平面元素；另一方面，$\dot{\b x}(t_0)$ 又是超平面中模长最小元素，所以综合得到：只要 $\b x(t)$ 和 $F(\b x(t))$ 都在 $t_0$ 处可微，则有 $\dot{\b x}(t_0)=-\p^\circ F(\b x(t_0))$；而可微性条件是 a.e. 成立的。
+
+> [!IMPORTANT]
+>
+> 总结：
+>
+> 有 Lipschitz 光滑性或凸性时，有唯一解。
+>
+> 有半凸性时，在可微处有 $\dot{\b x}(t_0)=-\p^\circ F(\b x(t_0))$。
+
+------
+
+考虑 GF 与 GD 的联系。考虑一种名叫 **Minimizing Movement Scheme** 的离散化方案：对于步长 $\tau$ 有
+$$
+\b x_{k+1}^\tau\in\arg\min_{\b x}F(\b x)+\dfrac{\|\b x-\b x_k^\tau\|^2}{2\tau}
+$$
+则应有可微处的
+$$
+\b x_{k+1}^\tau-\b x_k^\tau\in-\tau\nabla F(\b x_{k+1}^\tau)
+$$
+（或凸处的 $\b x_{k+1}^\tau-\b x_k^\tau\in-\tau\p F(\b x_{k+1}^\tau)$）。
+
+这其实对应着 ODE 中的 Euler 格式：对于 ODE $\dot{\b x}(t)=\b v(\b x(t))$，其离散化有 **显式 Euler 格式**
+$$
+\b x_{k+1}^\tau=\b x_k^\tau+\tau\b v(\b x_k^\tau)
+$$
+和 **隐式 Euler 格式**
+$$
+\b x_{k+1}^\tau=\b x_k^\tau+\tau\b v(\b x_{k+1}^\tau)
+$$
+两种。正如我们在 GD 中看到的，显式 Euler 格式虽然易于实现，但是不稳定；隐式 Euler 格式则具有更强的稳定性：在 MMS 的场合表现为 $F(\b x)$ 的严格下降。
+
+------
+
+随着 $\tau$ 减小，MMS 的路径最终会趋向于 GF 的路径。但是首先要把离散的 MMS 插值。
+
+有两种插值方式，对于 $t\in(k\tau,(k+1)\tau]$：
+
+- 分段常数插值：$\b x^\tau(t)=\b x_{k+1}^\tau$。
+- 分段线性插值：$\tilde{\b x}^\tau(t)=\b x_k^\tau+(t-k\tau)\b x_{k+1}^\tau$。此时可定义辅助的 $\b v_{k+1}^\tau=(\b x_{k+1}^\tau-\b x_k^\tau)/\tau$ 以及 $\b v^\tau(t)=\b v_{k+1}^\tau$。
+
+则 $\tilde{\b x}^\tau$ 是绝对连续曲线，满足 $\dot{\tilde{\b x}}^\tau(t)=\b v^\tau(t)$。
+
+MMS 满足
+$$
+F(\b x_{k+1}^\tau)+\dfrac{\|\b x_{k+1}^\tau-\b x_k^\tau\|^2}{2\tau}\leq F(\b x_k^\tau)
+$$
+现在直接 telescope 求和得到在 $F$ 有界的场合
+$$
+\sum_{k=0}^\ell\dfrac{\|\b x_{k+1}^\tau-\b x_k^\tau\|^2}{2\tau}\leq F(\b x_0^\tau)-F(\b x_{\ell+1}^\tau)\leq C
+$$
+另一方面，有
+$$
+\dfrac{\|\b x_{k+1}^\tau-\b x_k^\tau\|^2}{2\tau}=\tau\|\b v_k^\tau\|^2=\int_{k\tau}^{(k+1)\tau}\|\dot{\tilde{\b x}}^\tau(t)\|^2\d t
+$$
+于是有
+$$
+\int\|\dot{\tilde{\b x}}^\tau(t)\|^2\d t\leq C
+$$
+说明这个曲线在 *Sobolev 空间*（自身与梯度均 $\ell^2$ 可积的函数构成的空间）上具有有界动能，根据 *Sobolev 嵌入定理* 得到 *等度连续性* $\|\tilde{\b x}^\tau(t)-\tilde{\b x}^\tau(s)\|\leq C|t-s|^{1/2}$。
+
+此时可以对 $\tilde{\b x}^\tau$ 应用 *Arzelà-Ascoli 定理* 得到一个一致收敛子列。另一方面，等度连续性同样保证 $\|\tilde{\b x}^\tau(t)-\b x^\tau(t)\|\leq C\tau^{1/2}$，于是 $\b x^\tau$ 会收敛到相同极限。
+
+同时，$\b v^\tau$ 会 $L^2$ 弱收敛到某个 $\b v$，其中在 $\lambda$-凸时有 $\b v\in-\p F(\b x(t))$ 而可微时有 $\b v=-\nabla F(\b x(t))$。
+
+> [!IMPORTANT]
+>
+> 总结：
+>
+> 在向量空间里，MMS 收敛到 GF，通过显式构造插值证明。
+
+### An introduction to the metric setting
+
+考虑在更一般的度量空间 $(\c X,d)$ 中定义的同位体
+$$
+\b x_{k+1}^\tau\in\arg\min_{\b x}F(\b x)+\dfrac{d(\b x,\b x_k^\tau)^2}{2\tau}
+$$
+，仍定义分段常数插值 $\b x^\tau(t)=\b x_{k+1}^\tau:t\in(k\tau,(k+1)\tau]$ 并研究 $\tau\to0$ 时的极限。
+
+称曲线 $\b x$ 为 **Generalized Minimizing Movements**，如果存在步长序列 $\tau_j\to0$ 使得 $\b x^{\tau_j}$ 一致收敛至 $\b x$。仍然展开相似分析
+$$
+\begin{align*}
+\sum_{k=0}^\ell\dfrac{d(\b x_{k+1}^\tau,\b x_k^\tau)^2}{2\tau}&\leq C
+\\d(\b x^\tau(t),\b x^\tau(s))&\leq\sum d(\b x_{k+1}^\tau,\b x_k^\tau)
+\\&\leq\sqrt{\sum d(\b x_{k+1}^\tau,\b x_k^\tau)^2}\sqrt{|t-s|/\tau+1}&(\t{Cauchy-Schwartz})
+\\&\leq C(\sqrt{|t-s|}+\sqrt\tau)
+\end{align*}
+$$
+因此前述结论同样有效。
+
+度量空间上的曲线 $\b \omega(t):[0,1]\to\c X$ 和 Lipschitz 连续性是有定义的，但是 **速度** $\dot{\b \omega}(t)$ 没有定义，除非度量空间是向量空间。然而其模长也即 **速率** 是有意义的：
+$$
+\|\dot{\b\omega}\|(t)=\lim_{h\to0}\dfrac{d(\b \omega(t+h),\b \omega(t))}{|h|}
+$$
+**绝对连续** 的曲线 $\b\omega$ 是存在可积的 $g(t)$ 使得 $d(\b\omega(t_0),\b\omega(t_1))\leq\int_{t_0}^{t_1}g(s)\d s$ 的曲线。绝对连续曲线集合记作 $\t{AC}(\c X)$，其速率几乎处处存在。
+
+进一步可以定义长度
+$$
+\t{Length}(\b\omega)=\sup\cur{\sum_{k=0}^{n-1}d(\b\omega(t_k),\b\omega(t_{k+1})):0=t_0<\dots<t_n=1}
+$$
+则 AC 的曲线满足 $\t{Length}(\b\omega)\leq\int_0^1 g(s)\d s<\infty$。同时有 $\t{Length}(\b\omega)=\int_0^1\|\dot{\b\omega}\|(t)\d t$。
+
+称一条曲线为 $\b x_0$ 和 $\b x_1$ 间的 **测地线** 如果它的长度是所有连接二者的曲线（***不要求绝对连续！***）中最小者。一个度量空间被称为 **长度空间** 如果度量总是可以用 AC 曲线逼近（或者说，度量是 AC 曲线长度的下确界）；被称为 **测地线空间** 如果总是存在 AC 测地线（或者说，度量是 AC 曲线长度的最小值）。
+
+在长度空间中，曲线 $\b\omega:[t_0,t_1]\to\c X$ 称作 **匀速测地线** 如果处处有
+$$
+d(\b\omega(t),\b\omega(s))=\dfrac{|t-s|}{t_1-t_0}d(\b\omega(t_0),\b\omega(t_1))
+$$
+而满足该性质的曲线必然是测地线。事实上，以下三条件等价：
+
+- 是匀速测地线。
+- 绝对连续且 $\|\dot{\b\omega}\|(t)=\dfrac{d(\b\omega(t_0),\b\omega(t_1))}{|t_1-t_0|}$ a.e.。
+- 是 $\int_{t_0}^{t_1}\|\dot{\b\omega}\|(t)^p\d t$ 的最小解（只要对任何一个 $p>1$ 成立即可）。
+
+此时可以用匀速测地线对 MMS 进行插值。
+
+------
+
+注意到在向量空间中，我们是先有 GF 后有 MMS。然而在度量空间中，MMS 是容易定义的，但正如前文所述，「梯度」这个概念不存在，因此 GF 就无从谈起了。正因如此，我们需要换一种方式定义 GF。
+
+向量空间下的 GF 有几种等价形式。第一种是
+$$
+\begin{align*}
+F(\b x(s))-F(\b x(t))&=\int_s^t-\nabla F(\b x(r))\cdot\dot{\b x}(r)\d r
+\\&\leq\int_s^t\|\nabla F(\b x(r))\|\cdot\|\dot{\b x}(r)\|\d r&(\t{Cauchy-Schwartz})
+\\&\leq\int_s^t(\dfrac12\|\nabla F(\b x(r))\|^2+\dfrac12\|\dot{\b x}(r)\|^2)\d r&(\t{Young})
+\end{align*}
+$$
+第一个等号取等时需要 $\dot{\b x}(r)$ 和 $\nabla F(\b x(r))$ a.e. 平行反向；第二个取等时需要它们 a.e. 等模长。然后知取等时有 $\dot{\b x}(t)=-\nabla F(\b x(t))$ a.e.，换言之其与 GF 等价。这就是 GF 的 **Energy Dissipation Equality** 等价形式：
+$$
+F(\b x(s))-F(\b x(t))=\int_s^t(\dfrac12\|\nabla F(\b x(r))\|^2+\dfrac12\|\dot{\b x}(r)\|^2)\d r
+$$
+
+> [!TIP]
+>
+> 这种视角符合一种最小作用量的原理：将 $F$ 看做势能，则左侧是势能变化量，而右侧包括动能项 $\dfrac12\|\dot{\b x}\|^2$ 和驱动力项 $\dfrac12\|\nabla F\|^2$。
+
+但是这种定义只对可微的 $F$ 有效。
+
+另一种等价形式从次微分而来。在 $\lambda$-凸的场合，$\b p\in\p F(\b x)$ 的定义是对一切 $\b y$ 均有
+$$
+F(\b y)\geq F(\b x)+\b p\cdot(\b y-\b x)+\dfrac\lambda2\|\b x-\b y\|^2
+$$
+另一方面，对一个东西求导可得
+$$
+\dfrac{\d}{\d t}\dfrac12\|\b x(t)-\b y\|^2=(\b y-\b x(t))\cdot(-\dot{\b x}(t))
+$$
+我们需要 $-\dot{\b x}(t)\in\p F(\b x(t))$，于是得到等价形式
+$$
+F(\b y)\geq F(\b x(t))+\dfrac\d{\d t}\dfrac12\|\b x(t)-\b y\|^2+\dfrac\lambda2\|\b x(t)-\b y\|^2
+$$
+这个式子被称作 **Evolution Variational Inequality**。特别地，EVI 依赖于 $\lambda$ 参数。
+
+将 $2$-norm 换成一般的度量就得到了正式形式
+$$
+\dfrac\d{\d t}\dfrac12d(\b x(t),\b y)^2\leq F(\b y)-F(\b x(t))-\dfrac\lambda2d(\b x(t),\b y)^2
+$$
+当这个式子对一切 $\b y$ 成立时即有 $\dot{\b x}(t)\in-\p F(\b x(t))$ 成立。
+
+EVI 同样可以提供解唯一性的证明。具体而言，$E(t)=\dfrac12d(\b x(t),\b y(t))^2$ 的全微分会有两个对称项，将它们求和得到
+$$
+\dot E(t)=-2\lambda E(t)
+$$
+的式子，并同样能在 $\lambda>0$ 时得到唯一性和稳定性。
+
+> [!IMPORTANT]
+>
+> 总结：
+>
+> 一般度量空间中不存在梯度/次微分等概念，因此 GF 无法直接定义，只能先定义 MMS。
+>
+> 然后介绍了 GF 的两种等价描述：
+>
+> - EDE 的一侧天然成立，另一侧成立等价于满足 GF 条件。
+> - EVI 从次微分视角推。 
+
+## The general theory in metric spaces
+
+### Preliminaries
+
+我们需要的东西：
+
+度量下的速率 $\|\dot{\b x}\|(t)=\lim_{h\to0}\dfrac{d(\b x(t),\b x(t+h))}{|h|}$。
+
+度量下的 **上梯度** 是任何 $\c X\to\R$ 的函数 $g$，需要满足：对一切 Lipschitz 连续的曲线 $\b x$ 都有
+$$
+|F(\b x(0))-F(\b x(1))|\leq\int_0^1g(\b x(t))\|\dot{\b x}\|(t)\d t
+$$
+特别地，当 $F$ 为 Lipschitz 连续时，**局部 Lipschitz 常数** 是一种可行的方案。它定义了 **对称斜率**
+$$
+\|\nabla F\|(\b x)=\limsup_{\b y\to\b x}\dfrac{|F(\b x)-F(\b y)|}{d(\b x,\b y)}
+$$
+这个概念会同时考虑上升和下降；而在梯度下降场合，我们会更关心 **下降斜率** 或直接称 **斜率**
+$$
+\|\nabla^-F\|(\b x)=\limsup_{\b y\to\b x}\dfrac{[F(\b x)-F(\b y)]_+}{d(\b x,\b y)}
+$$
+同时凸性也需要被扩展。在测地线空间上可以定义 **测地凸性**，它要求对于任意点对 $\b x(0),\b x(1)$ 都 ***存在*** 连接二者的匀速测地线 $\b x$，沿之有凸性即
+$$
+F(\b x(t))\leq(1-t)F(\b x(0))+tF(\b x(1))
+$$
+以及 **测地 $\lambda$-凸性**
+$$
+F(\b x(t))\leq(1-t)F(\b x(0))+tF(\b x(1))-\dfrac\lambda2t(1-t)d(\b x(0),\b x(1))^2
+$$
+
+> [!TIP]
+>
+> 这里的性质稍微有点微妙，因为它只要求存在有凸性的测地线，并非对所有测地线都有该需求。然而一般我们均可假定测地线的唯一性。
+
+### Existence of a gradient flow
+
+现在我们考虑 MMS
+$$
+\b x_{k+1}^\tau\in\arg\min_{\b x}F(\b x)+\dfrac{d(\b x,\b x_k^\tau)^2}{2\tau}
+$$
+为了保证最小值存在，需要满足以下条件：
+
+- $F$ 的次水平集 $\cur{F\leq c}$ 需要是紧的。
+- $F$ 和 $d$ 需要是下半连续的。
+
+现在研究 $\tau\to0$，使用一种 ***变分插值*** 的技巧：对 $\theta\in(0,1]$ 考虑子问题
+$$
+\min_{\b x}F(\b x)+\dfrac{d(\b x,\b x_k^\tau)^2}{2\theta\tau}
+$$
+并令 $\b x(\theta)$ 为 $\theta$ 处最小值的位置，$\varphi(\theta)$ 为值。则当 $\theta\to0^+$ 时有 $\b x(\theta)\to\b x_k^\tau$ 以及 $\varphi(\theta)\to F(\b x_k^\tau)$。另外，$\varphi$ 不增，进而由实分析中的 *Lebesgue 定理* 其可微；而其导数符合 **Danskin 定理** 的模式，于是得到
+$$
+\varphi'(\theta)=-\dfrac{d(\b x(\theta),\b x_k^\tau)^2}{2\theta^2\tau}
+$$
+另一方面，因为 $\b x(\theta)$ 是 argmin 所以有
+$$
+\begin{align*}
+F(\b x(\theta))+\dfrac{d(\b x(\theta),\b x_k^\tau)^2}{2\theta\tau}&\leq F(\b y)+\dfrac{d(\b y,\b x_k^\tau)^2}{2\theta\tau}
+\\F(\b x(\theta))-F(\b y)&\leq\dfrac{[d(\b x(\theta),\b x_k^\tau)+d(\b y,\b x_k^\tau)][d(\b y,\b x_k^\tau)-d(\b x(\theta),\b x_k^\tau)]}{2\theta\tau}
+\\&\leq\dfrac{[d(\b x(\theta),\b x_k^\tau)+d(\b y,\b x_k^\tau)]d(\b y,\b x(\theta))}{2\theta\tau}&(\t{Triangular})
+\\\dfrac{F(\b x(\theta))-F(\b y)}{d(\b y,\b x(\theta))}&\leq\dfrac{d(\b x(\theta),\b x_k^\tau)+d(\b y,\b x_k^\tau)}{2\theta\tau}
+\\\|\nabla^-F\|(\b x(\theta))&=\limsup_{\b y\to\b x(\theta)}\dfrac{[F(\b x(\theta))-F(\b y)]_+}{d(\b y,\b x(\theta))}
+\\&\leq\limsup_{\b y\to\b x(\theta)}\dfrac{d(\b x(\theta),\b x_k^\tau)+d(\b y,\b x_k^\tau)}{2\theta\tau}
+\\&=\dfrac{d(\b x(\theta),\b x_k^\tau)}{\theta\tau}
+\end{align*}
+$$
+于是有 $\dfrac\tau2\|\nabla^-F\|(\b x(\theta))^2\leq-\varphi'(\theta)$，因此
+$$
+\varphi(0)-\varphi(1)\geq-\int_0^1\varphi'(\theta)\d\theta\geq\int_0^1\dfrac\tau2\|\nabla^-F\|(\b x(\theta))^2\d\theta
+$$
+所以有比 MMS 式 $F(\b x_{k+1}^\tau)+\dfrac{d(\b x_{k+1}^\tau,\b x_k^\tau)^2}{2\tau}\leq F(\b x_k^\tau)$ 更强的式子
+$$
+F(\b x_{k+1}^\tau)+\dfrac{d(\b x_{k+1}^\tau,\b x_k^\tau)^2}{2\tau}\leq F(\b x_k^\tau)-\dfrac\tau2\int_0^1\|\nabla^-F\|(\b x(\theta))^2\d\theta
+$$
+
+> [!NOTE]
+>
+> 这个式子完全利用了 $\b x_{k+1}^\tau$ 是 argmin（而不仅仅是胜过 $\b x_k^\tau$）的性质，通过构建一条单调递减的插值路径 $\varphi$ 来显式地建模了路径上的下降。
+
+telescoping 并令 $\tau\to0$，再结合 $F$ 和 $\|\nabla^-F\|$ 的下半连续性即得对于 GMM $\b x$ 有
+$$
+F(\b x(t))+\dfrac12\int_0^t\|\dot{\b x}\|(r)^2\d r+\dfrac12\int_0^t\|\nabla^-F\|(\b x(r))^2\d r\leq F(\b x(0))
+$$
+其与 EDE 推导时得到的不等式方向相反。当 $\|\nabla^-F\|$ 是上梯度时，有另一侧的 $F(\b x(0))-F(\b x(t))\leq\int_0^t\|\nabla^-F\|(\b x(r))\|\dot{\b x}\|(r)$，此时变成 EDE 形式的等式
+$$
+F(\b x(t))+\dfrac12\int_s^t\|\dot{\b x}\|(r)^2\d r+\dfrac12\int_s^t\|\nabla^-F\|(\b x(r))^2\d r=F(\b x(s))
+$$
+特别地，当 $F$ 有 $\lambda$-测地凸性时，上述两条件自动满足：$\|\nabla^-F\|$ 下半连续且是上梯度。这依赖于测地凸时下降斜率的一种不含 $\limsup$ 的等价形式
+$$
+\|\nabla^-F\|(\b x)=\sup_{\b y\neq\b x}\left[\dfrac{F(\b x)-F(\b y)}{d(\b x,\b y)}+\dfrac\lambda2d(\b x,\b y)\right]_+
+$$
+更进一步推导略过。
+
+> [!IMPORTANT]
+>
+> 总结：
+>
+> 对度量空间中的 MMS 下手，在满足若干条件时可以得到 EDE 的困难侧；EDE 的简单侧则需求上梯度条件。
+
+### Uniqueness and contractivity
+
+EDE 只能证明 GF 的存在性，至于唯一性就必须依靠更强的 EVI 了。具体而言：
+
+- 所有 EVI 意义下的 GF 同时也是 EDE 意义下的 GF，但反之不亦然。
+- EDE 无法保证 GF 唯一；另一方面，有时 EVI 流不一定存在，但只要存在就是唯一且稳定的。
+- EVI 流的存在性对函数有很强的要求：如果从所有起点 $\b x_0$ 出发都存在 EVI~λ~ 流，则 $F$ 必然是 $\lambda$-测地凸的。
+
+一种名为 **Compatible Convexity along Generalized Geodesics** 的性质可以保证 EVI 流的存在。
+
+首先定义 **广义测地线**：其除了与端点 $(\b x_0,\b x_1)$ 相关，还依赖于额外的第三点 $\b y$。它是连接端点的曲线 $\b x(t)$，满足
+$$
+d(\b x(t),\b y)^2\leq(1-t)d(\b x_0,\b y)^2+td(\b x_1,\b y)^2-t(1-t)d(\b x_0,\b x_1)^2
+$$
+换言之，是函数 $\b x\mapsto d(\b x,\b y)^2$ 的满足 $2$-凸性的连线。在任何 Hilbert 空间中，因为 $\b x\mapsto\|\b x-\b y\|^2$ 是二次的所以第二条自动成立。
+
+特别地，广义测地线一般不是测地线，除非 $\b y$ 与某个端点重合。
+
+则关于参考点 $\b y$ 的 CCGG 可以表述为，对于一切 $(\b x_0,\b x_1)$，都存在广义测地线 $\b x(t)$，$F$ 沿之有 $\lambda$-凸性即
+$$
+F(\b x(t))\leq (1-t)F(\b x_0)+tF(\b x_1)-\dfrac\lambda2t(1-t)d(\b x_0,\b x_1)^2
+\\
+$$
+
+## Gradient flows in the Wasserstein space
+
+### Minimizing movement schemes in the Wasserstein space and evolution PDEs
+
+考虑 $2$-Wasserstein 空间下的 MMS
+$$
+\rho_{k+1}^\tau=\arg\min_\rho F(\rho)+\dfrac{\c W_2(\rho,\rho_k^\tau)^2}{2\tau}
+$$
+其中 $\rho$ 是绝对连续测度。它就是经典的 **JKO scheme**。
+
+> [!TIP]
+>
+> 选择 $2$-Wasserstein 距离是为了与向量空间下相符。一般的场景在向量空间下的对应是
+> $$
+> \b x_{k+1}^\tau=\arg\min_\b x F(\b x)+\dfrac1p\dfrac{\|\b x-\b x_k^\tau\|^p}{\tau^{p-1}}
+> $$
+> 微分形式是 $\dot{\b x}=-\|\nabla F(\b x)\|^{q-2}\nabla F(x)$ 其中 $q$ 是 Hölder 共轭（$1/p+1/q=1$）。只有在 $p=q=2$ 时式子是纯的。
+
+对于 $\c G:\c P(\Omega)\to\R$，$\dfrac{\delta\c G}{\delta\rho}(\rho)$ 被定义为关于加常数唯一的测度（如果存在的话），使得对于一切扰动 $\chi$ 都有
+$$
+\dfrac{\d}{\d\vare}\left.\c G(\rho+\vare\chi)\right|_{\vare=0}=\int\dfrac{\delta\c G}{\delta\rho}(\rho)\d\chi
+$$
+扰动 $\chi$ 应该满足存在 $\vare_0$ 使得所有 $\vare\in[0,\vare_0]$ 都有 $\rho+\vare\chi\in\c P(\Omega)$。（因为扰动 $\chi$ 必须满足 $\int\d\chi=0$ 所以 $\dfrac{\delta\c G}{\delta\rho}(\rho)$ 可以任意加全局常数）其称作 $G$ 的 **first variation**。
+
+> [!TIP]
+>
+> 它可以被看做是 $\c G$ 在 $\rho$ 处的「梯度」。
+
+举几个例子。
+
+- 对于凸、超线性（$\lim\limits_{x\to+\infty}\dfrac{f(x)}x=+\infty$）的 $f:\R\to\R$，令 $\c F(\rho)=\int f(\rho(x))\d x$（特别地，如果不绝对连续定义为 $+\infty$），则 $\dfrac{\delta\c F}{\delta\rho}(\rho)=f'(\rho)$。这是一个密度泛函，其典型例子是负熵泛函 $\int\rho\log\rho\d x$。
+- 对于 $V:\Omega\to\R$，令 $\c V(\rho)=\int V\d\rho$，则 $\dfrac{\delta\c V}{\delta\rho}=V$。这是一个势能泛函。
+- 对于向量空间下的 kernel $K$，令 $\c K(\rho)=\dfrac12\int K(\b x,\b y)\d\rho(\b x)\d\rho(\b y)$，则 $\dfrac{\delta\c K}{\delta\rho}(\rho)(\cdot)=\int K(\cdot,\b y)\d\rho(\b y)$。特别地，我们会更关注 stationary 且对称的 kernel，也即 $\c W(\rho)=\dfrac12\int W(\b x-\b y)\d\rho(\b x)\d\rho(\b y)$，此时 $\dfrac{\delta\c W}{\delta\rho}=W*\rho$，其中 $*$ 是卷积。它是相互作用能泛函。
+
+> [!TIP]
+>
+> 这里出现了记号混用：$\rho$ 有时被当成测度（如果出现在 $\d\rho$ 的位置），有时被当成密度（出现在其它位置），不过应当是容易区分的。
+>
+> 另一方面，前两个例子对概率空间没有先验假定；第三个例子则必须是向量空间（以定义 kernel）。
+
+命题：令费用 $c$ 连续，固定 $\nu$，则 $\rho\mapsto\c L_c(\rho,\nu)$ 是凸的，且其在 $\rho_0$ 处的次微分正是全体合法 Kantorovich 势 $\cur{\varphi:\int\varphi\d\rho_0+\int\varphi^c\d\nu=\c L_c(\rho,\nu)}$。而如果 Kantorovich 势关于常数加唯一为 $\varphi$，则恰有 $\dfrac{\c L_c(\cdot,\nu)}{\delta\rho}(\rho_0)=\varphi$。
+
+> [!TIP]
+>
+> 对 $\c P(\Omega)\to\R$ 的泛函 $\c L_c(\cdot,\nu)$ 定义次微分是合理的：$\c F$ 在 $\rho_0$ 处的次微分是 $\p \c F(\rho_0)=\cur{\xi:\forall\rho\in\c P(\Omega),\c F(\rho)\geq\c F(\rho_0)+\int\xi\d(\rho-\rho_0)}$。
+
+这是因为
+$$
+\c L_c(\rho,\nu)=\sup_\phi\int\phi\d\rho+\int\phi^c\d\nu
+$$
+对于单个 $\phi$，这个式子关于 $\rho$ 是线性的因此是凸的；而凸函数的上确界仍然是凸的。同时作为线性函数的上确界，其次微分确实就是所有达到对偶最大值的 Kantorovich 势。同时单个线性函数的一阶变分为 $\phi$，则如果只有一个线性函数取到上确界则一阶变分也唯一。
+
+现在考虑 JKO 的极值。按照习惯用法，使用 $c(\b x,\b y)=\dfrac12d(\b x,\b y)^2$ 时，得到在最优的 $\rho$ 处应满足
+$$
+\dfrac{\delta F}{\delta\rho}(\rho)+\dfrac{\varphi}{\tau}=\t{const}
+$$
+其中 $\varphi$ 是 $\rho$ 至 $\rho_k^\tau$ 的 Kantorovich 势（方向不能乱）；这里等于的是常数而不是零是因为一阶变分关于加常数等价。
+
+进一步，如果 $c(\b x,\b y)=\dfrac12\|\b x-\b y\|^2$，则适用 Brenier 定理，传输方案 $T$ 满足 $T(\b x)=\b x-\nabla\varphi(\b x)$。于是定义
+$$
+\b v(\b x)=-\dfrac{T(\b x)-\b x}\tau=-\nabla(\dfrac{\delta F}{\delta\rho}(\rho))(\b x)
+$$
+
+> [!TIP]
+>
+> 因为 $T(\b x)$ 是从 $\rho$ 到 $\rho_k^\tau$ 的流，所以取负号。其实际意义是 Wasserstein 空间中单位速度场。
+
+现在令 $\tau\to0$。则只需要在连续性方程 $\dot\rho+\nabla\cdot(\rho\b v)=0$ 中代入前面求出的 $\b v$ 即得 **Wasserstein GF 的微分形式**
+$$
+\dot\rho-\nabla\cdot\Bigg(\rho\nabla\Big(\dfrac{\delta F}{\delta\rho}(\rho)\Big)\Bigg)=0
+$$
+特别地，如果取 $F(\rho)=\int f(\rho(\b x))\d\b x$ 而 $f(t)=t\log t$（也即负熵 $\int\rho\log\rho\d x$）则有 $f'(t)=1+\log t$，$\nabla(f'(\rho))=\dfrac{\nabla\rho}\rho$，此时得到 **Heat Equation** $\dot\rho-\Delta\rho=0$；如果额外增加一个势能项，即 $F(\rho)=\int f(\rho(\b x))\d\b x+\int V\d\rho$，则得到 **Fokker-Planck Equation** $\dot\rho-\Delta\rho-\nabla\cdot(\rho\nabla V)=0$。这描述了势场下的粒子扩散。
+
+> [!IMPORTANT]
+>
+> 总结：
+>
+> 对于测度空间上的泛函 $F$ 定义了类似梯度的一阶变分 $\dfrac{\delta F}{\delta\rho}$；当这个泛函是到某个固定测度的 OT 时，一阶变分就是变元对应的 Kantorovich 势。
+>
+> 在 Brenier 定理适用的场景，传输方案 $T$ 恰好可以用 Kantorovich 势的梯度描述，因此单位速度场 $\b v$ 就可以用一阶变分的梯度描述。在连续性方程中代入 $\tau$ 取极限时的结果即可。
+
+### Geodesic convexity in W₂
+
+为了使用 EDE 和 EVI，我们需要 $F$ 的测地凸性。Brenier 定理保证了 MaCann 插值 $\alpha_t=((1-t)\t{Id}+tT)_\sharp\alpha_0$ 是测地线，因此可以直接在上面验证。同时正因为 MaCann 插值的存在，Wasserstein 空间下的测地凸性被形象地称作 **位移凸性**。
+
+- 对于势能 $\c V(\mu)=\int V\d\mu$，只要 $V$ 是 $\lambda$-凸的，$\c V$ 就是 $\lambda$-测地凸的。
+- 对于相互作用能 $\c W(\mu)=\int W(\b x-\b y)\d\mu^2$ 同理。
+
+但是对于密度泛函，情况没这么简单。
+
+首先来点基础微积分结论。对于足够光滑的映射 $T:\Omega\to\Omega$，考虑前推密度 $\rho_T=T_\sharp\rho$，则有
+$$
+\rho_T=\dfrac\rho{\det(\t D T)}\circ T^{-1}
+$$
+其中 $\t DT$ 是 Jacobi 矩阵。
+
+然后再来点基础线性代数结论。对于 $d\times d$ 矩阵 $A$，如果其所有特征值都是大于 $-1$ 的实数（比如其是满足 $A+I$ 正定的对称阵），则定义在 $[0,1]$ 上的函数 $g:t\mapsto\det(I+tA)^{1/d}$ 是凹函数。
+
+则有结论：只要 $f(0)=0$ 且 $s\mapsto s^df(s^{-d})$ 是凸的严格减函数，密度泛函 $\c F=\int f(\rho(\b x))\d\b x$ 就关于 $\c W_2$ 是测地凸的。
+
+对绝对连续的 $\mu_0,\mu_1$ 使用 MaCann 插值得到测地线 $\mu_t=(T_t)_\sharp\mu_0$，使用 Brenier 定理得到 $T_t(\b x)=\b x-t\nabla\varphi(\b x)$，其中 $\varphi$ 满足 $\|\b x\|^2/2-\varphi$ 是凸的。于是有 $\t D^2\varphi\preceq I$，在 $t<1$ 时 $T_t$ 会是严格凸函数的梯度，进而是单射。于是 $\mu_t$ 绝对连续，将其密度写作
+$$
+\rho_t(\b y)=\dfrac{\rho(T^{-1}_t(\b y))}{\det(I+tA(T_t^{-1}(\b y)))}
+$$
+其中 $A(\b x)=-\t D^2\varphi(\b x)$，$\rho$ 是 $\mu_0$ 的密度。
+$$
+\c F(\mu_t)=\int f\left(\dfrac{\rho(T^{-1}_t(\b y))}{\det(I+tA(T_t^{-1}(\b y)))}\right)\d\b y=\int\dfrac{\rho(\b x)}{\det(I+tA(\b x))}\det(I+tA(\b x))\d\b x
+$$
+这是因为 $\d\b y=\det\t DT_t(\b x)\d\b x=\det(I+tA(\b x))\d\b x$。
+
+然后结论可以结合引理和条件得证。
+
+这个定理的条件（$s\mapsto s^df(s^{-d})$ 是凸减函数）被称作 **MaCann 条件**。常见的负熵 $f(t)=t\log t$ 在任何 $d$ 下均成立，而内能 $f(t)=t^m$ 当 $m\geq1-1/d$ 时成立。
+
+------
+
+除了上述三种基于积分的 $F$，另一种方式是直接基于 Wasserstein 距离构造。遗憾地，对于固定的 $\nu$，$\mu\mapsto\c W_2(\mu,\nu)^2$ 一般没有位移凸性。
+
+解决方案是使用 CCGG。Wasserstein 空间下的测地线是 McCann 插值，而广义测地线也类似：对于 $\mu_0,\mu_1$ 和第三点 $\rho$，令 $T_i$ 是 $c=\dfrac12\|\b x-\b y\|^2$ 意义下 $\rho$ 至 $\mu_i$ 的 Brenier 映射，则插值 $\mu_t=((1-t)T_0+tT_1)_\sharp\rho$ 会是相对于 $\rho$ 的广义测地线：
+
+首先 $(1-t)T_0+tT_1$ 是一个合法输运方案，因此有
+$$
+\c W_2(\mu_t,\rho)^2\leq\int\dfrac12\|(1-t)T_0(\b x)+tT_1(\b x)-\b x\|^2\d\rho
+\\=\dfrac12\int\Bigg((1-t)\|T_0(\b x)-\b x\|^2+t\|T_1(\b x)-\b x\|^2-t(1-t)\|T_0(\b x)-T_1(\b x)\|^2\Bigg)\d\rho
+\\=(1-t)\c W_2(\mu_0,\rho)^2+t\c W_2(\mu_1,\rho)^2-t(1-t)\int\dfrac12\|T_0(\b x)-T_1(\b x)\|^2\d\rho
+$$
+此处包含的 $\int\dfrac12\|T_0(\b x)-T_1(\b x)\|^2\d\rho$ 项常被称作 **$\rho$-相关距离**，其总是大于等于 $\c W_2(\mu_0,\mu_1)^2$。
+
+则 $\mu\mapsto\c W_2(\mu,\nu)^2$ 自动有关于 $\nu$ 的 CCGG。除此之外，前文提到的三种常见 $F$ 均同样具有 CCGG：势能和相互作用能的证明类似，而状态泛函要转而利用 $\det((1-t)A+tB)^{1/d}$ 的凹性。
+
+------
+
+以上的所有分析依赖于 $c=\dfrac12\|\b x-\b y\|^2$，此时 Brenier 定理描述了传输方案，而 McCann 插值显式地刻画了测地线。如果放到一般的 Riemann 流形上，此时结论不再成立。
+
+不过，有 **Lott-Sturm-Villani 定理**：令 $d$ 为流形的维数，$\t{Vol}$ 为流形上的容积测度，$\c E(\rho)=\int\rho\log\rho\d\t{Vol}$ 为熵泛函。则 $\c E$ 在 $2$-Wasserstein 空间中有 $\lambda$-测地凸性当且仅当流形的 *Ricci 曲率* 下界为 $\lambda$。
+
+------
+
+测地凸性可以提供 Wasserstein GF 的唯一性和稳定性。
+
+引理：对于 $\lambda$-测地凸的泛函 $F$，任何 $\rho_0,\rho_1$ 均有
+$$
+\int\nabla\varphi\cdot\nabla(\dfrac{\delta F}{\delta\rho}(\rho_0))\d\rho_0+\int\nabla\psi\cdot\nabla(\dfrac{\delta F}{\delta\rho}(\rho_1))\d\rho_1\geq\lambda\c W_2(\rho_0,\rho_1)^2
+$$
+其中 $\varphi,\psi$ 是 $\rho_0\to\rho_1$ 的最优传输中二者分别的 Kantorovich 势。
+
+证明：考虑 $\rho_t$ 为测地线，$g(t)=F(\rho_t)$，则 $\lambda$-测地凸性保证
+$$
+g(t)\leq(1-t)g(0)+tg(1)-\dfrac\lambda2t(1-t)\c W_2(\rho_0,\rho_1)^2
+$$
+特别地，其在 $t=0$ 和 $t=1$ 处取等，这意味着该处求导后结果仍然成立，即
+$$
+g'(0)\leq g(1)-g(0)-\dfrac\lambda2\c W_2(\rho_0,\rho_1)^2
+\\g'(1)\geq g(1)-g(0)+\dfrac\lambda2\c W_2(\rho_0,\rho_1)^2
+\\g'(0)-g'(1)\leq-\lambda\c W_2(\rho_0,\rho_1)^2
+$$
+现在显式地计算 $g'(t)$。使用一些泛函分析技巧，得到
+$$
+\begin{align*}
+g'(t)&=\int\left(\dfrac{\delta F}{\delta\rho}(\rho_t)\right)(\b x)\dot\rho_t(\b x)\d\b x
+\\&=-\int\dfrac{\delta F}{\delta\rho}(\rho_t)\nabla\cdot(\rho_t\b v_t)\d\b x&(\t{Continuity Equation})
+\\&=\int\nabla\left(\dfrac{\delta F}{\delta\rho}(\rho_t)\right)\cdot\b v_t\d\rho_t&(\t{Integral by part})
+\end{align*}
+$$
+代入 Brenier 定理的 $\b v_0=-\nabla\varphi,\b v_1=\nabla\psi$ 即证。
+
+现在考虑两条曲线 $\rho_t^0$ 和 $\rho_t^1$，$\b v_t^0$ 和 $\b v_t^1$ 是对应的速度场，令 $d(t)=\dfrac12\c W_2(\rho_t^0,\rho_t^1)^2$。因为有 Kantorovich 对偶公式
+$$
+d(t)=\max_{\phi\oplus\psi\leq\tfrac12\|\b x-\b y\|^2}\int\phi\d\rho_t^0+\int\psi\d\rho_t^1
+$$
+所以类似前文推导可以给出
+$$
+d'(t)=\int\nabla\varphi\cdot\b v_t^0\d\rho_t^0+\int\nabla\psi\cdot\b v_t^1\d\rho_t^1
+$$
+结合引理和 $\b v(\b x)=-\nabla(\dfrac{\delta F}{\delta\rho}(\rho))(\b x)$ 的核心关系即得
+$$
+d'(t)\leq-\lambda d(t)
+$$
+这表明 Wasserstein GF 在 $\lambda>0$ 时有唯一稳定解。
+
+> [!IMPORTANT]
+>
+> 总结：几种常见泛函都有测地凸性和 CCGG 性；正的测地凸性可以保证唯一稳定解。
+
+> [!NOTE]
+>
+> 除了 $\c W_2$ 凸性以外，另一种在概率空间上常见的凸性是简单的 $\ell_2$-凸性。Wasserstein 测地线是 McCann 插值，而 $\ell_2$-测地线就是简单的线性插值。针对哪种凸性处理要看对什么能量讨论，不要拘泥于 JKO 这一套。
+>
+> 比如说热方程 $\dot\rho=\Delta\rho$，在 W2 下其对应的是熵泛函 $\int\rho\log\rho\d x$，而在 L2 下对应的是 $\int\|\nabla \rho\|^2\d x$。
+
+### Analysis of the Fokker-Planck equation as a gradient flow in W₂
+
+Fokker-Planck 方程是泛函 $\c J=\c E+\c V$ 上的 GF，其中
+$$
+\c E(\rho)=\begin{cases}\int\rho\log\rho\d\b x&(\t{absolutely continuous})\\+\infty&(\t{otherwise})\end{cases}
+$$
+而 $\c V(\rho)=\int V\d\rho$。
+
+其有下半连续性。选取 $\Omega$ 为紧集，则得到两个结论：
+
+- $\c J$ 有唯一的最小值。
+- JKO scheme 每一步都有唯一最小值。
+
+引理：JKO 单步最小值 $\hat\rho$ 必然 $>0$ a.e.。证明找到常概率测度 $\tilde\rho$（其处处取值 $|\Omega|^{-1}$）然后讨论 $\rho_\vare=(1-\vare)\hat\rho+\vare\tilde\rho$ 即可。
+
+> [!TIP]
+>
+> 这里选取 $\Omega$ 为紧集作为推导示例；当 $\Omega=\R^d$ 不能使用常概率测度进行插值，讨论会更复杂，但结论是类似的。
+
+命题：最优的 JKO step $\rho_{k+1}^\tau$ 满足
+$$
+\log\rho_{k+1}^\tau+V+\dfrac\varphi\tau=\t{const a.e.}
+$$
+其中 $\varphi$ 是 $\rho_{k+1}^\tau\to\rho_k^\tau$ 的唯一 Kantorovich 势。令 $T_k^\tau$ 是其 OT map，则有
+$$
+\b v_k^\tau=\dfrac{\t{Id}-T_k^\tau}\tau=-\nabla(\log\rho_{k+1}^\tau+V)
+$$
+这是因为一阶变分 $\dfrac{\delta J}{\delta\rho}=f'(\rho)+V=1+\log\rho+V$。套用一般场景的结论即可。
+
+------
+
+现在考虑插值出连续曲线。此时只不过是把向量空间中使用的分段常数/线性插值两种模式换成了对应的分段常数/McCann 插值两种模式，证明类似，不再赘述。$\tau\to0$ 得到的曲线满足
+$$
+\b v=-\nabla(\log\rho+V)=-\dfrac{\nabla\rho}\rho-\nabla V
+$$
+考虑动量 $\b J=\rho\b v$，则其变成
+$$
+\b J=-\nabla\rho-\rho\nabla V
+$$
+同时有连续性方程
+$$
+\dot\rho+\nabla\cdot\b J=0
+$$
+
+## Conclusion
+
+Euclidean GF 的核心公式是 Cauchy 条件
+$$
+\begin{align*}
+\dot{\b x}=-\nabla F(\b x)&&(\t{Differentiable})
+\\\dot{\b x}\in-\p F(\b x)&&(\t{Convex})
+\\\dot{\b x}=-\p^\circ F(\b x)&&(\t{Semi-Convex and Pointly Differentiable})
+\end{align*}
+$$
+其等价条件是 EDE 和 EVI 性质
+$$
+\begin{align*}
+F(\b x(s))-F(\b x(t))=\int_s^t(\dfrac12\|\nabla F(\b x(r))\|^2+\dfrac12\|\dot{\b x}(r)\|^2)\d r&&(\t{EDE})
+\\\forall\b y:F(\b y)\geq F(\b x(t))+\dfrac\d{\d t}\dfrac12\|\b x(t)-\b y\|^2+\dfrac\lambda2\|\b x(t)-\b y\|^2&&(\t{EVI})
+\end{align*}
+$$
+一般 metric GF 有对应的形式
+$$
+\begin{align*}
+F(\b x(s))-F(\b x(t))=\int_s^t(\dfrac12\|\nabla F^-\|(\b x(r))^2+\dfrac12\|\dot{\b x}\|(r)^2)\d r&&(\t{EDE})
+\\\forall\b y:F(\b y)\geq F(\b x(t))+\dfrac\d{\d t}\dfrac12d(\b x(t),\b y)^2+\dfrac\lambda2d(\b x(t),\b y)^2&&(\t{EVI})
+\end{align*}
+$$
+Eulidean 下的 2-Wasserstein GF 则有
+$$
+\dot\rho-\nabla\cdot\Bigg(\rho\nabla\Big(\dfrac{\delta F}{\delta\rho}(\rho)\Big)\Bigg)=0
+$$
+特例是热方程
+$$
+\dot\rho-\Delta\rho=0
+$$
+和 Fokker-Planck 方程
+$$
+\dot\rho-\Delta\rho-\nabla\cdot(\rho\nabla V)=0
+$$
+
+------
+
+Euclidean GD 是标准的 Minimizing Movement Scheme 式
+$$
+\b x_{k+1}^\tau\in\arg\min_{\b x}F(\b x)+\dfrac{\|\b x-\b x_k^\tau\|^2}{2\tau}
+$$
+一般 metric GD 则是 Generalized Minimizing Movement
+$$
+\b x_{k+1}^\tau\in\arg\min_{\b x}F(\b x)+\dfrac{d(\b x,\b x_k^\tau)^2}{2\tau}
+$$
+Wasserstein GD 则是 JKO Scheme
+$$
+\rho_{k+1}^\tau=\arg\min_\rho F(\rho)+\dfrac{\c W_2(\rho,\rho_k^\tau)^2}{2\tau}
+$$
+它们均服从隐式 Euler Scheme 的形式
+$$
+\b x_{k+1}^\tau=\b x_k^\tau+\tau\b v(\b x_{k+1}^\tau)
+$$
+与之相对的是显式 Euler Scheme
+$$
+\b x_{k+1}^\tau=\b x_k^\tau+\tau\b v(\b x_k^\tau)
+$$
+
+------
+
+测地线是连接两点的曲线中长度最小者，是一个变分性质。
+
+广义测地线是满足以下性质的曲线
+$$
+d(\b x(t),\b y)^2\leq(1-t)d(\b x_0,\b y)^2+td(\b x_1,\b y)^2-t(1-t)d(\b x_0,\b x_1)^2
+$$
+是一个代数性质。
+
+测地线在 Riemann 流形中几乎总是存在。
+
+广义测地线在 Riemann 流形中几乎总是不存在。但是 Wasserstein 空间中其存在。
+
+在标准 Euclidean 空间下：
+
+- 测地线和广义测地线均为线性插值。
+
+在 $c=\dfrac12\|\b x-\b y\|^2$ 的 Wasserstein 空间下：
+
+- 测地线是 McCann 插值 $\rho_t=((1-t)\t{Id}+tT)_\sharp\rho_0$，其中 $T$ 是 $\rho_0\to\rho_1$ 的 Brenier 最优传输。
+- 广义测地线是 $\rho_t=((1-t)T_0+tT_1)_\sharp\rho$，其中 $T_i$ 是 $\rho\to\rho_i$ 的 Brenier 最优传输。
+
+------
+
+$\lambda$-凸性的一般形式是
+$$
+F(\b x(t))\leq(1-t)F(\b x(0))+tF(\b x(1))-\dfrac\lambda2t(1-t)d(\b x(0),\b x(1))^2
+$$
+当空间是 Euclidean、$\b x$ 是线性插值、$d$ 是标准 2-norm 时，它就是标准 $\lambda$-凸性的定义。
+
+当空间、度量均是一般流形，且存在满足条件的测地线 $\b x$ 时，它是 $\lambda$-测地凸性。
+
+当空间、度量均是一般流形，且存在满足条件的广义测地线 $\b x$ 时，它是 $\lambda$-广义测地凸性（CCGG）。
+
+在 Wasserstein 空间下，其也被称作位移凸性和广义位移凸性。
+
+------
+
+密度泛函 $\c F=\int f(\rho)\d\b x$ 在满足 McCann 条件即 $s\mapsto s^df(s^{-d})$ 是严格减凸函数时，有位移凸性和广义位移凸性。
+
+势能泛函 $\c V=\int V\d\rho$ 在 $V$ 有 $\lambda$-凸性时，有相应的 $\lambda$-（广义）位移凸性。
+
+相互作用能泛函 $\c W=\int W(\b x-\b y)\d\rho^2$ 在 $W$ 有 $\lambda$-凸性时，有相应的 $\lambda$-（广义）位移凸性。
+
+Wasserstein 距离泛函 $\c W_2(\cdot,\nu)^2$ 一般没有位移凸性，但是有广义位移凸性。
+
+------
+
+满足 EDE 时 GF 存在；满足 $\lambda>0$ 的 EVI~λ~ 时 GF 唯一且稳定。
+
+一般流形下：
+
+- $\|\nabla^-F\|$ 下半连续且是上梯度时满足 EDE 条件，而 $\lambda$-测地线凸性同时满足这两个条件。
+- CCGG 满足 EVI 条件。
+
+Wasserstein 空间下：只要有正的位移凸性即可保证唯一稳定。
+
+------
+
+Wasserstein GF 的相关结论：
+
+令 $\varphi$ 是 $\rho_0$ 在 $\rho_0\to\rho_1$ 的最优传输中对应的 Kantorovich 势，则
+$$
+\dfrac{\c L_c(\cdot,\rho_1)}{\delta\rho}(\rho_0)=\varphi
+$$
+JKO 的极值 $\hat\rho$ 满足
+$$
+\dfrac{\delta F}{\delta\rho}(\hat\rho)+\dfrac{\varphi}{\tau}=\t{const}
+$$
+Fokker-Planck 下则是
+$$
+\log\hat\rho+V+\dfrac\varphi\tau=\t{const}
+$$
+Brenier 定理则保证
+$$
+\b v=-\nabla(\dfrac{\delta F}{\delta\rho}(\rho))
+$$
+连续性方程
+$$
+\dot\rho+\nabla\cdot\rho\b v=0
+$$

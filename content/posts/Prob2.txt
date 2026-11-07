@@ -1,0 +1,1863 @@
+$$
+\newcommand{\cur}[1]{\left\{#1\right\}}
+\newcommand{\ip}[1]{\left<#1\right>}
+\newcommand{\s}{\mathscr}
+\newcommand{\comp}{\complement}
+\newcommand{\co}[2]{{\color{#1}{#2}}}
+\newcommand{\Z}{\mathbb Z}
+\newcommand{\R}{\mathbb R}
+\newcommand{\eps}{\epsilon}
+\newcommand{\d}{\mathrm d}
+\newcommand{\mat}[1]{\begin{matrix}#1\end{matrix}}
+\newcommand{\bmat}[1]{\begin{bmatrix}#1\end{bmatrix}}
+\newcommand{\E}{\mathop{\mathbb E}}
+\newcommand{\io}{\operatorname{i.o.}}
+\newcommand{\var}{\text{var}}
+\newcommand{\i}{\mathtt i}
+\newcommand{\p}{\partial}
+\newcommand{\c}{\mathcal}
+\newcommand{\P}{\mathbb P}
+\newcommand{\t}{\text}
+\newcommand{\bi}{\leftrightarrow}
+\newcommand{\En}{\mathcal E}
+\newcommand{\oc}[1]{\left(#1\right]}
+\newcommand{\b}{\boldsymbol}
+\newcommand{\up}[1]{\left\lceil#1\right\rceil}
+$$
+
+### Finite State Markov Chain
+
+有限状态 Markov 链可以由有限的状态空间 $\c S$ 和转移矩阵 $P$ 描述，使得对于一切序列 $(x_0,\dots,x_{n+1})$ 都满足
+$$
+\P(X_{n+1}=x_{n+1}\mid X_0=x_0,\dots,X_n=x_n)=\P(X_{n+1}=x_{n+1}\mid X_n=x_n)
+\\=P(x_n,x_{n+1})
+$$
+
+> [!TIP]
+>
+> 这里的矩阵虽然严格意义上来说是 $\c S\times\c S$ 上的函数，不过当成矩阵即可。同理测度可以当成行向量，函数可以当成列向量。
+
+转移矩阵需要是 **随机矩阵** (stochastic matrix)，即
+
+- $P(x,y)\geq0$。
+- $\sum_y P(x,y)=1$。
+
+则其最大特征值为一。
+
+特别地，转移矩阵可以用随机映射来描述。考虑另一个取值为 $\Lambda$ 的随机变量 $Z$ 以及 $\c S\times\Lambda\to\c S$ 的函数 $f$，用 $Z$ 作为随机种子，并希望
+$$
+\P[f(x,Z)=y]=P(x,y)
+$$
+则 Markov Chain 可以被表示为：取一堆 i.i.d. 与 $Z$ 同分布的 $\cur{Z_n}$ 且与 $X_0$ 独立，则有 $X_n=f(X_{n-1},Z_n)$。
+
+------
+
+称转移矩阵是 **不可约** (irreducible) 的，如果对于一切 $x,y\in\c S$ 都存在一个可能与 $x,y$ 相关的 $n$ 满足 $P^n(x,y)>0$。
+
+令 $T(x)=\cur{n:P^n(x,x)>0}$，即可以游走回自身的时刻。定义状态 $x$ 的 **周期** (period) 为 $\gcd(T(x))$。
+
+定理：不可约 MC 上所有状态的周期全部相同，称为 MC 的 **周期**。
+
+> 对于任意 $x,y$，都存在 $n,m$ 使得 $P^n(x,y)>0,P^m(y,x)>0$，于是 $n+m\in T(x)$ 且 $n+m\in T(y)$。
+>
+> 于是对于任意 $k\in T(x)$ 都有 $n+m+k\in T(x)$ 且 $n+m+k\in T(y)$，于是由辗转相除有 $\gcd(T(x))\mid k$ 且 $\gcd(T(y))\mid k$，于是所有 $\gcd$ 都相等。
+
+> [!IMPORTANT]
+>
+> 这个性质对状态集任意的 MC 同样成立，因为上述证明表明，周期性是类性质。
+
+定义：不可约的 MC 称为 **非周期** (aperiodic) 的，如果周期为 $1$。
+
+定理：不可约非周期 MC 存在全局时刻 $M$，使得一切 $n\geq M$ 都有 $P^n(x,y)>0$。
+
+> 由数论中的 **数值半群基本定理**，只有有限个正整数不属于 $\gcd$ 为 $1$ 的加法半群。
+>
+> 特例是经典的「$ab-a-b$ 是不可用 $a,b$ 的正系数线性组合表出的最大数」。
+>
+> 因此，任意可达的 $x,y$ 都存在这样的时刻 $M_{x,y}$。取最大值即可。
+
+> [!IMPORTANT]
+>
+> 因此，这个证明在状态集无穷的场合不成立。事实上容易构造 $M_{x,y}\to\infty$ 的无限 MC。
+
+定义：令 $\mu_n$ 为 $X_n$ 的分布，则有 $\mu_n=\mu_{n-1}P=\mu_0P^n,\E[f(X_n)]=\mu_0P^nf$。
+
+> [!TIP]
+>
+> $\mu$ 可以被当成行向量 $\bmat{\P[X=x_1]&\dots&\P[X=x_n]}$。
+>
+> 不过更权威的定义还是把 $\mu$ 当成 $(\c S,\c F)$ 上的概率测度，此时 $P$ 不是 $\c S\times\c S\to\c S$ 的函数而是 $\c S\times\c F\to[0,1]$ 的转移核，满足：
+>
+> - 对于固定的 $x\in\c S$，$A\mapsto P(x,A)$ 是概率测度。
+> - 对于固定的 $A\in\c F$，$x\mapsto P(x,A)$ 是 $\c F$-可测函数。
+>
+> 则测度左乘可以诱导范数
+> $$
+> (\mu P)(A)=\int P(x,A)\mu(\d x)
+> $$
+> 而函数则可以诱导函数
+> $$
+> (Pf)(x)=\int f(y)P(x,\d y)
+> $$
+> 则函数关于测度积分可以写成内积 $\ip{\mu,f}=\int f\d\mu$，同时有内积对称性 $\ip{\mu,Pf}=\ip{\mu P,f}$。
+
+定义：满足 $\pi P=\pi$ 的概率测度是 **稳定分布**。
+
+定义：满足 $Pf=f$ 的函数是 **调和函数**。
+
+引理：调和函数引导一个鞅 $f(X_n)$。
+
+> $$
+> \E[f(X_{n+1})\mid X_n]=\sum_y P(X_n,y)f(y)=(Pf)(X_n)=f(X_n)
+> $$
+
+引理：不可约 MC 上的调和函数是常数。
+
+> 有很多离散与连续的对应。
+>
+> - 标量场对应点权。
+> - 向量场对应边权。
+> - 梯度是边差分 $(\nabla f)(u,v)=f(v)-f(u)$。
+> - 散度是净流出量 $(\t{div}F)(u)=\sum_{(u,v)}F(u,v)$。
+> - Laplacian 是 $\Delta f(u)=\sum_{(u,v)}f(u)-f(v)$。而 Laplace 算子是 $\Delta=D-A$，$\Delta f$ 就是算子作用于 $f$。
+>
+> 调和函数满足 $Pf=P$ 也就是 $\Delta f=0$。
+>
+> 调和函数是常数的证明基于 **最大值原理**：考虑 $f$ 的全局最大值，则其作为以 $P$ 为权重的加权平均，所有可一步到达的 $f$ 满足权重非零，则亦必须为最大。因为不可约所以这一关系会传播，最终整个图都是全局最大值。
+>
+> 同理复分析中的平均值性质表明圆心处的函数值等于圆周的平均，则最大值不会出现在区域的内部，全平面调和函数只能是常数。
+
+> [!IMPORTANT]
+>
+> 这个性质在状态集无穷的场合不成立，因为最大值原理顾名思义需要最大值。
+>
+> 但是对于常返的 MC，其上所有有界调和函数必然是常数，这被称为 **MC 的 Liouville** 定理，证明需要鞅。
+
+推论：这表明 $1$ 作为特征值的重数是 $1$，进一步表明稳定分布若存在则唯一。
+
+> [!IMPORTANT]
+>
+> 常返 MC 的有界调和函数是常数，但是：
+>
+> - 正常返 MC 的稳定分布唯一。
+> - 零常返 MC 不存在稳定分布，但是存在常数倍数意义下唯一的不变测度 $\mu$ 满足 $\mu=\mu P$。之所以其不存在稳定分布是因为这个不变测度积分发散，无法归一化为概率测度。
+>
+> 因此在零常返的场合，因为一端的视角是可加的 $\ell^1$ 空间，而另一端是有界的 $\ell^\infty$ 空间，所以重数不等。事实上，无穷维矩阵的左右特征重数不等是常见现象。
+>
+> 最后，在瞬态 MC 的场合，它甚至存在无穷个线性无关的有界调和函数！
+
+定义：称概率测度 $\pi$ 满足 **细致平衡方程** (detailed balance equation) 如果 $\pi(x)P(x,y)=\pi(y)P(y,x)$。这样的测度必定是稳定分布。
+
+> [!TIP]
+>
+> 其推论是 **Kolmogorov 循环准则** $P_{AB}P_{BC}P_{CA}=P_{AC}P_{CB}P_{BA}$，等价于无旋场，可以定义势能，而稳定分布就是关于势能的 Boltzmann 分布。
+
+当 $X_0\sim\pi$ 时，除了满足边缘分布 $\pi P^n$ 不变以外，联合分布还满足以下性质
+$$
+\pi(x_0)P(x_0,x_1)\dots P(x_{n-1},x_n)=\pi(x_n)P(x_n,x_{n-1})\dots P(x_1,x_0)
+$$
+为方便，定义 $\P_\pi[\dots]$ 为 $X_0\sim\pi$ 时的联合测度，则有
+$$
+\P_\pi[X_0=x_0,\dots,X_n=x_n]=\P_\pi[X_0=x_n,\dots,X_n=x_0]
+$$
+故联合变量 $(X_0,\dots,X_n)$ 和联合变量 $(X_n,\dots,X_0)$ 同分布。因此满足细致平衡方程的测度是 **可逆** 的。
+
+定义：对于存在稳定分布 $\pi$ 的不可约 MC，令 $\hat P=\pi(y)P(x,y)/\pi(x)$，则 $\hat P$ 同样是随机矩阵，且 $\pi$ 仍是 $\hat P$ 的稳定分布。令 $\hat X_n$ 为初始分布为 $\pi$、$\hat P$ 引导的 MC，则同上分析可得
+$$
+\P_\pi[X_0=x_0,\dots,X_n=x_n]=\P_\pi[\hat X_0=x_n,\dots,\hat X_n=x_0]
+$$
+于是称 $\hat X$ 为 $X$ 的 **时序反演** (time reversal)。可逆的 MC 满足 $\hat P=P$。
+
+------
+
+定义 $\tau_x=\inf\cur{n\geq 0:X_n=x}$，称为 hitting time；$\tau_x^+=\inf\cur{n\geq1:X_n=x}$，称为 first return time，但只在 $X_0=x$ 时有意义（与 hitting time 不等）。
+
+定理：不可约的 $P$ 的稳定分布唯一，且可以通过 $\pi(x)=\dfrac1{\E_x[\tau_x^+]}$ 显式写出（其中 $\E_x$ 表示 $X_0=x$ 时的 MC）。
+
+> 首先证明分母上这个东西收敛。更一般地，我们证明 $\E_x[\tau_y^+]$ 收敛。
+>
+> 由不可约性，存在函数 $r(x,y)$ 使得 $\eps=\min P^{r(x,y)}(x,y)>0$。于是令 $R=\max r(x,y)$，则不论 $X_n$ 为什么，在 $[n,n+R]$ 这一段时间内总是以至少为 $\eps$ 的概率访问 $y$。故期望不超过 $R/\eps$。
+>
+> 然后对于固定的 $z$，令 $\tilde\pi(x)=\E_z[\#\t{visits to }x\t{ before returning to }z]$，则
+> $$
+> \tilde \pi(x)=\sum_{n=0}^\infty\P_z[X_n=x,n<\tau_z^+]
+> $$
+> 则满足 $\tilde\pi=\tilde\pi P$（虽然因为 $\tilde\pi$ 不是概率测度所以称不上平稳分布）。这是因为
+> $$
+> \tilde\pi P(x)=\sum_y\tilde\pi(y)P(y,x)
+> \\=\sum_y\sum_{n\geq0}\P_z(X_n=y,n<\tau_z^+)P(y,x)
+> \\=\sum_y\sum_{n\geq0}\P_z(X_n=y,X_{n+1}=x,n<\tau_z^+)
+> \\=\sum_{n\geq0}\P_z(X_{n+1}=x,n<\tau_z^+)
+> \\=\sum_{n\geq1}\P_z(X_n=x,n\leq\tau_z^+)
+> $$
+> 其与最初的 $\tilde\pi(x)$ 的定义在 $x\neq z$ 时显然相同，而 $x=z$ 时显然均为 $1$。
+>
+> 于是归一化即得一合法稳定分布 $\pi=\tilde\pi/\E_z[\tau_z^+]$。而因为不可约性，稳定分布唯一，且可以写作 $\pi(x)=\dfrac1{\E_x[\tau_x^+]}$。
+
+> [!IMPORTANT]
+>
+> 这个证明不涉及到最大值等操作，因此只要其正常返（$\E_x[\tau_x^+]$ 收敛），就可证明 $\pi(x)=\dfrac1{\E_x[\tau_x^+]}$ 是稳定分布。至于如何在正常反的场合证明稳定分布唯一，就不能简单地靠 Liouville 定理了。
+
+------
+
+**遍历性定理** (Ergodic Theorem)：对于存在稳定分布 $\pi$ 的 MC，对于任何初始分布 $\mu$，都有
+$$
+\lim_{n\to\infty}\dfrac1n\sum_{i=0}^nf(X_i)=\pi(f)=:\int f\d\pi
+\\\lim_{n\to\infty}\dfrac1n\sum_{i=0}^n1_\cur{X_i=x}=\pi(x)
+$$
+注意到这个定理类似 SLLN：虽然 $f(X_i)$ 或者说 $X_i$ 的分布不一定收敛，但是分布的均值会。
+
+> 极限关于初始分布 $\mu$ 线性。故只需对 $\mu=\delta_x$ 说明即可。
+>
+> 定义 $\tau_0=0,\tau_1=\tau_x^+,\tau_{k+1}=\min\cur{n>\tau_k:X_n=x}$，即所有回到 $x$ 的时刻。
+>
+> 定义 $Y_k=\sum_{j=\tau_k}^{\tau_{k+1}-1}f(X_j)$，则被 $\tau$ 分块后每个 $Y_k$ 是 i.i.d. 的，于是 $\dfrac1n\sum Y_k\to\E_x[Y]$ 关于 $\P_x$ a.s.，同时 $\dfrac1n\tau_n\to\E_x[\tau_x^+]$ 关于 $\P_x$ a.s.。故
+> $$
+> \dfrac{\sum_{i=0}^{\tau_n-1}f(X_i)}{\tau_n}\to\dfrac{\E_x[Y]}{\E_x[\tau_x^+]}
+> $$
+> 易知 $\E_x[Y]=\sum_yf(y)\E_x[\sum_{i=0}^{\tau_1-1}1_\cur{X_j=y}]=\sum_yf(y)\tilde\pi(y)$。因为 $\tilde\pi(y)=\pi(y)\E_x[\tau_x^+]$，所以 $\E_x[Y]=\pi(f)\E_x[\tau_x^+]$，于是有
+> $$
+> \dfrac{\sum_{i=0}^{\tau_n-1}f(X_i)}{\tau_n}\to\pi(f)
+> $$
+> 现在只需证明这个式子不仅在 $\tau_n$ 处生效，而是对一切 $m$ 生效。
+>
+> 令 $M$ 为 $\max|f(x)|$，则
+> $$
+> \dfrac{|\sum_{i=0}^{m-1}f(X_i)|}m
+> \\\leq\dfrac{|\sum_{i=0}^{\tau_n-1}f(X_i)|+(m-\tau_n)M}m
+> \\\leq\dfrac{|\sum_{i=0}^{\tau_n-1}f(X_i)|}{\tau_n}+M-\dfrac{\tau_n}{\tau_{n+1}}M
+> $$
+> 因为 $\tau_n/\tau_{n+1}\to1$ 所以即证。
+
+> [!IMPORTANT]
+>
+> 在可数无穷的场合，遍历性定理要求正常返性和 $f$ 的绝对可积性。分块的操作仍然有效，但是最后一步使用了 $M$ 为最大值，不能迁移。解决方案是有
+> $$
+> \left|\sum_{i=\tau_n}^{m-1} f(X_i)\right|\leq\sum_{i=\tau_n}^{\tau_{n+1}-1}|f(X_i)|=:Y_n^*
+> $$
+> $Y_n^*$ 亦关于分块 i.i.d.。则只要 $\E_x|Y_n^*|<\infty$，则有 $\dfrac1nY_n^*\to0$。又有 $\tau_n/n\to\E_x[\tau_x^+]<\infty$，所以有 $Y_n^*/\tau_n\to0$，仍然有误差项消失。
+>
+> 特别地，这套框架符合「**再生过程**」的一般框架。随机过程 $\cur{X_t}$ 是再生过程，如果存在一系列随机时刻 $0=\tau_0<\tau_1<\dots$，使得 $\cur{\tau_k-\tau_{k-1}}$ i.i.d.，同时 $\cur{X_{\tau_k+t}:t\geq0}$ 和 $\cur{X_t:t\geq0}$ 同分布。这种方法的核心思想是
+> $$
+> \t{Long-Term Average}=\dfrac{\E[\t{Periodic Sum}]}{\E[\t{Period}]}
+> $$
+
+------
+
+TVD 是 $\|\mu-\nu\|_\t{TV}=\sup_{A\in\c F}|\mu(A)-\nu(A)|$。
+
+> [!TIP]
+>
+> 这是 TVD 的普适定义。如果 $\mu$ 和 $\nu$ 都相对某一个基准测度 $\phi$ 绝对连续，则可以写成
+> $$
+> \|\mu-\nu\|_\t{TV}=\dfrac12\sum_{x\in\c S}|\rho_\mu(x)-\rho_\nu(x)|
+> $$
+> 也即 $\ell_1$ 距离的一半。可以证明，总是可以找到这样的基准测度 (Radon-Nicodym)，且上式与基准测度无关。
+
+另一种等价定义是使用耦合
+$$
+\|\mu-\nu\|_\t{TV}=\inf_{(X,Y)\sim\Pi(\mu,\nu)}\P[X\neq Y]
+$$
+TVD 介导若干收敛定理。在 $\c S$ 可数时：
+
+- $\|\mu_n-\mu\|_\t{TV}\to0$ 当且仅当逐点收敛即 $\mu_n(\cur{x})\to\mu(\cur{x})$。
+- 进一步，当且仅当弱收敛。
+
+**MC 收敛定理**：不可约、非周期、以 $\pi$ 为稳定分布的 MC，存在 $\alpha\in(0,1)$ 和 $C>0$ 使得
+$$
+\max_{x\in\c S}\|P^n(x,\cdot)-\pi\|_\t{TV}\leq C\alpha^n
+$$
+也即，不仅给出每一步的收敛（而不是均值意义的收敛），还给出具体的收敛速率（指数收敛）。而因为 TVD 是距离，可以由三角不等式得到其对一切初始分布均有效。
+
+> 造一个每行都是 $\pi$ 的矩阵 $\Pi$，则有 $\Pi P=P\Pi=\Pi$ 且 $\Pi^2=\Pi$。
+>
+> 考虑元素 $1$ 范数即排扁的向量 $1$ 范数 $\|A-B\|_{m_1}$，则我们证明 $\|P^n-\Pi\|_{m_1}\leq C\alpha^n$ 即可。
+>
+> 由不可约和非周期得到某时刻 $r$ 有全体 $P^r(x,y)>0$，故可以取充分小的 $\delta$ 使得 $P^r(x,y)\geq\delta\pi(y)$。取 $Q$ 使得 $P^r=\delta\Pi+(1-\delta)Q$，则 $Q$ 是随机矩阵，且可以验证得到 $Q\Pi=\Pi Q=\Pi$。
+>
+> 这个式子表明，在游走完 $r$ 步后，可以从游走中拆出一个 $\Pi$ 的部分出来，而 $\Pi$ 是稳定的，可以由线性性继续考虑 $Q$。随着不断进行，$Q$ 的分量越来越少，自然得到指数衰减的模式。
+>
+> 形式化地，有 $P^{nr}=(1-\theta^n)\Pi+\theta^nQ^n$，其中 $\theta=1-\delta$。而未收敛部分即 $\theta^n\|P^{nr}-\Pi\|$ 确实是指数衰减的。
+
+> [!TIP]
+>
+> 另一种角度是从特征分解的角度。模长小于 $1$ 的特征值会衰减，而其中模长第二大的特征值会产生 eigen gap，直接描述了衰减速率 $\alpha$。
+>
+> 而模长等于 $1$ 的特征值描述了周期性震荡成分。因为特征值是特征方程的根，所以模长等于 $1$ 的特征值全是单位根，而单位根的次数对应着 MC 的周期。
+
+总结：
+
+- 平稳测度 $\pi=\pi P$ 与调和函数 $f=Pf$ 是对偶的。
+- 有不可约性时：
+    - 调和函数只能为常数，因此平稳测度唯一。
+    - 平稳测度通过 $\pi(x)=1/\E_x[\tau_x^+]$ 唯一给出。
+        - 证明从单点出发构造，然后由唯一性得到所有点出发的构造均相同。
+    - 遍历性定理类似 SLLN，给出函数平均值的收敛性，但不给收敛率。
+        - 证明关于返回分段，然后把每次返回间隔部分当成 i.i.d. 变量并用 SLLN。
+    - 收敛定理类似 CLT，在要求更强的条件（非周期性）时，给出指数级别的收敛率，且精确到每个分布而不是平均分布。
+        - 证明找到某个「均可达」时刻，然后不断拆出一部分概率吸收到平稳态中。
+    - 求平稳测度的几个方法：
+        - 写出矩阵然后求 $1$-特征向量。
+        - 使用细致平衡方程，如果满足则必然是平稳测度。
+        - 将其建模为无向图随机游走，则平稳分布就是度数归一化。
+- 衡量使用 TVD，它类似 statistically close 的概念，所以用 MCMC 替代 stationary distribution 就是用 PRG 替代 TRG。
+
+> 举例：Top-to-random shuffle。有 $N$ 张牌，每次取出第一张并放到随机位置，求何时其变为随机分布。
+>
+> 可以看做是 $N$ 元对称群 $S_N$ 上的随机游走。
+>
+> 引理：如果在某时刻，初始处于最底部的牌下方有 $k$ 张牌，则这 $k$ 张牌是等概率排列的。证明容易归纳。
+>
+> 这个引理以及直觉表明，初始处于最底部的牌是最难排的。于是，令 $\tau$ 为最底部牌首次被选择的时刻，则 $X_\tau$ 及其之后是均匀随机的。
+>
+> 现在使用收敛定理分析。我们希望对 $\|P^n(\t{Id},\cdot),\pi\|_\t{TV}$ 求 bound。使用等价定义：
+> $$
+> \dfrac{P^n(\t{Id},p)}{\pi(p)}=\dfrac1{N!}\P[X_n=p]
+> \\\geq\dfrac{\P[X_n=p,\tau\leq n]}{N!}=\P[\tau\leq n]
+> \\\|P^n(\t{Id},\cdot),\pi\|_\t{TV}=\sum_{p:\pi(p)>P^n(\t{Id},p)}\pi(p)\left(1-\dfrac{P^n(\t{Id},p)}{\pi(p)}\right)
+> \\\leq\sum_{p:\pi(p)>P^n(\t{Id},p)}\pi(p)\P[\tau> n]\leq\P[\tau>n]
+> $$
+> 令 $Y_n$ 为初始最底部牌在 $n$ 时刻的位置（$1$ 为最底部），则 $Y_0=1$。在给定 $Y_n=k$ 时，w.p. $k/n$ 新插入的牌在其下方，$1-k/n$ 在其上方。于是它满足和 coupon collection 相同的分布，满足 $\P[\tau>N\log N+\alpha N]\leq\exp(-\alpha+1)$，故 $\P[\tau>n]\leq eN\exp(-n/N)$，而 TVD 同理。
+
+### Countable State Markov Chain
+
+现在考虑无穷维状态空间 $\c S$ 的场景，则对应的转移矩阵 $P$ 是无穷维矩阵。则不可约性、周期性和稳定分布的定义保持不变。
+
+定义：状态 $x$ 是 **常返** (recurrent) 的，如果 $\P_x[\tau_x^+<\infty]=1$，否则是 **瞬态** (transient) 的。有限维且不可约的场合，所有状态都是常返的。但是可数无穷呢？
+
+定理：可数无穷且不可约的场合，如果存在某个 $x$ 满足 $\P_x[\tau_x^+<\infty]=1$，则对于全体 $x,y$ 均有 $\P_x[\tau_y^+<\infty]=1$。
+
+> 首先证明若 $\P_{x_0}[\tau_{x_0}^+<\infty]=1$，则全体 $\P_{x_0}[\tau_y<\infty]=1$。
+>
+> 既然有不可约性，则有 $q:=\P_{x_0}[\tau_y<\tau_{x_0}^+<\infty]>0$（证明找到所有 $x_0\to y$、概率非负且长度为 $n$ 的路径中最短的一条，则其必然没有回到 $x_0$）于是
+> $$
+> p:=\P_{x_0}[\tau_y<\infty]=\P_{x_0}[\tau_{x_0}^+<\tau_y<\infty]+\P_{x_0}[\tau_y<\tau_{x_0}^+<\infty]
+> \\=q+(1-q)p
+> $$
+> 故 $q(1-p)=0$。因为 $q>0$ 所以 $p=1$。
+>
+> 现在再证明全体 $\P_y[\tau_{x_0}<\infty]=1$。则有
+> $$
+> q=\P_{x_0}[\tau_y<\tau_{x_0}^+<\infty]=\P_{x_0}[\tau_y<\tau_{x_0}^+]\P_y[\tau_{x_0}^+<\infty]
+> \\=q\P_y[\tau_{x_0}^+<\infty]
+> $$
+> 因为 $q>0$ 所以两边同时消掉 $q$ 即知 $\P_y[\tau_{x_0}^+<\infty]=1$。
+>
+> 现在全体 $y$ 均在有限步内可达 $x_0$，而 $x_0$ 又可在有限步内到全体 $y$，于是 $x\to y$ 经过 $x_0$ 中转即可。
+
+因此，常返性/瞬态性对不可约的 MC 是可以整体定义的。
+
+除了研究概率，我们还研究期望。
+
+定义：一个状态是 **正常返** (positive recurrent) 的，如果 $\E_x[\tau_x^+]<\infty$。是 **零常返** (null recurrent) 的，如果 $\E_x[\tau_x^+]=\infty$。
+
+定理：同上，只要有某个 $x$ 正常返则所有 $x,y$ 对都正常返。因此正/零常返也可以整体定义。
+
+> 证明类似。一方面，$x_0\to y$，则定义 $\tau_k$ 为从 $x_0$ 出发第 $k$ 次回到 $x_0$ 的时刻，则不可约性可知 $q:=\P_{x_0}[\tau_1<\tau_y]<1$，且 $\P_{x_0}[\tau_k<\tau_y]=q^k$，故
+> $$
+> {\E}_{x_0}[\tau_y]=\sum_k{\E}_{x_0}[\tau_y1_\cur{\tau_k<\tau_y<\tau_{k+1}}]
+> \\\leq\sum_k{\E}_{x_0}[\tau_{k+1}1_\cur{\tau_k<\tau_y<\tau_{k+1}}]
+> \\=\sum_k{\E}_{x_0}[(\tau_{k+1}-\tau_k)1_\cur{\tau_k<\tau_y}]
+> \\=\sum_k{\E}_{x_0}[\tau_1]\P_{x_0}[\tau_k<\tau_y]
+> \\=\sum_k{\E}_{x_0}[\tau_{x_0}^+]q^k<\infty
+> $$
+> 另一方面，$x\to x_0$，则
+> $$
+> \infty>{\E}_{x_0}[\tau_{x_0}^+]\geq{\E}_{x_0}[\tau_{x_0}^+1_\cur{\tau_x<\tau_{x_0^+}}]\geq{\E}_{x_0}[(\tau_{x_0}^+-\tau_x)1_\cur{\tau_x<\tau_{x_0^+}}]
+> \\={\E}_x[\tau_{x_0}^+]\P_{x_0}[\tau_x<\tau_{x_0}^+]
+> $$
+> 由不可约性知后面的概率 $>0$，于是前面的期望 $<\infty$。
+>
+> 同理可分析任意 $x\to y$。
+
+定理：不可约 MC 正常返当且仅当存在唯一稳定分布 $\pi$，且 $\pi(x)=1/\E_x[\tau_x^+]$。
+
+> 假设正常返，则类似有限的场合， $\tilde\pi(x)=\E_{x_0}[\#\t{visits to }x\t{ before returning to }x_0]$ 有稳定性，归一化后的 $\pi(x)=\tilde\pi(x)/\E_{x_0}[\tau_{x_0}^+]$ 是稳定分布。
+>
+> 现在反过来假设存在稳定分布 $\pi$。
+>
+> 首先证明稳定分布处处为正。$\pi=0$ 会沿着路径传播，因为不可约性所有状态都会被传播，因此其必然处处为正。
+>
+> 然后证明其常返。只需要对于某个特定的 $x$ 证明 $\P_x[\tau_x^+<\infty]=1$ 即可。定义 $\alpha(n)=\P_\pi[X_n=x\land\forall m>n:X_m\neq x]$，则有
+> $$
+> \alpha(n)=\P_\pi[X_n=x]\P_x[\tau_x^+=\infty]=\pi(x)\P_x[\tau_x^+=\infty]
+> $$
+> 另一方面，所有 $\alpha(n)$ 对应集合不交，于是 $\sum\alpha(n)\leq1$。则必然有 $\P_x[\tau_x^+=\infty]=0$。
+>
+> 最后证明其正常返。令 $Y_n$ 为其时序反演，则有
+> $$
+> \pi(x)\P[X_0=x,X_1=x_1,\dots,X_{n-1}=x_{n-1},X_n=y]
+> \\=\pi(y)\P[Y_0=y,\dots,Y_n=x]
+> $$
+> 因为 $\pi$ 亦是 $Y_n$ 的稳定分布，则 $Y_0$ 亦常返。有
+> $$
+> \pi(x){\E}_x[\tau_x^+]=\sum_{n\geq1}\pi(x)\P_x[\tau_x^+\geq n]
+> \\=\sum_{n\geq1}\pi(x)\sum_y\P_x[X_n=y,\tau_x^+\geq n]
+> \\=\sum_{n\geq1}\pi(x)\sum_y\sum_{j<n}\P_x[X_n=y,X_j\neq x]
+> \\=\sum_{n\geq1}\sum_y\pi(y)\sum_{j<n}\hat\P_y[Y_n=x,Y_j\neq x]
+> \\=\sum_{n\geq1}\sum_y\pi(y)\hat\P_y[\tau_x^+=n]
+> \\=\sum_y\pi(y)\hat\P_y[\tau_x^+<\infty]
+> \\=1
+> $$
+> 这同时表明，不可约正常返 MC 存在唯一稳定分布。
+
+> [!IMPORTANT]
+>
+> 直接证明正常返性是困难的，因为其涉及到对未来的无穷求和。
+>
+> 但是如果反过来，把「从 $x$ 出发，$n$ 步内还没回来」，解读为「从 $y$ 倒着走 $n$ 步，恰好首次到达 $x$」，那就容易很多。
+
+遍历性定理：前文已经证明。
+
+收敛性定理：不可约、非周期、正常返的 MC，对于一切 $x$ 有
+$$
+\lim_{n\to\infty}\|P^n(x,\cdot)-\pi\|_\t{TV}=0
+$$
+特别地，对于一切 $x,y$，有 $\lim_{n\to\infty}P^n(x,y)=\pi(y)>0$。
+
+> 构造 MC 对 $\cur{X_n,Y_n}$，满足 $X_0=x,Y_0\sim\pi$。令它们的转移矩阵是 $Q=P\otimes P$。
+>
+> 验证常返性时，考虑 $(x_1,y_1)\to(x_2,y_2)$ 这个转移，则可以找到 $x_1\to x_2$ 和 $y_1\to y_2$ 的周期，利用非周期性它们有共同周期。进一步的正常返性容易验证，且 $\pi\otimes\pi$ 是平稳分布。
+>
+> 定义 $\tau$ 为首次抵达 $(y_0,y_0)$ 的时刻。首先用 $Q$ 更新这个 MC 对直到 $\tau$，之后强制令 $Y_n=X_n$ 并用 $P$ 更新 $X_n$。则这个耦合对始终满足 $X_n\sim P^n(x,\cdot),Y_n\sim\pi$（虽然它们合在一起不是 MC，因为 $\tau$ 时刻后它们从独立变为完全相同）。则有
+> $$
+> \|P^n(x,\cdot)-\pi\|_\t{TV}\leq\P[X_n\neq Y_n]\leq\P[\tau>n]=\sum_y\pi(y)\mathbb Q_{x,y}[\tau>n]
+> $$
+> 由 $Q$ 的常返性可知 $\mathbb Q_{x,y}[\tau>n]\to0$，于是证毕。
+
+> [!IMPORTANT]
+>
+> 这个技巧被称作 **coupling method**，构造两个随机变量或随机过程的联合分布，并通过它们的距离（TVD 或 Wasserstein Distance）来研究边缘分布的性质。
+>
+> 这个证明同样适用于有限状态的场合，此时通过推出 $\mathbb Q_{x,y}[\tau>n]$ 的指数衰减可以得到更具体的指数收敛，与有限时的结论相同。
+
+定理：不可约零常返的 MC 有 $\lim_{n\to\infty}P^n(x,y)=0$。
+
+> 证明并不简单，此处略过。
+
+总结：
+
+- 平稳测度 $\pi=\pi P$ 与调和函数 $f=Pf$ 虽然仍然对偶，但是不再共享结论，因为无穷维矩阵（函数空间）的性质不同。
+- 不可约时，正常返性与稳定分布存在是等价的，通过关系 $\pi(x)=1/\E_x[\tau_x^+]$ 给出。
+    - 证明使用遍历理论相关知识，平稳过程中，时序反演就是对算子求伴随，「向未来的逃逸概率」与「自过去的流入概率」等同。
+- 遍历性定理：
+    - 证明使用再生过程框架，关于返回起点分段，然后用「全局平均 = 每轮期望总和 / 每轮期望时长」和 LLN 处理。
+- 收敛性定理：
+    - 证明使用耦合框架，在第一次相遇时把独立切换为相同，但始终不改变边缘分布。
+
+------
+
+定义：**Green 函数** 是从 $x$ 出发后，到达 $y$ 的次数期望，即
+$$
+G(x,y)={\E}_x\left[\sum_{n\geq 0}1_\cur{X_n=y}\right]=\sum_n\P_x[X_n=y]
+$$
+则：
+
+- $\cur{X_n}$ 常返当且仅当 $G(x,x)=\infty$。
+- 瞬态的 $\cur{X_n}$ a.s. 有 $G(x,x)<\infty$。
+- 常返的 $\cur{X_n}$ a.s. 有 $G(x,x)=\infty$。
+
+> 令 $\tau_k$ 为第 $k$ 次回到 $x$ 的时刻。则
+> $$
+> G(x,x)=\sum_k1_\cur{\tau_k<\infty}
+> $$
+> 若有 $\P[\tau_1<\infty]=q$，易归纳证 $\P[\tau_k<\infty]=q^k$，于是当且仅当 $q=1$ 也即常返时，$G(x,x)$ 发散。
+>
+> 另一方面，若有 $\P[\tau_k<\infty]=q^k$，则：
+>
+> - 瞬态时有 $q<1$，则 $\sum\P[\tau_k<\infty]<\infty$，由第一 Borel-Cantelli 引理可知 $\P[\tau_k<\infty\io]=0$，因此 a.s. 存在 $\tau_n=\infty$。
+> - 常返时似乎应当用第二 Borel-Cantelli 引理。但是注意到其要求事件彼此独立，而 $\cur{\tau_k<\infty}$ 并非如此。因此应当使用再生过程框架对 $\cur{\tau_k-\tau_{k-1}}$ 分析。
+
+### Simple Random Work
+
+命题：1D/2D 的 $\Z^d$ 随机游走是零常返的；3D+ 的是瞬态的。
+
+> 首先处理 1D。容易发现有
+> $$
+> {\E}_0[\tau_0^+]=1+{\E}_1[\tau_0]
+> \\{\E}_1[\tau_0]=1+\dfrac12{\E}_2[\tau_0]
+> \\{\E}_2[\tau_0]={\E}_2[\tau_1]+{\E}_1[\tau_0]=2{\E}_1[\tau_0]
+> \\{\E}_1[\tau_0]=1+{\E}_1[\tau_0]=\infty
+> $$
+> 然后考虑一次随机游走 $\cur{S_n}$。令 $p_d(2n)$ 为 $d$ 维时 $2n$ 步游走后恰回到原点的概率，则
+> $$
+> p_1(2n)=\dbinom{2n}n2^{-2n}
+> $$
+> 使用 Stirling 公式可知 $p_1(2n)\sim1/\sqrt{\pi n}$，于是期望返回数为 $G(0,0)=\sum p_1(2n)\to\infty$，故易知 1D 时常返。
+>
+> 同理推一坨组合式子后可知 $p_2(2n)\sim 1/\pi n$，故 2D 时亦常返。2D 时显然是零常返的，不过要证明也行：2D 的第一维是 lazy walk，以一半概率留在原地，同样计算可知 lazy walk 时的期望为无穷。
+>
+> 3D 时继续推可知 $p_3(2n)=O(n^{-3/2})$，于是 $G(0,0)$ 有限，其瞬态。4D 网上的前三位是 lazy 3D walk，因此必然瞬态。
+
+### Random Work on Network
+
+定理：带边权 $c(x,y)$ 的不可约无向图上随机游走，对于任何 $B\sube V$，令 $h_B:B\to\R$ 为 $B$ 上的函数，则 $h(x)=\E_x[h_B(X_{\tau_B})]$ 是唯一的 $V\setminus B$ 上的调和延拓。其中，$\tau_B$ 是到 $B$ 的 hitting time。
+
+> 易验证 $B$ 上确有 $h=h_B$。则有
+> $$
+> h(x)=\sum_y\dfrac{c(x,y)}{c(x)}h(y)=\pi h
+> $$
+> 唯一性证明？考虑与另一个调和延拓的差 $g$，则 $g$ 是调和延拓且在 $B$ 上为 $0$。仍然使用最大值原理，把最大值传播开去即可。
+
+定义：固定源点 $a$ 和汇点 $z$，则势能 $W$ 是 $V\setminus\cur{a,z}$ 上的调和函数：易知其由 $W(a),W(z)$ 唯一确定。
+
+定义：流 $\theta$ 是有向边上的函数，其散度通过 $\t{div}\theta(x)=\sum_y\theta(x\to y)$ 定义。则流应满足反对称、对非源汇流量平衡、源点净流出。流量 $\|\theta\|$ 是源点的散度。
+
+势能可以唯一导出流，导出的流满足以下两点性质：
+
+- $I(x\to y)/c(x,y)=W(x)-W(y)$。
+- 沿环路带权流量 $\sum I(x\to y)/c(x,y)=0$。
+
+事实上，这符合电路的理论：
+
+- 边权 $c$ 是电导。
+- 其倒数 $r=1/c$ 是电阻。
+- $W$ 是电势。
+- $I(x\to y)r(x,y)=W(x)-W(y)$ 就是 Ohm 定律。
+- $\sum I(x\to y)r(x,y)=0$ 是 Kirchoff 环路定律。
+
+------
+
+定义网络的等效电阻 $R(a\bi z)=\dfrac{W(a)-W(z)}{\|I\|}$，则：
+
+- 一方面，它确实只需要 $W(a),W(z)$ 就可以定义（调和延拓得到 $W$，进一步导出势能流 $I$）。
+- 另一方面，它与具体的 $W(a),W(z)$ 取值无关，是良定义的。
+
+定理：带权随机游走满足 $\P_a[\tau_z<\tau_a^+]=1/c(a)R(a\bi z)$。
+
+> 考虑映射 $x\mapsto\P_x[\tau_z<\tau_a]$。易知其在 $V\setminus\cur{a,z}$ 上调和，且 $a$ 取 $0$，$z$ 取 $1$。
+>
+> 另一方面，考虑 $x\mapsto\dfrac{W(x)-W(a)}{W(z)-W(a)}$，则其同样调和、$a\mapsto0,z\mapsto 1$，因此由调和函数的唯一性可知
+> $$
+> \P_x[\tau_z<\tau_a]=\dfrac{W(x)-W(a)}{W(z)-W(a)}
+> \\\P_a[\tau_z<\tau_a^+]=\sum_x\dfrac{c(a,x)}{c(a)}\dfrac{W(x)-W(a)}{W(z)-W(a)}
+> \\=\dfrac{\t{div}I(a)}{c(a)(W(a)-W(z))}=\dfrac1{c(a)R(a\bi z)}
+> $$
+
+而这个等效权重其实可以用电路图来理解，就是等效电阻，满足串并联定理。
+
+例：以 $\dfrac\alpha{1+\alpha}$ 概率加一、否则减一时，可以造一个 $c(k-1,k)=\alpha^k$ 的网络，于是只保留 $0,k,n$ 三个点，其它部分全都缩起来，可知 $\P_k[\tau_n<\tau_0]=\dfrac{1-\alpha^{-k}}{1-\alpha^{-n}}$。
+
+------
+
+现在对流 $\theta$ 定义一个能量
+$$
+\En(\theta)=\sum_e\theta(e)^2r(e)
+$$
+这个求和是关于无向边求和的。则对于一切有限联通网络，都有
+$$
+R(a\bi z)=\inf\cur{\En(\theta):\theta\in\t{unitflow}(a\to z)}
+$$
+
+> 首先所有合法单位流是紧的，因此最小值 $\theta$ 存在。考虑环 $\delta$，则 $\theta+\eps\delta$ 仍是合法单位流，故
+> $$
+> \En(\theta)\leq\En(\theta+\eps\delta)=\En(\theta)+2\eps\sum\theta(e)\delta(e)r(e)+O(\eps^2)
+> $$
+> 此时对一切 $\eps$ 均成立。分别令 $\eps\to0^+$ 和 $\eps\to0^-$ 可知
+> $$
+> \sum_\delta\theta(e)r(e)=0
+> $$
+> 因此其无环。无环的流就是势能流。
+>
+> 现在显式解势能流的能量。有
+> $$
+> \En(I)=\sum I(e)^2r(e)
+> \\=\sum_{x,y}I(x\to y)W(x)
+> \\=\sum\t{div}I(x)W(x)
+> \\=W(a)-W(z)
+> $$
+> 这个结论也可以直接表述为：**最小能量流就是势能流**。
+
+Rayleigh 单调性原理：在图结构固定时，对于两组电阻 $\cur{r},\cur{r'}$，若全体 $e$ 均有 $r(e)\leq r'(e)$（换言之 $\cur{r}$ 和 $\cur{r'}$ 间有偏序关系），则有 $R(a\bi z\mid r)\leq R(a\bi z\mid r')$。
+
+推论：增加边总是减小等效电阻（一条边的电阻由无穷变为有限值）；合并边的端点同样总是增加等效电阻（电阻由有限值变为 $0$）。
+
+Nash-William 不等式：对于若干不交的 $a$-$z$ 割 $\cur{\Pi_k}$，则
+$$
+R(a\bi z)\geq\sum_k\left(\sum_{e\in\Pi_k}c(e)\right)^{-1}
+$$
+
+> 首先由不交得 $\c E(\theta)\geq\sum_k\sum_{e\in\Pi_k}\theta(e)^2r(e)$。
+>
+> 由割性有
+> $$
+> \sum_{e\in\Pi_k}|\theta(e)|\geq1
+> $$
+> 因此由 Cauchy 不等式有
+> $$
+> \sum_{e\in\Pi_k}\theta(e)^2r(e)\sum_{e\in\Pi_k}c(e)\geq\left(\sum\theta(e)r(e)c(e)\right)^2\geq1
+> \\R(a\bi z)=\c E(\theta)\geq\sum_k\sum_{e\in\Pi_k}\theta(e)^2r(e)\geq\sum_k\left(\sum_{e\in\Pi_k}c(e)\right)^{-1}
+> $$
+
+总结：
+
+- 网络性质（只与图结构相关）：
+    - 电导 $c$ 与电阻 $r$。
+    - 等效电阻 $R(a\bi z)$。
+- 流性质（图上一个具体的流量模式）：
+    - 电势 $W$（只由 $W(a),W(z)$ 描述）。
+    - 电流 $I$（同上）。
+    - 任意流 $\theta$（弱于电流，非唯一）。
+    - 能量 $\c E$（与流挂钩）。
+    - 等效电阻与能量的关系（等效电阻的两种计算方法：单位电流时的电势差，或是最小能量单位流的能量。事实上，电流就是最小能量流。）
+- 随机游走性质（图性质和流性质与 MC 的挂钩）：
+    - 调和延拓由 hitting time 唯一确定。
+    - 归一化（$W(a)=1,W(z)=0$）的电压 $W(x)$ 描述了从 $x$ 出发的随机游走者在到达 $z$ 前先到达 $a$ 的概率。
+    - 电流 $I(x\to y)$ 描述了从 $a$ 到 $z$ 的随机游走中穿过 $x,y$ 的净期望次数。
+    - 等效电阻 $R(a\bi z)$ 与逃逸概率也即从 $a$ 出发时，在回到 $a$ 前先经过 $z$ 的概率成反比。
+
+------
+
+考虑无限网络。特别地，只考虑能用有限图逼近的无限网络，即一堆 $\cur{G_n=(V_n,E_n)}$，满足 $V_n\uparrow V$，$E_n$ 是 $V_n$ 的诱导子图。可以定义 $G_n^*$，其中整个 $V\setminus V_n$ 被缩点为单个节点 $z_n$，且 $c(x,z_n)=\sum_{z\in V\setminus V_n}c(x,z)$。则可以定义
+$$
+R(a\bi\infty)=\lim R(a\bi z_n\mid G_n^*)
+$$
+则这个定义是 well-defined 的：极限存在且与逼近方式无关。
+
+> 首先由 Rayleigh 单调性原理易知 $R(a\bi z_n)$ 单调不降，因此其要么收敛要么趋于无穷。
+>
+> 然后对于任两个 $U_n$ 和 $V_n$ 序列，对于任何 $U_n$ 都存在充分大的 $m$ 使得 $U_n\sube V_m$，仍由 Rayleigh 可知前者的极限小于等于后者的极限，交换二者可知极限相等。
+
+有限图的 $\P_a[\tau_z<\tau_a^+]=1/c(a)R(a\bi z)$，其无限图里真正有所意义：有
+$$
+\P_a[\tau_a^+=\infty]=\dfrac1{c(a)R(a\bi\infty)}
+$$
+于是，证明常返则可以构造一系列合适的割集并用 N-W 得到 $R(a\bi\infty)\to\infty$，而证明暂态则构造合适的流得到 $R(a\bi\infty)<\infty$。
+
+具体地，首先定义无穷流，即 $\t{div}\theta(a)\geq0$，其它所有的 $\t{div}\theta(x)=0$，可以定义其流量 $\|\theta\|=\t{div}(a)$，能量 $\c E=\sum\theta(e)^2r(e)$。则其能量满足
+$$
+R(a\bi\infty)\leq\inf\cur{\En(\theta):\theta\in\t{unitflow}(a\to\infty)}
+$$
+
+> 这个证明和有限场景不同，因为有限场景显式应用了单位流的紧性以获取最小值。
+>
+> 正确的做法是把 $\theta$ 限制在 $G_n^*$ 上得到 $\theta_n$，则有 $R(a\bi z_n)\leq\c E(\theta_n)\leq\c E(\theta)$。
+
+于是，只要存在 $a\to\infty$ 的正流量有限能量流，则该无限网络就是暂态的。
+
+另一方面，若存在不交的 $a$ 和 $\infty$ 间割集组，且满足 $\sum_k(\sum_{e\in\Pi_k}c(e))^{-1}=\infty$，则其常返。
+
+> 考虑 2D 随机游走，则取 $\Pi_k$ 为 $[-k,k]^2$ 到外界的出边集，则
+> $$
+> \sum_k(\sum_{e\in\Pi_k}c(e))^{-1}=\sum_k1/4k\sim\dfrac14\log n\to\infty
+> $$
+> 于是易知其常返。
+
+### Galton-Watson Tree
+
+令 $\xi$ 是一个取值为自然数的随机变量，称作 offspring distribution，令 $\P[\xi=k]=p_k$。则 Galton-Watson Process $\cur{Z_n}$ 被定义为：
+
+- $Z_0=1$。
+- $Z_{n+1}$ 是 $Z_n$ 个 i.i.d. 的 $\xi$ 的和，换言之是 $Z_n$ 个 $\cur{p_k}$ 的卷积。
+
+易知：$Z_n$ 确实是一个 Markov Chain。
+
+因为要算卷积，所以使用 PGF。令 $\xi$ 的 PGF 是 $G(x)$，令 $Z_n$ 的 PGF 是 $G_n$，则可以归纳证明有 $G_{n+1}=G_n(G(x))$，换言之 $G_n$ 是 $G$ 的 $n$ 次复合。
+
+令 $R_0=\E[\xi]$，则使用全期望公式，有 $\E[Z_n]=\E[\E[Z_n\mid Z_{n-1}]]=\E[Z_{n-1}\cdot R_0]=R_0^n$。于是 GW 树有三个 regime：
+
+- subcritical，$R_0<1$，有 $\E[Z_n]\to0$。
+- critical，$R_0=1$，有 $\E[Z_n]=1$。
+- supercritical，$R_0>1$，有 $\E[Z_n]\to\infty$。
+
+定义灭绝事件 $\c E=\bigcup\cur{Z_n=0}$，则因为 $0$ 是吸收态所以灭绝概率
+$$
+q=P(\c E)=\lim_{n\to\infty}P(Z_n=0)=\lim_{n\to\infty}G_n(0)
+$$
+灭绝概率定理：$q$ 是 $x=G(x)$ 在 $[0,1]$ 上的最小非负根。
+
+> 因为 $G$ 是一致收敛幂级数，极限可以移到内部，故
+> $$
+> q=\lim_{n\to\infty}G_n(0)=\lim_{n\to\infty}G(G_{n-1}(0))=G(\lim_{n\to\infty}G_{n-1}(0))=G(q)
+> $$
+> 故 $q$ 是 $x=G(x)$ 的解。
+>
+> 进一步，因为 $G(x)$ 是单调增的，所以对于另一个根 $x'$，必有 $G(0)\leq G(x')=x'$，归纳可知 $G_n(0)\leq x'$，趋于无穷即得 $q\leq x'$。
+>
+> 事实上，考虑 $G(x)$ 与 $x$ 的交点：
+>
+> - 易知 $(1,1)$ 是交点；
+> - $G''(x)=\sum k(k-1) p_ks^{k-2}\geq0$，因此其是凸的。且如果是 $p_0+p_1<1$ 的非平凡场景，其是严格凸的。
+> - $G'(1)=R_0$。
+>
+> 因此，对于亚临界和临界场合，严格凸的 $G$ 不可能在 $[0,1)$ 中有其它交点，结论是 $q=1$，a.s. 灭绝。
+>
+> 而超临界场景，因为 $p_0\geq0$，所以 $G$ 在 $[0,1)$ 上有唯一交点，结论是 $q<1$，有概率永不灭绝。
+
+还可以用鞅的方式处理。定义 $\s F_n=\sigma(Z_0,\dots,Z_n)$，则有 $\E[Z_{n+1}\mid\s F_n]=R_0Z_n$。构造鞅的方式是使用归一化的种群大小 $W_n=Z_n/R_0^n$，则有
+$$
+\E[W_{n+1}\mid\s F_n]=\dfrac1{R_0^{n+1}}\E[Z_{n+1}\mid Z_n]=W_n
+$$
+同时因为 $Z_n\geq0$ 所以同理有 $W_n\geq0$，由 MCT 可知其 a.s. 收敛于某个 $W$，由 Fatou 引理知 $\E[W]\leq\liminf\E[W_n]=1$。
+
+当 $R_0\leq1$ 时，因为 $Z_n\to0$ a.s. 所以有 $W=0$ a.s.。
+
+当 $R_0>1$ 时，$W$ 的性质受到 $\xi$ 的分布决定，被称作 **Kesten-Stigum 定理**，太复杂不管了！
+
+------
+
+现在证明：在 G-W 树不灭绝的前提下，其上随机游走 a.s. 是瞬态的。证明方法通过构造单位流。如果是朴素多叉树，流可以平均分；但是 G-W 树因为有分支会灭绝，不能随便分。 
+
+令 $Z_k^{(v)}$ 为节点 $v$ 的后代中，第 $k$ 代子孙数目，并定义局部的鞅极限 $W^{(v)}=\lim Z_k^{(v)}/R_0^k$。则有
+$$
+Z_k^{(u)}=\sum_{v\in\t{children}(u)}Z_{k-1}^{(v)}
+\\W^{(u)}=\dfrac1{R_0}\sum_{v\in\t{children}(u)}W^{(v)}
+$$
+那么定义单位流是
+$$
+I(u\to v)=\dfrac{R_0^{-\t{depth}(v)}W^{(v)}}{W}
+$$
+则易验证其是合法流，同时其能量是
+$$
+\c E(I)=\sum I(e)^2=\sum_n\sum_{\t{depth}(v)=n}\left(\dfrac{R_0^{-n}W^{(v)}}{W}\right)^2
+\\=\dfrac1{W^2}\sum_nR_0^{-2n}\sum_{\t{depth}(v)=n}(W^{(v)})^2
+$$
+在不灭绝时有 $W^2>0$，因此只需证明 $\sum_nR_0^{-2n}\sum_{\t{depth}(v)=n}(W^{(v)})^2<\infty$。
+
+在给定 $Z_n$ 时，所有第 $n$ 层的 $W^{(v)}$ 彼此是 i.i.d. 同时与 $W$ 同分布的，于是有
+$$
+\E\left[\sum_{\t{depth}(v)=n}(W^{(v)})^2\right]=\E\left[\E\left[\sum_{\t{depth}(v)=n}(W^{(v)})^2\mid Z_n\right]\right]
+\\=\E[Z_n\E[W^2]]
+\\=R_0^n\E[W^2]
+$$
+代入可得
+$$
+\E[\c E(I)]=\E[W^2]\dfrac1{R_0-1}
+$$
+在 $W$ 的二阶矩有界时其有限。
+
+由 Markov 不等式，期望有限的非负随机变量取值 a.s. 有限，可知不灭绝时其上 a.s. 存在有限能量单位流，进而是瞬态的。
+
+总结：
+
+- $R_0=\E[\xi]$ 是 G-W 树的关键参数。
+    - $R_0\leq1$ 时其 a.s. 灭绝。
+    - $R_0>1$ 时其有正概率存活。
+- $W_n=Z_n/R_0^n$ 是 G-W 树上定义的鞅，其收敛到 $W$。
+    - $R_0\leq1$ 时有 $W=0$ a.s.。
+    - $R_0>1$ 时分布较为复杂。
+- 条件 $W$ 可以用来构建后验的流量分配。
+
+### Continuous Time Markov Chain
+
+$\R_+$ 上的 **随机点过程** 是随机变量列 $\cur{T_n}$，满足 $0=T_0<T_1<\dots$ 且 $\lim_nT_n=+\infty$，描述了某个事件发生的时刻。其对应的 **间距** (interevent sequence) 是 $S_n=T_n-T_{n-1}$，**计数过程** 是
+$$
+N(a,b]=\sum_{n\geq1}1_{(a,b]}(T_n)
+$$
+特别地，定义 $N_t=N(0,t]$，则 $N(a,b]=N_b-N_a$，且 $t\mapsto N_t$ 是右连续的。
+
+定义：点过程 $N$ 是强度为 $\lambda>0$ 的 **Poisson 过程**，如果：
+
+- 对一切 $0\leq t_1\leq\dots\leq t_k$，均有 $\cur{N(t_i,t_{i+1}]}$ 互相独立。（**独立增量性质**）
+
+- 对于一切 $(a,b]$，都有对应的 $N(a,b]$ 服从参数为 $\lambda(b-a)$ 的 Poisson 分布
+    $$
+    \P[N(a,b]=k]=\exp(-\lambda(b-a))\dfrac{[\lambda(b-a)]^k}{k!}
+    $$
+
+Poisson 分布满足独立可加性，即 $\t{Poisson}(\lambda)\oplus\t{Poisson}(\mu)\sim\t{Poisson}(\lambda+\mu)$。那么易验证：Poisson 过程 $\cur{N_t}$ 对于一切 $s\geq0$，增量过程 $\cur{N_{t+s}-N_s}_{t\geq0}$ 同样是 Poisson 过程，并且其与任意 $\cur{N_u}_{u\leq s}$ 是独立的。
+
+但是 Poisson 过程真的存在吗？
+
+定理：Poisson 过程的间距序列 $\cur{S_n}$ i.i.d. 服从 $\lambda$ 的 exponential distribution。
+
+> 考虑有限个 $(S_1,\dots,S_n)$，则只需要证明它们的联合密度是
+> $$
+> f_S(s_1,\dots,s_n)=\prod\lambda\exp(-\lambda s_t)
+> $$
+> 这等价于证明对应的 $T_1,\dots,T_n$ 的联合密度是
+> $$
+> f_T(t_1,\dots,t_n)=\lambda^n\exp(-\lambda t_n)1_\cur{0<t_1<\dots<t_n}
+> $$
+> 考虑有
+> $$
+> \P[T_1\in\oc{t_1,t_1+\eps_1},\dots,T_n\in\oc{t_n,t_n+\eps_n}]
+> \\=\P[N\oc{0,t_1}=0,N\oc{t_1,t_1+\eps}=1,N\oc{t_1+\eps,t_2}=0,\dots]
+> \\=\prod\P[N\oc{t_{i-1}+\eps,t_i}=0]\P[N\oc{t_i,t_i+\eps}=1]
+> \\=\exp(-\lambda t_1)\lambda\eps_1\exp(-\lambda\eps_1)\lambda\eps_2\dots
+> \\=\exp(-\lambda t_n)\lambda^{n-1}(1-\exp(-\lambda\eps_n))\prod_{i=1}^{n-1}\eps_i
+> $$
+> 则有
+> $$
+> f_T(t_1,\dots,t_n)
+> \\=\lim_{\cur{\eps_i}\to0}\dfrac1{\prod\eps_i}\P[T_1\in\oc{t_1,t_1+\eps_1},\dots,T_n\in\oc{t_n,t_n+\eps_n}]
+> \\=\exp(-\lambda t_n)\lambda^{n-1}\lim_{\eps_n\to0}\dfrac1{\eps_n}(1-\exp(-\lambda\eps_n))
+> \\=\lambda^n\exp(-\lambda t_n)
+> $$
+> 符合需求。
+
+于是 Poisson 过程即可如此显式定义：取 $\cur{S_n}$ i.i.d. 服从 $\t{Exp}(\lambda)$，对应的 $T_n=\sum S_i$，对应的 $N(a,b]=\sum_{n\geq1}1_{(a,b]}(T_n)$，则易验证 $\cur{N_t}$ 是 Poisson 过程。
+
+**叠加定理**：对于一族独立的 Poisson 过程们 $\cur{N^i}$，$\cur{\lambda^i}$ 是对应的强度，则：
+
+- 任两个不同的 Poisson 过程的跳跃时刻 $\cur{T^i}$ a.s. 不交。这是因为，对于任何 $t$，恰好在 $t$ 时刻跳跃的概率，计算得到 $\P[N\oc{t-\eps,t}\geq1]=1-\exp(-\lambda\eps)\to0$。于是，所有过程的跳跃时刻 a.s. 无交。
+
+- 定义 $\lambda=\sum\lambda^i$，则若 $\lambda<\infty$，则 $N_t=\sum N^i_t$ 定义了一个强度为 $\lambda$ 的 Poisson 过程。
+    具体地，有限场合 $N\oc{a,b}=\sum N^i\oc{a,b}$，因为它们彼此独立所以求和后得到 $N\oc{a,b}\sim\t{Poisson}(\lambda(b-a))$。但无穷呢？
+    首先独立增量没有问题：求和前独立，求和后仍独立。
+    Poisson 性质呢？注意到 $N\oc{a,b}=m$ 的事件中，只有有限个 $N^i\oc{a,b}>0$，于是有
+    $$
+    \P[N\oc{a,b}=m]=\lim_{k\to\infty}\P\left[\sum_{i=1}^kN^i\oc{a,b}=m\right]
+    \\=\lim_{k\to\infty}\dfrac{[(\sum_{i=1}^k\lambda_i)(b-a)]}{m!}\exp(-\sum_{i=1}^k\lambda_i(b-a))
+    \\=\dfrac{[\lambda(b-a)]^m}{m!}\exp(-\lambda(b-a))
+    $$
+    但是第一个等号真的对吗？
+
+    一种思路是 $\cur{\sum_{i=1}^kN^i\oc{a,b}\leq m}_k\downarrow\cur{N\oc{a,b}\leq m}$ 证明。
+
+- 定义 $Z=\min_i T^i_1,J=\arg\min_iT^i_1$，则有
+    $$
+    \P[J=i,Z\geq a]=\P[J=i]\P[Z\geq a]=\dfrac{\lambda_i}{\lambda}\exp(-\lambda a)
+    $$
+    首先容易验证 $\P[Z\geq a]=\exp(-\lambda a)$。但是联合分布怎么分析？
+
+    对前缀分布考察响应的 $J_k,Z_k$，则
+    $$
+    \P[J_k=1,Z_k>a]=\P[a<T_1^1<u]\t{ where } u=\min_{i=2}^kT^i_1
+    $$
+    注意到 $T^j_1\sim\t{Exp}(\lambda_j)$，于是
+    $$
+    \P[J_k=1,Z_k>a]=\int_{a<t_1<(\bigwedge t_i)}\prod\lambda_i\exp(-\lambda_it_i)\d t_i
+    \\=\int_{a<t_1}\lambda_1\exp(-\lambda_1t_1)\d t_1\prod_{i=2}^k\exp(-\lambda_it_1)
+    \\\dfrac{\lambda_1}{\sum\lambda_i}\exp(-\lambda a)
+    $$
+    无限场合 $k\to\infty$ 即可。
+
+综上：独立 Poisson 过程的和仍是 Poisson 过程；「应答概率」也即首次跳跃出自特定过程的概率正比于该过程的强度，且应答概率与应答时刻独立。
+
+定理：对于右连续、不降、值域是自然数且 $X_0=0$ 的过程 $\cur{X_t}$，则对于 $\lambda>0$，以下三命题等价：
+
+- $\cur{X_t}$ 是强度为 $\lambda$ 的 Poisson 过程。
+- $X$ 的增量是独立的，且对于 $\eps\downarrow0$，关于 $t$ 均匀有 $\P[X_{t+\eps}-X_t=0]=1-\lambda\eps+o(\eps),\P[X_{t+\eps}-X_t=1]=\lambda\eps+o(\eps)$。
+- $X$ 的增量独立且稳定（只与区间长度有关），且对于全体 $t\geq0$ 都有 $X_t\sim\t{Poisson}(\lambda t)$。
+
+(1)→(2) 是简单的。(2)→(3) 呢？
+
+定义 $f_k(t)=\P[X_t=k]$。则
+$$
+f_0(t)=\P[X_t=0]
+\\f_0(t+\eps)=\P[X_{t+\eps}=0]
+\\=\P[X_t=0\land X_{t+\eps}-X_t=0]
+\\=f_0(t)(1-\lambda\eps+o(\eps))
+\\\dfrac{f_0(t+\eps)-f_0(t)}{\eps}=-\lambda f_0(t)+o(1)
+$$
+同理可以分析左导数，得到 $f_0'(t)=-\lambda f_0(t)$ 的 ODE，同时知道初值 $f_0(0)=1$，于是显式解出 $f_0(t)=\exp(-\lambda t)$。
+
+一般地，有
+$$
+\\f_k(t+\eps)=\P[X_{t+\eps}=k]
+\\=\sum_{j=0}^k\P[X_t=j\wedge X_{t+\eps}-X_t=k-j]
+$$
+$X_{t+\eps}-X_t$ 只有在 $0,1$ 时不是高阶小项，于是
+$$
+=f_k(t)(1-\lambda\eps)+f_{k-1}(t)\lambda\eps+o(\eps)
+$$
+同理求导可知
+$$
+f_k'(t)=(f_{k-1}(t)-f_k(t))\lambda
+$$
+于是归纳并解 ODE 得到它确实是 Poisson。
+
+(3) -> (1) 也是容易的。
+
+总而言之，该定理表明，证明 Poisson 过程不必对一切 $\oc{a,b}$ 和 $k$ 都证明 $N\oc{a,b}=k$ 的概率服从 Poisson 分布，只需要验证 $N(t,t+\eps)$ 在 $k=0/1$ 时的极限即可。
+
+------
+
+现在考虑连续时间 MC。具体地，对于可数状态空间 $\c S$，如果对于一切 $0\leq t_1\leq t_2\leq\dots\leq t_{n+1}$ 和一切 $x_1,\dots,x_{n+1}\in\c S$ 都有
+$$
+\P[X_{t_{n+1}}=x_{n+1}\mid X_{t_1}=x_1,\dots,X_{t_n}=x_n]=\P[X_{t_{n+1}}=x_{n+1}\mid X_{t_n}=x_n]
+$$
+同时，其进一步应仅与时间间隔 $t_{n+1}-t_n$（称作 time-homogeneous）和状态 $x_n,x_{n+1}$ 有关。
+
+正则化条件：过程是右连续过程，即对于一切 $t$ 都存在 $\eps>0$ 使得在 $[t,t+\eps]$ 中的 $s$ 均有 $X_s=X_t$。
+
+定义 $P_t(x,y)=\P[X_t=y\mid X_0=x]$，则 $\cur{P_t}$ 应构成一个半群：
+
+- $P_0=I$，全体 $P_t$ 都是随机矩阵。
+- $P_{t+s}=P_tP_s$。
+
+Poisson 过程显然是 MC，同时其对应的半群是
+$$
+P_s(x,y)=\exp(-\lambda s)\dfrac{(\lambda s)^{y-x}}{(y-x)!}
+$$
+另一个例子是，令 $\cur{\hat X_n}$ 是离散时间 MC，转移矩阵是 $Q$；令 $\cur{N_t}$ 是与之独立的 Poisson 过程，强度为 $\lambda$；定义 $X_t=\hat X_{N_t}$，则 $\cur{X_t}$ 是连续时间 MC，对应的半群是
+$$
+P_s(x,y)=\exp(-\lambda s)\sum_{k\geq0}\dfrac{(\lambda s)^k}{k!}Q^k(x,y)
+$$
+以下，仅考虑满足这些条件的 MC：
+
+- time-homogeneity：$\P[X_{t+s}=y\mid X_s=x]=P_t(x,y)$。
+- 过程是右连续的。
+- 半群是逐点右连续的。
+
+定义：作为右连续过程，可以定义 $S_x$ 为在 $x$ 处的 **停留时间** (holding time)
+$$
+X_0=x,S_x=\inf\cur{t\geq0:X_t\neq x}
+$$
+则 $S_x$ 必然服从指数分布。这是因为，$T$ 是无记忆变量（$\P[T>t+s\mid T>s]=\P[T>t]$）当且仅当其是指数分布。
+
+定义：跳跃时间 $\cur{J_n}$ 是 $J_0=0,J_{n+1}=\inf\cur{t>J_n:X_t\neq X_{J_n}}$，停留时间 $S_n=J_n-J_{n-1}$，跳跃过程 $Y_n=X_{J_n}$。
+
+特别地，在 Poisson 过程中，$Y_n=n$，$S_n$ i.i.d. 服从指数分布。
+
+CTMC 因为有右连续性，跳跃次数可数，因此有三种可能：
+
+- $J_n\uparrow\infty$。
+- 对于有限的 $n$ 即有 $J_{n+1}=\infty$，此时令 $X_\infty=X_{J_n}$。
+- $J_n\uparrow\xi$，其中 $\xi=\sup J_n<\infty$ 被称作 explosion time。这意味着当 $t\to\xi$ 时，$X_t$ 的变动频率无限上升。当 MC 爆炸时，半群只能对 $t<\xi$ 定义。
+
+现在来尝试定义右导数。对于半群 $\cur{P_t}$，有：
+
+- 对于一切 $x$，有 $q_x=\lim_{\eps\downarrow 0}(1-P_\eps(x,x))/\eps\in[0,\infty]$。
+- 对于一切 $x\neq y$，有 $q_{x,y}=\lim_{\eps\downarrow0} P_\eps(x,y)/\eps\in[0,\infty)$。
+
+引理：对于非负的函数 $f$，若 $\lim_{\eps\downarrow0}f(\eps)=0$ 且其有次可加性 $f(t+s)\leq f(t)+f(s)$，则 $\lim_{\eps\downarrow0}f(\eps)/\eps=\sup_{t>0}f(t)/t$，也即右导数可定义。
+
+于是对 $f(t)=-\log(1-P_t(x,x))$ 应用引理，可知右导数可求；$q_{x,y}$ 同理。
+
+现在定义 $q_{x,x}=-q_x$，则对应的矩阵 $A=q_{x,y}$ 被称为半群的 **无穷小生成元**，有
+$$
+A=\lim_{\eps\downarrow0}\dfrac{P_\eps-I}\eps
+$$
+且有 $q_{x,x}\leq0,q_{x,y}\geq0,\sum_y q_{x,y}=0$。
+
+Poisson 过程满足 $q_{i,i}=-\lambda,q_{i,i+1}=\lambda$，其它均为 $0$；以 Poisson 过程作为下标的离散 MC 满足 $A=\lambda(Q-I)$。
+
+------
+
+定理：联合分布 $(J_1,X_{J_1})$ 满足：
+
+- 二者独立。
+- $\P_x[J_1>t]=\exp(-q_xt)$。特别地，有 $q_x\geq0$。
+- 若 $q_x>0$，则 $\P_x[X_{J_1}=y]=q_{x,y}/q_x$。
+- 特别地，若 $q_x>0$，则对于 $x\neq y$ 有 $\P_x[J_1>t,X_{J_1}=y]=\exp(-q_xt)\dfrac{q_{x,y}}{q_x}$。
+- 若 $q_x=0$，则 $\P_x[J_1=\infty]=1$，此时称 $x$ 为 **吸收态** (absorbing state)。
+
+> $$
+> \P_x[J_1>t,X_{J_1}=y]={\E}_x[{\E}_x[1_\cur{J_1>t,X_{J_1}=y}\mid\sigma(X_{u,u\leq t})]]
+> \\={\E}_x[1_\cur{J_1>t}{\E}_x[1_\cur{X_{J_1}=y}\mid\sigma(X_{u,u\leq t})]]
+> \\={\E}_x[1_\cur{J_1>t}]\P_x[X_{J_1}=y]
+> $$
+>
+> 因为 MC 的无记忆性，可知 $J_1$ 服从指数分布，其参数 $\mu=\lim_{\eps\to0}\dfrac1\eps(1-\P_x[J_1>\eps])=q_x$。
+>
+> 最后，
+> $$
+> \P_x[X_{J_1}=y]=\P_x[X_{J_1}=y\mid J_1\leq\eps]
+> \\=\P_x[X_\eps=y\mid J_1\leq\eps]+o(\eps)
+> \\=\dfrac{P_\eps(x,y)}{1-\exp(-q_x\eps)}+o(\eps)\to\dfrac{q_{x,y}}{q_x}
+> $$
+
+因此，该定理给定了通过生成元 $A$ 定义连续时间 MC 的方法：
+
+可以定义转移矩阵
+$$
+Q(x,y)=\begin{cases}q_{x,y}/q_x&(q_x\neq0,x\neq y)\\0&(q_x\neq0,x=y)\\ [x=y]&(q_x=0)\end{cases}
+$$
+则 $Q$ 是随机矩阵。取 $\cur{Y_n}$ 为一个以 $Q$ 为转移矩阵的离散时间 MC，$\cur{T_n}$ 为 i.i.d. $1$-参数指数分布且与 $Y$ 独立。则定义
+$$
+S_n=\dfrac{T_n}{q_{Y_{n-1}}}
+\\J_n=\sum X_n
+\\X_t=Y_n\t{ when }J_n\leq t<J_{n+1}
+$$
+则 $X$ 正是以 $A$ 为生成元的连续时间 MC。
+
+------
+
+定理：若 $\cur{X_t}$ 是以 $A$ 为生成元的 MC，则对应的半群 $\cur{P_t}$ 是逆向方程 $\dot P_t=AP_t,P_0=I$ 的最小非负解。
+
+> $$
+> P_t(x,y)=\P_x[J_1>t,X_t=y]
+> \\+\sum_{z\neq x}\P_x[J_1\leq t,X_{J_1}=z,X_t=y]
+> \\\P_x[J_1>t,X_t=y]=1_\cur{x=y}\exp(-q_xt)
+> \\\P_x[J_1\leq t,X_{J_1}=z,X_t=y]
+> \\=\int_0^tq_x\exp(-q_xu)\d u\cdot\dfrac{q_{xz}}{q_x}\cdot P_{t-u}(z,y)
+> \\=\int_0^tq_{xz}P_{t-u}(z,y)\exp(-q_xu)\d u
+> \\\exp(q_xt)P_t(x,y)=1_\cur{x=y}+\sum_{z\neq x}q_{xz}\int_0^t\exp(q_xu)P_u(z,y)\d u
+> \\q_x\exp(q_xt)P_t(x,y)+\exp(q_xt)\dot P_t(x,y)
+> \\=\sum_{z\neq x}q_{xz}\exp(q_xt)P_t(z,y)
+> \\q_xP_t(x,y)+\dot P_t(x,y)=\sum_{z\neq x}q_{xz}P_t(z,y)
+> \\\dot P_t=AP_t
+> $$
+>
+> 另一方面，假设存在另一个逆向方程的解 $\tilde P$，则有 $\tilde P_t(x,y)\geq P_t(x,y)$ 对于一切 $x,y,t$ 成立。
+>
+> 因为 $\tilde P$ 是解，所以亦有
+> $$
+> \tilde P_t(x,y)=\exp(-q_xt)1_\cur{x=y}
+> \\+\sum_{z\neq x}q_{xz}\int_0^t\exp(-q_xu)\tilde P_{t-u}(z,y)\d u
+> $$
+> 则归纳可知
+> $$
+> \P_x[X_t=y,t<J_{n+1}]=\exp(-q_xt)1_\cur{x=y}
+> \\+\sum_{z\neq x}\P_x[J_1\leq t,X_{J_1}=z,X_t=y,t<J_{n+1}]
+> \\\leq\dots[t-u<J_n]
+> \\\leq\dots[\tilde P_{t-u}(z,y)]
+> \\=\tilde P_t(x,y)
+> $$
+
+------
+
+在有限维的场合，逆向方程 $\dot P_t=AP_t$ 是矩阵方程，其唯一解是 $P_t=\exp(tA)$；前向方程 $\dot P_t=P_tA$ 同理。于是有如下定理：
+
+令 $X$ 是有限状态空间的右连续过程，$A=q_{x,y}$ 是 $\c S$ 上矩阵，则以下条件等价：
+
+- $X$ 是生成元为 $A$ 的连续时间 MC。
+- $\cur{X_{t+s}}_{s\geq0}$ 在 condition on $\cur{X_t=x}$ 时与 $\cur{X_u}_{u\leq t}$ 无关；对于一切 $x,y$，$t$-uniform 地有 $\P[X_{t+\eps}=y\mid X_t=x]=1_\cur{x=y}+\eps q_{x,y}+o(\eps)$。
+- $\P[X_{t_n}=x_n\mid X_{t_0}=x_0,\dots,X_{t_{n-1}}=x_{n-1}]=P_{t_n-t_{n-1}}(x_{n-1},x_n)$，其中 $P$ 是前向方程 $\dot P_t=P_tA$ 的解。
+
+> (1)->(2)：由生成元定义知。
+>
+> (2)->(3)：
+> $$
+> P_{t+\eps}(x,y)=\sum_z\P_x[X_t=z]\P[X_{t+\eps}=y\mid X_t=z]
+> \\=\sum_z\P_x[X_t=z](1_\cur{y=z}+\eps q_{z,y}+o(\eps))
+> \\\dfrac{P_{t+\eps}(x,y)-P_t(x,y)}{\eps}=\sum_z\P_x[X_t=z]q_{x,y}+o(1)
+> $$
+> （无穷求和时，这个 $o(1)$ 加起来可能不是 $o(1)$，因此证明不成立！）
+>
+> 同理对右导数证明后，推出前向方程。
+>
+> (3)->(1)：前向方程的解就是 $\exp(tA)$。
+
+------
+
+总结：目前对于连续时间 MC 可以定义以下辅助量：
+
+- 跳跃时间 $\cur{J_n}$。
+- jump chain $Y_n=X_{J_n}$。
+- $P_t(x,y)=\P[X_t=y\mid X_0=x]$。
+- 微分 $q_x=-q_{x,x}=\lim_{\eps\to0}(1-P_\eps(x,x))/\eps$，$q_{x,y}=\lim_{\eps\to0}P_\eps(x,y)/\eps$。对应的生成元 $A=(q_{x,y})$。对应的 $P_t=\exp(tA)$。
+- holding time $S_x\sim\t{Exp}(q_x)$。
+- 跳跃规则 $\P_x[X_{J_1}=y]=q_{x,y}/q_x$。
+
+定理：对于 $x,y$，以下命题等价：
+
+- 存在 $n\geq1$ 使得 $\P_x[Y_n=y]>0$。
+- 存在路径使得 $\prod q_{x_i,x_{i+1}}>0$。
+- 对于一切 $t$ 都有 $P_t(x,y)>0$。
+- 对于某个 $t$ 有 $P_t(x,y)>0$。
+
+> (1)->(2)：必然存在 $\cur{x_n}$ 其中 $x_0=x,x_n=y$ 使得 $\P[Y_0=x_0,\dots,Y_n=x_n]>0$，对应的每一项 $\P[Y_{i+1}=x_{i+1}\mid Y_i=x_i]>0$。
+>
+> (2)->(3)：对于任意 $x,y$，$q_{x,y}>0$ 意味着有 $P_t(x,y)>0$，这是因为
+> $$
+> P_t(x,y)=\P_x[X_t=y]\geq\P_x[J_1\leq t<J_2,Y_1=y]
+> \\\geq\P_x[J_1\leq t,S_2>t,Y_1=y]
+> \\=(1-\exp(-q_xt))\exp(-q_yt)\dfrac{q_{x,y}}{q_x}>0
+> $$
+> (3)->(4)：显然。
+>
+> (4)->(1)：
+> $$
+> \sum_n\P_x[X_{J_n}=y]\geq\sum_n\P_x[J_n\leq t<J_{n+1},X_t=y]
+> \\=\P_x[X_t=y]>0
+> $$
+
+由此，可以定义相应的在离散时间 MC 时讨论的相关概念：
+
+- 状态 $x$ 是常返的，若 $\P_x[\cur{t:X_t=x}\t{ is unbounded}]=1$。换言之，w.p.1 在任意长时间后总会回到 $x$。
+- 否则 $x$ 则是暂态的。
+
+定义：CTMC $X$ 是不可约的，若其对应的 DTMC 跳跃链 $Y$ 是不可约的。因为跳跃链动力学只与生成元 $A$ 有关，所以该定义是良定义的。
+
+定理：对于不可约 CTMC $X$：
+
+- 状态 $x$ 在 $X$ 上常返与在 $Y$ 上常返等价。
+- 因此，或者所有的状态都常返，或者都瞬态。
+
+> 若其在 $Y$ 上常返，则定义 $\tau_k$ 为在 $Y$ 上第 $k$ 次回到 $x$ 的时刻，则因其常返，有 $\P_x[\tau_k<\infty]=1$，于是 $\P_x[\bigcap_k\cur{\tau_k<\infty}]=1$，每次回到 $x$ 停留的时间 $S_n$ 都是 i.i.d. 指数 w.p. $q_x$ 的，因此 $\P_x[\cur{t:X_t=x}\t{ is unbounded}]=1$。
+>
+> 反之，若其在 $Y$ 上暂态，则有 $p:=\P_x[\tau_1<\infty]<1$，于是 $\P_x[\tau_k<\infty]=p^k$，则 $\sum_k\P_x[\tau_k<\infty]<\infty$，由 B-C 引理可知 $\P_x[\tau_k<\infty\io]=0$。定义 $N=\sup\cur{n:Y_n=x}$，则 $S=\sup\cur{t:X_t=x}\leq J_{N+1}$。因为 $x$ 是瞬态的，必有 $q_x>0$，因此 $J_{N+1}<\infty$。
+
+推论：对于不可约 CTMC：
+
+- 若其常返，则其非爆炸。（因为爆炸时刻 $\xi\geq\sum S_k=\infty$）
+- 若 $A$ 有界，则其非爆炸。（定义 $q=\sup q_x<\infty$，则 $S_n\geq\dfrac1qT_n$ 其中 $T_n$ i.i.d. standard exponential，于是 $\xi\geq\sum S_n\geq\dfrac1q\sum T_n=\infty$。）
+
+定理：不可约 CTMC 满足：状态 $x$ 在 $X$ 上常返，当且仅当 $\int P_t(x,x)\d t=\infty$。
+
+> 如果 $q_x=0$ 则 $x$ 是吸收态，有 $P_t(x,x)=1$，积分发散。
+>
+> 否则 $q_x>0$，则
+> $$
+> \int_0^\infty P_t(x,x)\d t={\E}_x\left[\int_0^\infty1_\cur{X_t=x}\d t\right]
+> \\={\E}_x\left[\sum_n1_\cur{Y_n=x}S_{n+1}\right]
+> \\=\sum_n{\E}_x\left[1_\cur{Y_n=x}S_{n+1}\right]
+> \\=\sum\dfrac1{q_x}\P_x[Y_n=x]=\dfrac1{q_x}G(x,x)
+> $$
+> 其中 $G(x,x)=\sum\P_x[Y_n=x]=\sum p^k$。
+
+定义：测度 $\pi$ 是稳定分布，若 $\pi A=0$。
+
+定理：若状态空间有限，则 $\pi P_t=\pi$ 对一切 $t$ 成立。
+
+> 因为有 $\dot P_t=AP_t$，所以 $\dfrac{\d}{\d t}(\pi P_t)=\pi\dot P_t=\pi AP_t=0$。
+
+定理：测度 $\pi$ 是 $X$ 上稳定分布当且仅当对应的 $\mu(x)=q_x\pi(x)$ 是 $Y$ 上稳定分布。（此处没有做归一化）
+
+> 令 $Q$ 是 $Y$ 的转移矩阵，则
+> $$
+> \sum\pi(x)q_{x,y}=-\pi(y)q_y+\sum_{x\neq y}q_x\pi(x)Q(x,y)
+> \\\pi A=0\iff\mu Q=\mu
+> $$
+
+定义 $T_x^+=\inf\cur{t\geq T_1:X_t=x}$，则 $x$ 是正常返的，若 $\E_x[T_x^+]<\infty$。
+
+定理：不可约 CTMC 以下条件等价：
+
+- 所有态正常返。
+- 某些态正常返。
+- 不爆炸且有稳定分布。
+
+> (1)->(2) 显然。
+>
+> (2)->(3)：由前述推论，存在常返态必然意味着不爆炸。现在构造稳定分布。
+>
+> 在 $Y$ 上定义 $\tau_x^+$ 为首次返回时刻、$\tilde\mu(y)$ 为返回前访问 $y$ 的次数。则 $\tilde y$ 平稳且 $\tilde\mu(x)=1$。现在对 $X$ 定义相似的测度
+> $$
+> \tilde \pi(y)={\E}_x\left[\int_0^{T_x^+}1_\cur{X_s=y}\d s\right]
+> $$
+> 则易知 $\tilde\pi(y)=\dfrac1{q_y}\tilde\mu(y)$，且 $\sum\tilde\pi(y)=\E_x[T_x^+]<\infty$，于是 $\tilde\pi(y)$ 是平稳分布。
+>
+> (3)->(1)：若 $\pi$ 是 $X$ 的平稳分布，则对应的 $\mu=q_x\pi$ 是 $Y$ 的平稳分布。
+>
+> 若 $\mu$ 的总质量有限，则可以归一化得到唯一稳定分布，因此 $q_x\pi(x)=c\tilde\mu(x)$ 对于一切 $x$ 成立，而因为 $\tilde\mu(x)=1$ 所以 $c=q_x\pi(x)$，对应的 $\pi(y)=q_x\pi(x)\tilde\pi(y)$。
+>
+> 一般地，首先证明全体 $y$ 都有 $\pi(y)>0$。这是因为有 $\mu Q^n=\mu$，于是对于一切 $y_0$ 和 $y$ 均有 $\mu(y_0)\geq\mu(y)Q^n(y,y_0)$。由不可约性，存在 $n$ 使得 $Q^n(y,y_0)>0$，于是 $\mu(y_0)=0$ 会传播导致全体 $\mu=0$，于是对应的 $\pi=0$，矛盾。
+>
+> 定义 $\gamma(y)=\mu(y)/\mu(x)$，则 $\gamma$ 是稳定的且 $\gamma(x)=1$，展开可得
+> $$
+> \gamma(y)\geq\sum_{j=1}^{n+1}\P_x[Y_j=y,j\leq\tau_x^+]
+> $$
+> 对一切 $n$ 成立；而 $\tilde\mu(y)$ 就是 $n\to\infty$，所以 $\tilde\mu(y)\leq\gamma(y)$，而 $\gamma<\infty$ 所以其常返。
+>
+> 最后证明正常返。有
+> $$
+> \E_x[T_x^+]=\sum_y\tilde\pi(y)
+> =\sum_y\tilde\mu(y)/q_y\\\leq\sum_y\dfrac{\mu(y)}{q_y\mu(x)}=\dfrac1{q_x\pi(x)}<\infty
+> $$
+
+推论：稳定分布是
+$$
+\pi(x)=\dfrac1{q_x\E_x[T_x^+]}
+$$
+而且有关系
+$$
+{\E}_x\left[\int_0^{T_x^+}1_\cur{X_s=y}\d s\right]=\pi(y){\E}_x[T_x^+]
+$$
+同时 $\pi P_t=\pi$。
+
+遍历性定理：不可约正常返 CTMC 若有稳定分布 $\pi$，则对于任何起始分布 $\nu$ 和任何有界函数 $f$ 都有
+$$
+\dfrac1t\int_0^tf(X_s)\d s\to\pi(f),\P_\nu\t{ a.s.}
+$$
+收敛性定理：不可约正常返 CTMC 若有稳定分布 $\pi$，则对于所有 $x,y$ 均有 $P_t(x,y)\to\pi(y)$。
+
+------
+
+事实上，CTMC 已经可以有流体力学分析了。
+
+Lagrange 视角的统计量包括：
+
+- Holding Time $S_x\sim\t{Exp}(q_x)$。因为无记忆性，天然服从指数分布（唯一的无记忆连续分布）。
+- Jumping Rule $\P_x[X_{J_1}=y]=q_{x,y}/q_x$，描述了跳跃目标分布。
+- Jumping Times $\cur{J_n}$。
+- Jump Chain $Y_n=X_{J_n}$，是 DTMC。
+
+另一种解释是 competing clock 描述：所有状态都有一个 $T_{x,y}\sim\t{Exp}(q_{x,y})$ 的倒计时，而后继态会是 $\arg\min T_{x,y}$，这样一个状态是 argmin 的概率天然是 $q_{x,y}/q_x$。
+
+Eulerian 视角：
+
+- 转移概率 $P_t(x,y)=\P_x[X_t=y]$。只要 $x$ 可达 $y$，则因为跳跃间隔可以任意小，所以 $P_t(x,y)$ 要么全非零要么全为零。
+- 微分半群 $q_{x,y}=\lim_{\eps\to0}P_\eps(x,y)/\eps$。
+- Kolmogorov 前向/后向方程 $\dot P_t=P_tA=AP_t$，对应的解是 $P_t=\exp(tA)$。
+
+> [!TIP]
+>
+> 特别地，「前向」「后向」决定了衡量过程的两种分解方式：
+>
+> - 作为微分，可以认为有 $P_\eps\approx I+\eps A$。
+> - 因此，$\dot P_t=P_tA$ 是把 $P_{t+\eps}$ 拆成 $P_t$ 和 $P_\eps$ 两部分。
+> - 而 $\dot P_t=AP_t$ 则是拆成 $P_\eps$ 和 $P_t$ 两部分。
+
+回归分析：
+
+- DTMC 中，回归次数 $G(x,x)=\sum\P_x[Y_n=x]=\dfrac1{1-p}$，其中 $p$ 是未逃逸概率 $\P_x[\tau_x^+<\infty]$。
+- CTMC 中，回归时长 $\int P_t(x,x)\d x=G(x,x)/q_x$，因为每次回归期望停留时间是 $1/q_x$。
+- $X$ 常返等价于 $Y$ 常返等价于 CTMC 回归次数无穷等价于 DTMC 回归时长无穷。
+- $q_{Y_n}\to\infty$ 会导致 holding time $\to0$，进而导致爆炸。因此，如果不可约 CTMC 常返，则任意 $x$ 都会在 $Y_n$ 中 i.o. 出现，进而 $q_{Y_n}$ 不可能发散，不会爆炸；同理，若 $q$ 有界则也不会爆炸。
+- 另一方面，只要不爆炸、有平稳分布，就能推出正常返。
+
+平稳分析：
+
+- CTMC 的平稳分布通过 $\pi A=0$ 定义，这一点与 DTMC 略有不同。但是只要不可约 CTMC 满足正常返性，就也有更像 DTMC 的 $\pi P_t=\pi$ 对一切 $t$ 成立。
+- CTMC 的平稳分布 $\pi$ 与 DTMC 的平稳分布 $\mu$ 满足 $\mu(x)=q_x\pi(x)$ 的关系（未归一化）。
+- 更具体地，DTMC 中使用 $\tilde\mu(y)$ 为返回 $x$ 前经过 $y$ 的次数，并证明 $\tilde\mu=Q\tilde\mu$；而 CTMC 中用 $\tilde\pi(y)$ 为返回 $x$ 前经过 $y$ 的时长，并有 $\tilde\pi(y)=\tilde\mu(y)/q_y$。因为 $\E_x[T_x^+]=\sum\tilde\pi(y)$ 所以自然有 $\pi=\tilde\pi/\E_x[T_x^+]$ 是平稳分布。然而这个东西依赖于具体起点 $x$，需要一个类似 $\mu(x)=1/\E_x[\tau_x^+]$ 的统一量。
+- 通过较为复杂的分析可知有 $\pi(x)=1/q_x\E_x[T_x^+]$。不过其确实可以有 intuitive 的解释：因为正常返性，所有访问都有下一次，时间期望是 $\E_x[T_x^+]$，这期间仅访问 $x$ 一次，因此频率就是 $1/\E_x[T_x^+]$，而时长就是 $1/q_x$。
+
+遍历性：同 DTMC。
+
+收敛性：比 DTMC 更强！CTMC 天然没有周期（指数分布打破同步性），只需要不可约正常返就有 $P_t(x,y)\to\pi(y)$。
+
+> [!IMPORTANT]
+>
+> 来点高深解释。
+>
+> DTMC 本质上是高级线性代数：完全可以对每一时刻定义不同的状态集，这样变成了图论上的流，称作时间非齐次 DTMC，所有时间都是时间点。
+>
+> 但是 CTMC 中，留在原地是一维时间段，但跳跃是零维时间点，二者有本质区别。CTMC 依赖于微积分，比如说
+> $$
+> A=\lim_{\eps\to0}\dfrac{P_\eps-I}\eps
+> $$
+> 这对 identity $I$ 的存在性有额外的要求。
+
+> [!IMPORTANT]
+>
+> 既然 CTMC 和 DTMC 有所不同，那么什么让它们共享前面的诸多结论？
+>
+> - 首先，它们都可以被视作是在同一张概率图上游走，特别是 CTMC 还能用 jump chain 剥离时间维度，让那些可达性、回归性相关的结论完全相同。
+> - 其次，它们共享 Markov 性质，或者说「更新过程」，允许关于「回到原点」分割。
+> - 最后，DTMC 中的 $P-I$ 和 CTMC 中的 $A$ 都满足行和为零、非对角线非负、对角线非正的性质，称为 **Markov 生成元**，刻画了一种能量守恒的扩散算子，而平稳分布就是这种矩阵的左零空间。
+> - 如果还嫌不够的话，在 $q$ 有上界 $Q$ 的时候，引入一个服从 $\t{Exp}(Q)$ 分布的全局节拍器，即可把 CTMC 改造和其具有相同分布的 DTMC。这种手法被称作 Uniformization。
+
+### Queuing Theory
+
+例子 (M/M/1 queue)：顾客以 $\lambda$ 强度的 Poisson 过程到达。结账时间是 i.i.d. $\mu$ 强度的指数分布。令 $X_t$ 为 $t$ 时刻的队列长度（包括正在结账的）。
+
+则：令 $\rho=\lambda/\mu$，
+
+- 生成元是 $q_{0,1}=\lambda,q_{0,0}=-\lambda$；$q_{i,i+1}=\lambda,q_{i,i-1}=\mu,q_{i,i}=-\lambda-\mu$，其中 $i\geq1$。（显然）
+- 其常返当且仅当 $\rho\leq1$。具体地，分析跳跃链，则有 $Q(i,i+1)=\rho/(1+\rho),Q(i,i-1)=1/(1+\rho)$，于是它是一个偏向随机游走。
+- 正常返当且仅当 $\rho<1$，平稳分布是 $\pi(n)=(1-\rho)\rho^n$。具体地，因为 $q$ 有界，所以正常返等价于存在稳定分布。则只需要找到是否存在 $A$ 的左特征向量即可。这个因为 $A$ 是接近对角矩阵所以自己解方程就能得到 $\pi$。
+- $\rho<1$ 时，处于稳态时，等候时间 $W$ 服从 $\mu-\lambda$ 的指数分布。具体地，如果顾客在 $t$ 时刻到达，其之前有 $N$ 个人（该顾客是第 $N+1$ 个），那么其等候时间会是 $N+1$ 个 i.i.d. $\mu$-指数分布的和。于是其等待时间的特征函数可以被显式写出来，对照发现它就是指数分布的特征函数。
+
+例子 (M/M/∞ queue)：顾客以 $\lambda$ Poisson 到，但是有无穷个收银员，因此到了就立刻 $\mu$-服务（因此没有队列而言）。令 $X_t$ 为 $t$ 时刻等候人数，则
+
+- $q_{0,1}=\lambda,q_{0,0}=-\lambda$；$q_{i,i+1}=\lambda,q_{i,i-1}=i\mu,q_{i,i}=-\lambda-i\mu$。
+- 嗯解方程得到稳定分布 $\tilde\pi(i)=\tilde\pi(0)\rho^n/n!$，因此稳定分布是 $\rho$ 强度的 Poisson 分布。
+
+例子 (queues in tandem)：有一个参数为 $\lambda,\mu_1$ 的 M/M/1 队，从中出来的顾客立刻进入第二个参数为 $\mu_2$ 的队。令 $(X_t,Y_t)$ 为两个队伍的队列长度。则：
+
+- $(X,Y)$ 是正常返 CTMC 当且仅当 $\lambda<\mu_1$ 且 $\lambda<\mu_2$。此时，稳定分布是 $\pi(m,n)=(1-\rho_1)\rho_1^m(1-\rho_2)\rho_2^n$。
+- 分析方法同理，直接嗯列 $q$，嗯解方程，完成。
+- 事实上排队论的通用分析方法就是有瞪眼可得的 $A$，这个 $A$ 有界，所以瞪眼可得的 $\pi$ 即可表明存在稳定分布。
+
+### Birth-and-death Process
+
+生灭过程。
+
+- 如果种群里有 $i$ 个个体，则以 $\lambda_i$-Poisson 出生一个达到 $i+1$，$\mu_i$-Poisson 死亡一个达到 $i-1$，因此生灭过程用 $\cur{\lambda_i}$ 和 $\cur{\mu_i}$ 描述。个体数目不允许为负（可以通过在 $0$ 处设置合适的参数实现）
+
+- 容易发现跳跃链满足 $Q(i,i+1)=\lambda_i/(\lambda_i+\mu_i),Q(i,i-1)=\mu_i/(\lambda_i+\mu_i)$。于是以随机游走模型处理即可，通过电阻分析得到其常返当且仅当
+    $$
+    \sum_{i=1}^\infty\prod_{j=1}^i\dfrac{\mu_j}{\lambda_j}=\infty
+    $$
+
+简单出生过程：
+
+- $\mu_i=0$。因为只生不死所以它必然是暂态的，我们只需要考虑它是否爆炸。
+- 它的生成元是 $q_{i,i+1}=\lambda_i,q_{i,i}=-\lambda_i$。
+- 它的 holding time $S_i\sim\t{Exp}(\lambda_i)$。所以爆炸只与 $\sum S_i$ 是否发散有关。容易发现，若 $\sum 1/\lambda_j<\infty$ 则其 a.s. 爆炸，否则 a.s. 不爆炸。
+
+带移民的生灭过程：
+
+- 每个人服从 Poisson $\lambda$ 生，$\mu$ 死；同时 Poisson $\theta$ 移民入一个人。
+- $Q_{n,n+1}=n\lambda+\theta,q_{n,n-1}=n\mu,q_{n,n}=-n\lambda-n\mu-\theta$。
+
+> $$
+> \P[X_{t+\eps}=N+1\mid X_t=N]=\eps(n\lambda+\theta)+o(\eps)
+> \\\P[X_{t+\eps}=N-1\mid X_t=N]=\eps n\nu+o(\eps)
+> \\\P[X_{t+\eps}=N\mid X_t=N]=1-\eps(n\lambda+n\nu+\theta)+o(\eps)
+> $$
+>
+> 令 $f(t)=\E[X_t]$，则
+> $$
+> f(t+\eps)=f(t)+\eps(f(t)(\lambda-\mu)+\theta)+o(\eps)
+> \\\dot f=(\lambda-\mu)f+\theta
+> $$
+> 令 $f(0)=t$，解方程即可：
+>
+> - $\lambda=\mu$ 则 $f(t)=K+\theta t$。
+> - $\lambda\neq\mu$ 则 $f(t)=K\exp((\lambda-\mu)t)+\dfrac\theta{\lambda-\mu}(\exp((\lambda-\mu)t)-1)$。
+>
+> 使用等效电阻处理即可。
+
+Ehrenfest Model：两个容器中共有 $N$ 个粒子，每个粒子独立地以 $\lambda$-Poisson 换边。令 $X_t$ 是某一容器中粒子数，则 $q_{i,i-1}=i\lambda$，$q_{i,i+1}=(N-i)\lambda$，$q_{i,i}=-N\lambda$。平稳分布 $\tilde\pi$ 有 $\tilde\pi A=0$，解方程即可，得到 $\pi(n)=2^{-N}\dbinom Nn$。因此，最大可能的分布是均分。
+
+现在考虑 $\E[T_0^+\mid X_0=0]$，也即初始全部都在一侧，然后首次回到相同态的期望时刻。因为 $\pi(n)=1/q_n\E_n[T_n^+]$，所以因为 $q_0=N\lambda$ 所以 $\E[T_0^+\mid X_0=0]=2^N/N\lambda$。
+
+那么 $\E[T_{N/2}^+\mid X_0=N/2]$ 呢？是 $2^N/N\lambda\dbinom N{N-2}$。这两个的阶相差巨大。
+
+### Gaussian Process
+
+Uniform Gaussian 的 PDF 是
+$$
+p(x)=\dfrac1{\sqrt{2\pi}}\exp(-x^2/2)
+$$
+而 ch.f. 是
+$$
+\E[\exp(\i tX)]=\exp(-t^2/2)
+$$
+而 General Gaussian 有
+$$
+p(y)=\dfrac1{\sqrt{2\pi\sigma^2}}\exp(-(y-m)^2/2\sigma^2)
+\\\E[\exp(\i tY)]=\exp(\i mt-\sigma^2t^2/2)
+$$
+命题：对于 $X_n\sim\c N(m_n,\sigma_n^2)$，若 $X_n$ L^2^ 收敛到 $X$，则
+
+- $X_n\sim\c N(m,\sigma^2)$，其中 $m=\lim m_n,\sigma=\lim\sigma_n$，可以通过 ch.f. 处理
+- 其对一切 L^p^ 收敛均有效，其中 $1\leq p<\infty$。
+
+现在考虑多元 Gaussian 向量。令 $E$ 是 Euclidean 空间，$\b X\in E$ 是 Gaussian 向量，如果对于一切 $\b u$ 都有 $\ip{\b u,\b X}$ 是 1D Gaussian。
+
+引理：对于任意 Gaussian 向量 $\b X$，总是存在 $\b m_\b X\in E$ 和非负二次型 $q_\b X$，使得
+$$
+\E[\ip{\b u,\b X}]=\ip{\b u,\b m_\b X}
+\\\var(\ip{\b u,\b X})=q_\b X(\b u)
+$$
+
+> [!TIP]
+>
+> 这其实是把 Gaussian 扩展到一般场景。我们常见的 $n$-D 均值向量和 $n\times n$-D 协方差矩阵是具体坐标基底下的描述。
+
+在基底描述下，令 $\b X=\sum X_j\b e_j$，则有
+$$
+\b m_\b X=\sum\E[X_j]\b e_j,q_\b X(\b u)=\sum u_ju_k\t{cov}(X_j,X_k)
+$$
+于是，其边缘分布 $X_1,\dots,X_d$ 是独立的，当且仅当 $\t{cov}(X_j,X_k)$ 是对角的，或者 $q_\b X$ 是对角二次型。
+
+对于二次型 $q_\b X$，可以找到唯一的 对称自同态 (symmetric endomorphism) $\gamma_\b X$（自己到自己的映射），使得 $q_\b X(\b u)=\ip{\b u,\gamma_\b X(\b u)}$。在基底描述下，它就是协方差矩阵。
+
+如果选取合适的特征基 $\cur{\b\eps}$，使得 $\gamma_\b X$ 在其上是对角的：有 $\gamma_\b X(\b\eps_j)=\lambda_j(\b\eps_j)$，则非零特征值的数目 $r$ 是该自同态的秩，且有
+$$
+\b X=\sum_{j=1}^r\sqrt{\lambda_j}Y_j\b\eps_j
+$$
+其中 $Y_j$ i.i.d. $\c N(0,1)$。
+
+------
+
+定义：$L^2(\Omega,\s F,\P)$ 是全体方差有限随机变量构成的集合，其上定义内积为 $\ip{X,Y}=\E[XY]$。
+
+**Gaussian 空间** 是其一个闭线性子空间，其中仅包含零均值的 Gaussian 变量。则：
+
+- 模长平方 $\|X\|^2=\ip{X,X}=\E [X^2]$ 就是方差。
+- 内积 $\ip{X,Y}=\E[XY]$ 就是协方差，因此不相关等价于正交。
+
+**随机过程** 是以某个指标集 $T$ 为下标的随机变量集合。
+
+**Gaussian 过程** 是其中任意有限个变量的线性组合仍然服从 Gaussian 分布的随机过程。等价地，任意有限个变量都构成 Gaussian 向量。则 Gaussian 过程可以用线性组合张成一个 Gaussian 空间。
+
+> [!IMPORTANT]
+>
+> 独立的 Gaussian 相加必然得到 Gaussian。但是不独立的 Gaussian 之间相加不一定是；如果确实是 Gaussian，则这种性质被称作 **联合 Gaussian**，由相关性 $\rho$ 确定：
+>
+> - 令 $X\sim\c N(0,\sigma_X^2),Y\sim\c N(0,\sigma_Y^2)$。
+> - 则 $Z=aX+bY\sim\c N(0,a^2\sigma_X^2+b^2\sigma_Y^2+2ab\rho\sigma_X\sigma_Y)$。
+>
+> GP 就是联合 Gaussian 性质在任意指标集上的体现。
+>
+> Gaussian 空间中不能存在不联合 Gaussian 的变量。例如，考虑 $X\sim \c N(0,1)$ 与 $X'=\eps X$ 其中 $\eps$ 与 $X$ 独立 w.p. $1/2$ 取 $\pm1$。则易验证它们满足正交性 $\E[XX']=0$，但是它们显然相关：原因在于不存在同时包含两者的 Gaussian 空间。
+
+定理：令 $H$ 是 Gaussian 空间，$\cur{H_i}$ 是其一堆线性子空间，则它们 pairwise 正交当且仅当 $\cur{\sigma(H_i)}$ 彼此独立。
+
+> 如果独立，则对于 $X\in H_i,Y\in H_j$ 必然有 $\E[XY]=\E[X]\E[Y]=0$。
+>
+> 现在反过来。由独立性的定义，只需对有限个 $\cur{H_{i_p}}$ 分析即可。由 $\pi$-$\lambda$ 定理，每个分析只需针对子空间内部的有限个元素。于是：
+>
+> - 取 $H_{i_k}$ 中的 $\cur{\xi_{n_k}^{(k)}}$。 
+> - 取出子空间并求基底 $\cur{\eta_{m_k}^{(k)}}$，则基底在 $H_{i_k}$ 内部独立，跨 $H_i$ 由正交保证独立，所以全体 $\eta$ 独立，所以全体 $\xi$ 独立。
+
+推论：令 $K$ 是 Gaussian 空间 $H$ 的一个闭线性子空间，令 $p_K$ 为正交投影映射，则对于一切 $X\in H$ 均有
+$$
+\E[X\mid\sigma(K)]=p_K(X)
+$$
+令 $\sigma^2=\E[(X-p_K(X))^2]$，则对于一切 $\R$ 上有界函数 $f$，均有
+$$
+\E[f(X)\mid \sigma(K)]=\dfrac1{\sqrt{2\pi\sigma^2}}\int f(p_K(X)+y)\exp(-y^2/2\sigma^2)\d y
+$$
+
+> 首先第一部分，令 $X=p_K(X)+Y$，则 $Y$ 与 $K$ 正交所以 $\E[Y\mid K]=\E[Y]=0$，于是 $\E[X\mid K]=\E[p_K(X)\mid K]=p_K(X)$。
+>
+> 然后因为 $Y\sim\c N(0,\sigma^2)$ 所以自然得到接下来的积分式。
+
+对于 GP $\cur{X_t}_T$，可以定义协方差函数是 $\Gamma:T\times T\to\R,\Gamma(s,t)=\t{cov}(X_s,X_t)$。则它是 kernel。
+
+------
+
+「白噪声」一般指任意不重叠时间段内噪声独立的随机过程。表现为 $\Gamma(s,t)=\sigma^2\delta(x-x')$。然而这显然是有问题的：这意味着 $\t{var}(X_t)=\delta(0)=\infty$。
+
+所以必须定义 **广义随机过程**。假如狭义随机过程是 $T\to L^2(\Omega,\P)$ 的映射，那么广义随机过程就是 $X:\Phi(T)\to L^2(\Omega,\P)$ 的映射，其中 $\Phi(T)$ 是测试函数集合，一般是 Schwartz 空间。则其须满足两个条件：
+
+- 线性性：$X(a\phi+b\psi)=aX(\phi)+bX(\psi)$ a.s.。
+- 连续性：若 $\phi_n\to\phi$ 在 $\Phi$ 的拓扑上成立，则 $X(\phi_n)\to X(\phi)$ 均方意义上成立。
+
+**Gaussian 广义随机过程** 是任意有限个测试函数的像的线性组合服从 1D Gaussian 的随机过程。它使用 $m(\phi)=\E[X(\phi)]$ 与 $\Gamma(\phi,\psi)=\t{cov}(X(\phi),X(\psi))$ 刻画。**强度为 $\mu$ 的 Gaussian 白噪声** 满足 $m(\phi)=0$ 且 $\Gamma(\phi,\psi)=\int\phi\psi\d\mu$，其中 $\mu$ 是 $T$ 上对应的一个概率测度。
+
+定义：等距同构 (isometry) 是保内积的映射。则在 $\Phi(T)$ 上取内积为 $\int\phi\psi\d\mu$，$L^2(\Omega,\P)$ 上取内积为协方差，可知 Gaussian 白噪声的另一种定义是 **在测试函数空间与 Gaussian 空间之间的等距同构**。也即，其须满足
+$$
+\t{cov}(G(f),G(g))=\int fg\d\mu
+\\\t{var}(G(f))=\int f^2\d\mu
+$$
+则如果 $f,g$ 的支撑集无交，则它们映到的 Gaussian 向量则正交，也即完全独立。
+
+定理：白噪声存在且可构造。
+
+> 找到 $\Phi(T)$ 的一组正交基 $\cur{e_j}$，并分解得到
+> $$
+> f=\sum\ip{f,e_j}e_j
+> $$
+> 在概率空间侧，定义与之对应的 i.i.d. standard Gaussian 集合 $\cur{X_j}$，相当于概率空间中的线性无关集合。则定义
+> $$
+> G(e_i)=X_i
+> \\G(f)=\sum\ip{f,e_j}X_j
+> $$
+> 则易验证其等距性。
+
+一般而言，可取 $T$ 为全体实数，$\Phi(T)$ 为全体 $\mu$ 意义下模长有限函数。
+
+用 $G(A)$ 来作为 $G(1_A)$ 的简写，则有 $\var(G(A))=\int 1_A^2\d\mu=\mu(A)$。
+
+> 这就是为什么 $\mu$ 被称作强度：它是方差的测度。
+
+命题：对于白噪声 $G$，对于 $\mu(A)<\infty$ 的事件，令存在一分解序列 $\cur{\cur{A_j^i}_{j=1}^{k_n}}_{i=1}^n$，使得 $A=\bigcup_{j=1}^{k_n}A^i_j$，且分解无限细化：
+$$
+\lim_n\sup_j\mu(A_j^n)=0
+$$
+则有 $L^2$ 意义下
+$$
+\sum G(A_j^n)^2\to\mu(A)
+$$
+
+> 因为 $A_j^n$ 两两无交，所以 $G(A_j^n)$ 互相独立，且 $G(A_j^n)\sim\c N(0,\mu(A_j^n))$。那么
+> $$
+> \E[\sum G(A_j^n)^2]=\sum \var(G(A_j^n))=\sum\mu(A_j^n)=\mu(A)
+> $$
+> 光是均值还不够，需要证明其方差 $\to0$。若 $X\sim\c N(0,\sigma^2)$，则 $\var(X^2)=2\sigma^4$，于是
+> $$
+> \var[\sum G(A_j^n)^2]=\sum \var(G(A_j^n)^2)=\sum2\mu(A_j^n)^2
+> \\\leq2\sup\mu\sum\mu=2\sup\mu\cdot\mu(A)
+> $$
+> 而因为 $\sup\mu\to0$，所以已知该极限 $\to0$。均值恒定、方差消失，则意味着均方意义收敛。
+
+### Brownian Motion
+
+定义：令 $G$ 是 $\R_+$ 上，强度为 Lebesgue 测度的 Gaussian 白噪声。定义
+$$
+B_t=G(1_{[0,t]})
+$$
+则 $\cur{B_t}$ 被称作 **Pre-Brownian Motion**。
+
+命题：令 $\cur{X_t}$ 是 $X_0=0$ 的随机过程。则以下条件等价：
+
+- $\cur{X_t}$ 是 PBM。
+- $\cur{X_t}$ 是方差为 $K(s,t)=\min(s,t)$ 且零均值的 Gaussian 过程。
+- 独立增量性质（一）：对于 $s<t$，$X_t-X_s$ 与 $s$ 之前的历史信息 $\sigma(X_r,r\leq s)$ 独立，且服从正态分布 $\c N(0,t-s)$。
+- 独立增量性质（二）：对于任意增量时间点 $0=t_0<\dots< t_p$，所有增量 $X_{t_i}-X_{t_{i-1}}$ 彼此独立，且服从 $\c N(0,t_i-t_{i-1})$。
+
+> (1)->(2)：
+> $$
+> \sum c_jX_{t_j}=\sum c_jG(1_{[0,t_j]})=G(\sum c_j1_{[0,t_j]})\in L^2(\Omega,\P)
+> $$
+> 因此其确实是 Gaussian 过程，而且
+> $$
+> K(s,t)=\E[X_sX_t]=\ip{1_{[0,s]},1_{[0,t]}}=\min(s,t)
+> $$
+> (2)->(3)：
+> $$
+> \E[(X_t-X_s)^2]=K(t,t)-2K(t,s)+K(s,s)=t-s
+> $$
+> 同时，令 $H_s$ 为过去时刻 $\cur{H_r\mid r\leq s}$ 生成的空间，$\tilde H_s$ 为未来增量 $\cur{X_{s+u}-X_s\mid u\geq0}$ 生成的空间，则该空间的任两个生成元的协方差均有
+> $$
+> \E[X_r(X_{s+u}-X_s)]=K(r,s+u)-K(r,s)=0
+> $$
+> 所以这两个空间正交，因此彼此独立。
+>
+> (3)->(4)：显然。
+>
+> (4)->(1)：对于阶跃测试函数 $f=\sum\lambda_j 1_\oc{t_{j-1},t_j}$，令
+> $$
+> G(f)=\sum\lambda_j(X_{t_j}-X_{t_{j-1}})
+> $$
+> 则对于两个阶跃函数 $f,g$，把它们对齐到相同分割，则
+> $$
+> \E[G(f)G(g)]=\sum\lambda_j^f\lambda_j^g\t{var}(X_{t_j}-X_{t_{j-1}})
+> \\=\sum\lambda_j^f\lambda_j^g(t_{j-1}-t_j)=\int fg\d t
+> $$
+
+引理：PBM 的四个核心性质：
+
+- 对称性：若 $B$ 是 PBM 则 $-B$ 亦然。
+- 缩放不变性：若 $\lambda>0$ 则 $B^\lambda_t=\dfrac1\lambda B_{\lambda^2t}$ 亦然。
+- 弱 MC 性质：$B_t^{(s)}=B_{t+s}-B_s$ 仍是 PBM，且与 $s$ 之前的信息独立。
+- 时间反演性质：$X_0=0,X_t=tB_{1/t}$ 也是 PBM。
+
+> 第三条：独立性由前述独立增量性质知。PBM 性验证协方差知。
+
+使用 PBM $B$ 和对应的 Gaussian 白噪声 $G$ 定义随机积分（**Wiener 积分**）：
+$$
+\int f(s)\d B_s:=G(f)
+$$
+
+------
+
+上一节研究了协方差和独立增量等性质，现在来研究路径的连续性。
+
+首先引入两个概念：
+
+- 称 $\tilde X$ 是 $X$ 的一个 **modification** / **version**，如果对于每个固定时间点 $t$ 都有 $P(\tilde X_t=X_t)=1$。这保证 $\tilde X$ 和 $X$ 的任何有限维边缘分布均相同，因此 PBM 的 modification 仍是 PBM。然而，可以构造以下反例：
+    - $\tilde X_t(\omega)=0$。
+    - $X_t(\omega)=[t=U(\omega)]$，其中 $U(\omega)$ 是一个边缘分布为 $\t{Unif}(0,1)$ 的分布。则因为每个 $t$ 被 $U$ 选中的概率都是 $0$，所以它们仍然是 modification 关系。
+- 称 $\tilde X$ 和 $X$ **indistinguishable**，如果有 $P(\forall t,\tilde X_t=X_t)=1$。换言之，它们的路径 a.s. 相同。
+
+然而，如果额外作出以下保证：若定义域 $T$ 是 $\R$ 的一个区间（保证定义集的良好性，排除奇怪场合），且 $X$ 和 $\tilde X$ 的采样序列 a.s. 连续，则 modification 和 indistinguishable 等价。这是因为，modification 可以得到 a.s. 所有有理数处相等，然后自然推广到无理数。同时这对只有左/右连续的场合亦然。
+
+因此，我们自然在意一个过程是否存在连续的 modification，这通过如下引理阐述：
+
+**Kolmogorov 引理**：令 $X_t$ 的下标是 $\R$ 的有界区间 $I$，取值在一个完备的度量空间 $(E,d)$。则若存在 $q,\eps,C>0$ 使得对于一切 $s,t$ 均有
+$$
+\E[d(X_s,X_t)^q]\leq C|t-s|^{1+\eps}
+$$
+则必然存在 $X$ 的一个 modification $\tilde X$，其路径对于一切 $\alpha\in(0,\eps/q)$ 都是 $\alpha$-**Hölder 连续** 的。也即，存在有限系数 $C_\alpha(\omega)$ 使得
+$$
+d(\tilde X_s,\tilde X_t)\leq C_\alpha(\omega)|t-s|^\alpha
+$$
+
+> [!TIP]
+>
+> 对于区间 $I$ 上的函数 $f$，其是 $\alpha$-Hölder 连续的，如果处处均有
+> $$
+> |f(s)-f(t)|\leq C|s-t|^\alpha
+> $$
+> 连续性存在以下强弱关系：
+>
+> - 常规意义的连续。
+> - 一致连续。
+> - Hölder 连续。
+> - Lipschitz 连续，相当于 $\alpha=1$ 的 Hölder 连续，关注的是系数 $C$ 的界。
+> - 可微。
+>
+> 特别地，$\alpha>1$ 的实函数只能是常数。因此一般只会考虑 $\alpha\in(0,1]$ 的场景。
+
+> [!NOTE]
+>
+> 注意到 Kolmogorov 引理只适用于有界区间。在无界区间的场合，可以拆分成有界区间并得到局部性质，但是这只能得到 **局部 Hölder 连续性**，不存在全局一致的系数 $C$。
+
+> 证明：不妨考虑 $I=[0,1]$ 的场合。使用 **Dyadic Decomposition** 思想，对二进制分数时刻 $j/2^n$ 先证明，然后由稠密性推广到全时间段。
+>
+> 首先由 Markov 不等式得到
+> $$
+> \P[d(X_s,X_t)\geq a]\leq\dfrac{\E[d(X_s,X_t)^q]}{a^q}\leq Ca^{-q}|t-s|^{1+\eps}
+> $$
+> 取 $2^{-n}$ 分解，令 $s=(j-1)2^{-n},t=j2^{-n}$，则有
+> $$
+> \P[d(X_{(j-1)2^{-n}},X_{j2^{-n}})\geq a]\leq Ca^{-q}2^{-n(1+\eps)}
+> $$
+> 求和，有
+> $$
+> \sum\P[\dots]\leq Ca^{-q}2^{-n\eps}
+> $$
+> 令 $a=2^{-n\alpha}$，则只要 $\alpha<\eps/q$ 则右侧指数 $q\alpha-\eps<0$，当 $n\to\infty$ 时极限收敛。由 Borel-Cantelli，从某个 $n_0(\omega)$ 开始，所有的 dyadic 分割点的距离被限制在 $a=2^{-n\alpha}$ 以内，存在全局随机常数 $K_\alpha(\omega)$。
+>
+> 引理：如果对于所有 dyadic 相邻点 $s=(j-1)2^{-n},t=j2^{-n}$ 都有 Hölder 界
+> $$
+> d(f(s),f(t))\leq K|t-s|^{\alpha}
+> $$
+> 则上式对所有 dyadic $s,t$ 均有效，不限于同层的相邻点，只是常数略有变化
+> $$
+> d(f(s),f(t))\leq K\dfrac{2^\alpha+1}{2^\alpha-1}|t-s|^{\alpha}
+> $$
+> 则因为目标空间是完备的且 dyadic 集合是稠密的且 Hölder 连续强于一致连续，所以可以唯一延拓到整个区间上。
+>
+> 这个引理的证明通过对 $s,t$ 进行二进制展开，用三角不等式放缩到展开的每一项，然后在项内使用同层界得到。
+
+> [!TIP]
+>
+> 总结：证明对同层成立->由二进制展开引理拓展到对 dyadic 点成立->由完备性+一致连续性唯一延拓到整个区间。
+>
+> Kolmogorov 引理表明，pairwise 的性质可以得到 pathwise 的性质。
+
+推论：任何 PBM 都存在 $\alpha$-Hölder 连续的 modification，其中 $\alpha\in(0,1/2)$。
+
+> $B_t-B_s\sim\c N(0,t-s)$，于是取 $U$ 为 unit Gaussian 得到 $B_t-B_s\sim\sqrt{t-s}U$。则对一切 $q>0$ 有
+> $$
+> \E|B_t-B_s|^q=(t-s)^{q/2}\E[|U|^q]=C_q|t-s|^{q/2}
+> $$
+> 选取合适的 $q$ 可以得到任何 $\alpha\in(0,1/2)$ 的结论。
+
+------
+
+定义：**Brownian Motion** 是连续的 PBM。
+
+> [!TIP]
+>
+> 由前述分析，连续的 PBM 的所有 modification 彼此 indistinguishable；又知存在 $(0,1/2)$-Hölder 连续的 modification，于是只要连续性即可直接推出所有 Hölder 连续性。
+
+固定一个 BM $B$ 并定义 $\c F_t=\sigma(B_s:s\leq t)$，定义 $\c F_{0^+}=\bigcap_{s>0}\c F_s$。
+
+**Blumenthal 0-1 律**：$\c F_{0^+}$ 是 trivial 的。也即，对于 $A\in\c F_{0^+}$，有 $\P[A]\in\cur{0,1}$。
+
+> 取 $0<t_1<\dots<t_k$，取 $g:\R^k\to\R$ 为有界可测函数，则对于 $A\in\c F_{0^+}$，有
+> $$
+> \E[1_A g(B_{t_1},\dots,B_{t_k})]=\lim_{\eps\to0}\E[1_Ag(B_{t_1}-B_\eps,\dots,B_{t_k}-B_\eps)]
+> $$
+> 内层的 BM 连续没问题，但是外层的 $g$ 只保证有界可测保证连续怎么办？首先易知其对连续 $g$ 成立，然后使用某个 **单调类定理** 推广到一般场景。或者使用所谓的 **Lusin 定理**：可测函数 a.s. 连续。
+>
+> 然后因为每个 $B_{t_i}-B_\eps$ 与 $\c F_\eps$ 独立，所以必然与$\c F_{0^+}$ 独立，因此有
+> $$
+> \E[1_Ag(B_{t_1}-B_\eps,\dots,B_{t_k}-B_\eps)]
+> \\=\P[A]\E[g(B_{t_1}-B_\eps,\dots,B_{t_k}-B_\eps)]
+> \\\to\P[A]\E[g(B_{t_1},\dots,B_{t_k})]
+> $$
+> 因为其对一切 $g$ 成立，于是 $\c F_{0^+}$ 与 $\sigma(B_{t_1},\dots,B_{t_k})$ 独立。用 $\pi$-$\lambda$ 可以推广到 $\sigma(B_t,t\geq0)$。然而 $\c F_{0^+}\sube\sigma(B_t,t\geq0)$，这说明 $\c F_{0^+}$ **与它自己独立**。
+>
+> 这个性质很古怪，但展开来一看，就有
+> $$
+> P(A)=\P(A\cap A)=P(A)P(A)=P(A^2)
+> \\P(A)\in\cur{0,1}
+> $$
+> 因此 $\c F_{0^+}$ 是 trivial 的。
+
+> [!NOTE]
+>
+> Blumenthal 定律直接为所有 **零点处极限性质** 提供了合法性：
+>
+> - 「零点处导数是否存在」属于 $\c F_{0^+}$。事实上其 w.p.$1$ 不可导。
+> - 「是否在任意小时间内穿过 $x$ 轴一次」同样。其 w.p.$1$ 穿过。
+> - 局部增长率 $\limsup B_t/\sqrt t>1$ 这种增长率也是。
+> - 「第一步是否往上」呢？事实上这个东西不是良定义的：在 $0$ 附近任意短的区间内，它都向上向下震荡了无穷多次。
+
+形式化地，BM 有如下关键性质：
+
+- 局部震荡性质：对任何 $\eps>0$ 均有
+    $$
+    \P[\sup_{0<s<\eps} B_s>0,\inf_{0<s<\eps}B_s<0]=1
+    $$
+    即，$0$ 附近的任意区间内都同时向上向下震荡。
+
+- 非单调性：$B_t$ 在任何非退化区间上均没有单调性。
+
+- 全局震荡性质：
+    $$
+    \P[\limsup_{t\to\infty} B_t=+\infty,\liminf_{t\to\infty} B_t=-\infty]=1
+    $$
+    也即，其会任意多次遍历整个实数轴。
+
+- Hitting Time 性质：$T_a=\inf\cur{t\geq0: B_t=a}$（特别地，$\inf\varnothing=\infty$）满足
+    $$
+    \P[\forall a\in\R,T_a<\infty]=1
+    $$
+    也即，BM 总是会到达任意位置。
+
+> (1)：定义
+> $$
+> A=\bigcap_{p\in\N}\cur{\sup_{0\leq s\leq2^{-p}}B_s>0}
+> $$
+> 则因为其是单调降序列的交集，所以有 $A\in\c F_{0^+}$，且
+> $$
+> \P[A]=\lim_{p\to\infty}\P[\sup_{0\leq s\leq2^{-p}}B_s>0]
+> \\\geq\lim_{p\to\infty}\P[B_{2^{-p}}>0]=1/2
+> $$
+> 由 Blumenthal 0-1 律知其为 $1$。
+>
+> (2) 由弱 MC 性质，对于一切 $q\in\Q_+$，$B_{t+q}$ 均是 BM，于是
+> $$
+> \P[\forall\eps>0,\sup_{q\leq s\leq q+\eps} B_s>B_q,\inf_{q\leq s\leq q+\eps}B_s<B_q]=1
+> $$
+> (3) 有
+> $$
+> \lim_{\delta\to0}\P[\sup_{0\leq s\leq 1} B_s\geq\delta]=\P[\sup_{0\leq s\leq 1} B_s>0]=1
+> $$
+> 用缩放不变性得到
+> $$
+> \P[\sup_{0\leq s\leq 1} B_s\geq\delta]=\P[\sup_{0\leq s\leq 1/\delta^2} B_s\geq1]\to\P[\sup_{s\geq0}B_s\geq1]
+> $$
+> 因此 $\P[\sup_{s\geq0}B_s\geq1]=1$。再次用缩放不变性得到 $\P[\sup_{s\geq0}B_s\geq a]=1$，故 $\P[\limsup_{t\to\infty}B_t=\infty]=1$。另一侧同理。
+>
+> (4) 是 (3) 和连续性的直接推论。
+
+定义：对于 $f:[a,b]\to\R$，定义其 **变差** (variation) 为
+$$
+\sup\cur{\sum_{i=1}^p|f(t_j)-f(t_{j-1})|:a=t_0<t_1<\dots<t_p=b}
+$$
+换言之，其是所有震荡的绝对值之和。
+
+定理：BM 在任何非退化区间上的变差均为无穷。
+
+> 由平移不变性，只对 $[0,t]$ 分析。
+>
+> 由 Gaussian 白噪声的分解分析，有
+> $$
+> \sum G([t_{j-1},t_j])^2=\sum(B_{t_j^n}-B_{t_{j-1}^n})^2\to t
+> $$
+> 把平方拆开来
+> $$
+> \leq\sup|B_{t_j^n}-B_{t_{j-1}^n}|\sum|B_{t_j^n}-B_{t_{j-1}^n}|
+> $$
+> 由连续性知第一项趋于 $0$，那么为了保证乘积趋于 $\geq t$ 的值，第二项必须发散。
+
+------
+
+定义：随机变量 $T\in[0,\infty]$ 是 **停时** 如果对一切 $t\geq0$ 都有 $\cur{T\leq t}\in\c F_t$。同时易知
+$$
+\cur{T<t}=\bigcup_{q\in\Q\cap[0,t)}\cur{T\leq q}\in\c F_t
+$$
+则 hitting time $T_a=\inf\cur{t:B_t=a}$ 是停时：
+$$
+\cur{T_a<t}=\bigcap_{n=1}^\infty\bigcup_{q\in\Q\cap[0,t]}\cur{B_q\in(a-1/n,a+1/n)}
+$$
+对于停时 $T$，定义 $\c F_T=\cur{A\in\c F_\infty:\forall t\geq0,A\cap\cur{T\leq t}\in\c F_t}$。它的实际意义是直到随机时刻 $T$ 为止积攒的信息。
+
+则对于一切 $s\geq0$，考虑 $1_\cur{s\leq T}B_s$，也即 cap 到停时的 BM。我们希望证明对于一切 Borel Set $A$ 都有 $\cur{1_\cur{s\leq T}B_s\in A}\in\c F_T$。由 $\sigma$-代数的性质，只需要对所有 $A\not\ni0$ 证明。此时有
+$$
+\cur{1_\cur{s\leq T}B_s\in A}=\cur{B_s\in A}\cap\cur{s\leq T}
+$$
+于是
+$$
+\cur{1_\cur{s\leq T}B_s\in A}\cup\cur{T\leq t}=\begin{cases}\varnothing&(s>t)\\\cur{B_s\in A}\cap\cur{s\leq T\leq t}&(s\geq t)\end{cases}
+$$
+即知 $1_\cur{s\leq T}B_s\in\c F_T$。同理可知有
+$$
+1_\cur{T<\infty}B_T=\lim_n\sum1_\cur{j2^{-n}\leq T<(j+1)2^{-n}}B_{j2^{-n}}\in\c F_T
+$$
+定理：**强 Markov 性质**。对于 noticeably 有 $T<\infty$ 的停时 $T$，定义
+$$
+B_t^{(T)}=1_\cur{T<\infty}(B_{T+t}-B_T)
+$$
+则在 $T<\infty$ 时，过程 $\cur{B_t^{(T)}}$ 是与 $\c F_T$ 独立的 BM。
+
+> 首先考虑 $T<\infty$ a.s. 的场合。此时只需要证明对于任意可数个递增时刻 $t_{1:p}$ 和任意 $A\in\c F_T$，以及任意有界可测 $g:\R^p\to\R$，都有
+> $$
+> \E[1_Ag(B_{t_1}^{(T)},\dots,B_{t_p}^{(T)})]=\P[A]\E[g(\dots)]
+> $$
+> 定义 $\up{t}_n=\up{2^nt}2^{-n}$，也即上取整到 $2^{-n}$ 精度的结果。则因为 BM 是连续的，有
+> $$
+> g(B_{t_1}^{(T)},\dots,B_{t_p}^{(T)})=\lim_n g(B_{t_1}^{(\up{T}_n)},\dots,B_{t_1}^{(\up T_n)})
+> $$
+> 由 DCT 可知
+> $$
+> g(B_{t_1}^{(T)},\dots,B_{t_p}^{(T)})=\lim_n\E[1_Ag(B_{t_1}^{(\up{T}_n)},\dots,B_{t_p}^{(\up T_n)})]
+> \\=\lim\sum\E[1_{A\cap\cur{(k-1)2^{-n}<T\leq k2^{-n}}}g(B_{k2^{-n}+t_1}-B_{k2^{-n}},\dots)]
+> $$
+> 有 $A\cap\cur{(k-1)2^{-n}<T\leq k2^{-n}}\in\c F_{k2^{-n}}$，于是套弱 Markov 性质即可。
+>
+> 在 $\P[T=\infty]>0$ 的场合，也可以 condition over $\cur{T<\infty}$ 得到相似证明。
+
+定理：**Reflection Principle**。对于 $t>0$，定义 $S_t=\sup_{s\leq t}B_s$ 也即前缀最大值，则对于 $a\geq0$ 和 $b\leq a$，有
+$$
+\P[S_t\geq a,B_t\leq b]=\P[B_t\geq2a-b]
+$$
+特别地，$S_t$ 和 $|B_t|$ 有相同分布。
+
+> 由前文的 Hitting Time 性质，$T_a=\inf\cur{t\geq0: B_t=a}$ a.s. 有限。定义 $\cur{B'_t=B_{t+T_a}-a}$，由强 Markov 性质知 $B'$ 与 $F_{T_a}$ 独立且是 BM。则
+> $$
+> \P[S_t\geq a,B_t\leq b]=\P[T_a\leq t,B'_{t-T_a}\leq b-a]
+> \\=\E[1_\cur{T_a\leq t}\P[B'_{t-T_a}\leq b-a\mid\sigma(T_a)]]
+> \\=\E[1_\cur{T_a\leq t}\P[-B'_{t-T_a}\leq b-a\mid\sigma(T_a)]]
+> \\=\P[T_a\leq t,B'_{t-T_a}\geq a-b]
+> \\=\P[T_a\leq t,B_t\geq 2a-b]
+> \\=\P[B_t\geq2a-b]
+> $$
+> 其中最后一行可以扔掉 $T_a\leq t$ 是因为 $2a-b\geq a$ 且 $B$ 是连续过程。
+>
+> 且有
+> $$
+> \P[S_t\geq a]=\P[B_t\geq a]+\P[S_t\geq a,B_t\leq a]
+> \\=2\P[B_t\geq a]=\P[|B_t|\geq a]
+> $$
+> 因此 $S_t$ 和 $|B_t|$ 同分布。
+
+> [!TIP]
+>
+> 这个证明的核心思想是，把 $T_a$ 后的过程翻转。方法和 Catalan 数的处理类似。
+
+推论：$T_a$ 和 $a^2/B_1^2$ 同分布。
+
+> $$
+> \P[T_a\leq t]=\P[S_t\geq a]
+> \\=\P[|B_t|\geq a]=\P[tB_1^2\geq a^2]=\P[a^2/B_1^2\leq t]
+> $$
+
+而我们知道 $B_1\sim\c N(0,1)$，因此 $\P[T_a=\infty]=\P[B_1=0]=0$，但容易由 Gaussian 表达式知 $\E[T_a]=\infty$。
+
+现在显式求一下 MGF 的表达式。
+$$
+\begin{align*}
+\E[\exp(-\lambda T_a)]=\dfrac1{\sqrt{2\pi}}\int\exp(-\lambda a^2/x^2-x^2/2)\d x
+\\f(u):=\dfrac1{\sqrt{2\pi}}\int\exp(-u/x^2-x^2/2)\d x
+\\=\dfrac2{\sqrt{2\pi}}\int_0^\infty\exp(-u/x^2-x^2/2)\d x
+\\f'(u)=\dfrac2{\sqrt{2\pi}}\int_0^\infty\exp(-u/x^2-x^2/2)(-1/x^2)\d x
+\\=-\dfrac2{\sqrt{2\pi}}\int_0^\infty\exp(-y^2/2-u/y^2)\d y/\sqrt{2u}&&(y=\sqrt{2u}/x)
+\\=-f(u)/\sqrt{2u}
+\end{align*}
+$$
+解 ODE 得知 $f(u)=\exp(-\sqrt{2u})$，于是 $\E[\exp(-\lambda T_a)]=\exp(-a\sqrt{2\lambda})$。
+
+练习：对于 1D standard BM $\cur{B_t}_{t\geq0}$，求 $T\to\infty$ 时的极限分布
+$$
+A_T:=\left(\int_0^{T^2}\exp(B_t)\d t\right)^{1/T}
+$$
+
+> 首先用 scale 不变性
+> $$
+> W_s:=\dfrac1TB_{T^2s}
+> \\A_T=\left(T^2\int_0^1\exp(TW_s)\d s\right)^{1/T}
+> $$
+> Intuitive 地，$A_T$ 会趋于 $m:=\max_{s=0}^1W_s$。形式化地，由连续性，对于一切 $\eps>0$，都存在 $(a,b)$ 使得其中所有 $s$ 都有 $W_s\geq m-\eps$，因此 $A_T\geq[\exp(T(m-\eps))(b-a)]^{1/T}=\exp(m-\eps)(b-a)^{1/T}$，当 $T\to\infty$ 时有 $A_T\geq\exp(m-\eps)$，$\eps\to0$ 即可。
+>
+> 由 reflection principle，$m$ 的分布是 standard Gaussian 的绝对值。
+
+------
+
+定理 (**重对数律**)：对于 BM $\cur{B_t}$，a.s. 有
+$$
+\limsup_{t\to\infty}\dfrac{B_t}{\sqrt{2t\log\log t}}=1,\liminf_{t\to\infty}\dfrac{B_t}{\sqrt{2t\log\log t}}=-1
+\\\limsup_{t\to0}\dfrac{B_t}{\sqrt{2t\log\log 1/t}}=1,\liminf_{t\to0}\dfrac{B_t}{\sqrt{2t\log\log1/t}}=-1
+$$
+
+> 显然只需要证第一个，然后第二个由 BM 关于取反的封闭性知，第三、四个由 BM 的时间反演性质知。
+>
+> 定义 $\phi(t)=\sqrt{2t\log\log t}$。
+>
+> 考虑以几何级数 $r^n$ 采样，并确保在采样点处的约束。具体地，对于固定的 $r>1$ 和 $\rho>1$，定义
+> $$
+> A_n:=\cur{\sup_{0\leq t\leq r^n}B_t\geq\rho\phi(r^n)}
+> \\\P[A_n]=\P[|B_{r^n}|\geq\rho\phi(r^n)]
+> \\=\P[|Z|\geq\rho\phi(r^n)/\sqrt{r^n}]
+> \\\leq\exp(-\rho^2\phi(r^n)^2/2r^n)=2(n\log r)^{-\rho^2}
+> $$
+> 其中 $Z\sim\c N(0,1)$，且 Gaussian 分布满足对于 $x>0$ 有
+> $$
+> (1/x-1/x^3)\exp(-x^2/2)\leq\P[Z\geq x]\leq e^{-x^2/2}/x
+> $$
+> 因为 $\rho>1$，对全体 $n$ 求和后的结果收敛，因此 B-C 引理可知对于足够大的 $n$ 有 a.s.
+> $$
+> \sup_{0\leq t\leq r^n}B_t\leq\rho\phi(r^n)
+> $$
+> 对于足够大的 $t$，假设有 $r^{n-1}\leq t<r^n$，则
+> $$
+> \begin{align*}
+> B_t/\phi(t)\leq\rho\phi(r^n)/\phi(t)\leq\rho\sqrt r
+> \\\P[\limsup_{t\to\infty}B_t/\phi(t)\leq\rho\sqrt r]=1
+> \\\P[\limsup_{t\to\infty}B_t/\phi(t)\leq1]=1&&(\rho,r\to1)
+> \end{align*}
+> $$
+> 现在证明另一侧。这需要看增量 $D_n=B_{r^n}-B_{r^{n-1}}$。由独立增量性质，有
+> $$
+> \P[D_n]\geq\dfrac{\sqrt{r^n-r^{n-1}}}{2\phi(r^n-r^{n-1})}\exp(-\dfrac{\phi(r^n-r^{n-1})^2}{2(r^n-r^{n-1})})
+> \\\geq c/n\sqrt{\log n}
+> $$
+> 其中 $c$ 是与 $r$ 相关的常数。因此 $\sum\P[D_n]$ 发散，由第二 B-C 引理，有无限多个 $n$ 使得
+> $$
+> B_{r^n}\geq B_{r^{n-1}}+\phi(r^n-r^{n-1})
+> $$
+> 而对于上界的证明可知 a.s. 对于足够大的 $n$，有 $B_{r^{n-1}}\geq-2\phi(r^{n-1})$。于是对于无穷多个 $n$ 有
+> $$
+> \begin{align*}
+> B_{r^n}\geq\phi(r^n-r^{n-1})-2\phi(r^{n-1})
+> \\\limsup_{t\to\infty}B_t/\phi(t)\geq1-3/\sqrt r
+> \\\P[\limsup_{t\to\infty}B_t/\phi(t)\geq1]=1&&(r\to\infty)
+> \end{align*}
+> $$
+
