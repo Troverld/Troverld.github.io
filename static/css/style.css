@@ -4,8 +4,11 @@ body { max-width: 860px; margin: auto; padding: 0 28px; overflow-wrap: anywhere;
 a { color: inherit; text-underline-offset: .2em; }
 a:hover { text-decoration-thickness: 2px; }
 .site-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; border-bottom: 1px solid #ddd; padding: 24px 0; }
+.site-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.site-logo { display: block; width: auto; height: calc(1.25rem * 1.8 + .9rem * 1.8 + 4px); flex-shrink: 0; border-radius: 10px; }
+.site-brand-text { min-width: 0; }
 .site-nav { display: flex; flex-wrap: wrap; gap: 16px; margin-left: auto; }
-.site-title { font-family: "Noto Sans CJK SC", "Microsoft YaHei", "SimHei", sans-serif; font-size: 1.25rem; font-weight: 800; text-decoration: none; }
+.site-title { display: block; font-family: "Noto Sans CJK SC", "Microsoft YaHei", "SimHei", sans-serif; font-size: 1.25rem; font-weight: 800; text-decoration: none; }
 .site-motto { margin: 4px 0 0; }
 main { min-height: 65vh; padding: 32px 0 48px; }
 h1, h2, h3, h4, h5, h6 { line-height: 1.4; font-weight: 650; }
@@ -73,6 +76,7 @@ pre.mermaid { background: #fff; text-align: center; }
 button { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: .2em; cursor: pointer; }
 button:disabled { color: #777; cursor: wait; }
 .site-footer { padding: 20px 0; border-top: 1px solid #ddd; }
+.footer-logo { width: 1em; height: 1em; vertical-align: middle; }
 :focus-visible { outline: 2px solid #333; outline-offset: 4px; }
 @media (max-width: 600px) { body { padding: 0 18px; } main { padding-top: 24px; } h1 { font-size: 1.7em; } pre { padding: 12px; } }
 @media print { .site-header, .site-footer, .comments, .post-sidebar { display: none; } body { max-width: none; padding: 0; } .post-layout.has-toc .post-content { padding-top: 0; } }
