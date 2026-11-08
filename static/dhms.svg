@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="499" height="499" viewBox="0 0 499 499" role="img" aria-labelledby="title desc">
+  <title id="title">DHMS</title>
+  <desc id="desc">戴紫红色帽子、银灰色头发的人物，身穿蓝色上衣，一手握着金属门把手，另一手举起。</desc>
+  <defs>
+    <linearGradient id="hat" x1="40" y1="110" x2="310" y2="-35" gradientUnits="userSpaceOnUse"><stop stop-color="#94245f"/><stop offset="1" stop-color="#a12b66"/></linearGradient>
+    <linearGradient id="hair" x1="110" y1="70" x2="330" y2="274" gradientUnits="userSpaceOnUse"><stop stop-color="#bfb9c3"/><stop offset=".52" stop-color="#c9c3cc"/><stop offset="1" stop-color="#c2bcc7"/></linearGradient>
+    <linearGradient id="skin" x1="130" y1="130" x2="300" y2="300" gradientUnits="userSpaceOnUse"><stop stop-color="#fbd0ae"/><stop offset="1" stop-color="#fbcba9"/></linearGradient>
+    <linearGradient id="shirt" x1="276" y1="272" x2="276" y2="490" gradientUnits="userSpaceOnUse"><stop stop-color="#1598b9"/><stop offset="1" stop-color="#119abb"/></linearGradient>
+    <linearGradient id="metal" x1="118" y1="271" x2="153" y2="276" gradientUnits="userSpaceOnUse"><stop stop-color="#9b9682"/><stop offset=".16" stop-color="#d5cdb5"/><stop offset=".35" stop-color="#fff3d8"/><stop offset=".55" stop-color="#f5e9cc"/><stop offset=".78" stop-color="#b8b29d"/><stop offset="1" stop-color="#dfd7bd"/></linearGradient>
+    <linearGradient id="bend" x1="155" y1="232" x2="159" y2="263" gradientUnits="userSpaceOnUse"><stop stop-color="#ddd7c2"/><stop offset=".22" stop-color="#fff4db"/><stop offset=".55" stop-color="#ddd4b8"/><stop offset=".86" stop-color="#b8b09b"/><stop offset="1" stop-color="#d8cdb2"/></linearGradient>
+    <linearGradient id="plate" x1="187" y1="240" x2="220" y2="276" gradientUnits="userSpaceOnUse"><stop stop-color="#e1dcc9"/><stop offset=".45" stop-color="#d2cebb"/><stop offset="1" stop-color="#b9b6a3"/></linearGradient>
+    <linearGradient id="plateTop" x1="181" y1="210" x2="200" y2="202" gradientUnits="userSpaceOnUse"><stop stop-color="#e3dcc8"/><stop offset=".5" stop-color="#eee5d2"/><stop offset="1" stop-color="#d4cdba"/></linearGradient>
+    <linearGradient id="plateEdge" x1="199" y1="270" x2="219" y2="270" gradientUnits="userSpaceOnUse"><stop stop-color="#aaa996"/><stop offset=".3" stop-color="#f8f0d8"/><stop offset=".7" stop-color="#dedbc7"/><stop offset="1" stop-color="#b6b5a4"/></linearGradient>
+  </defs>
+  <g transform="translate(0 15)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Hair behind the face and hands. -->
+    <path fill="url(#hair)" stroke="#716b76" stroke-width="2.6" d="M42 106C28 135 17 179 19 213c1 34 11 65 28 71-5-13-6-31-5-48 6 28 23 57 47 64l-6-25c12 16 29 24 44 26l-3-17c22 15 46 18 56 18-12-9-20-20-22-28l161 7c14-6 24-16 31-26l-12 2c19-5 31-14 39-30 1 12-2 23-7 31 18-1 28-11 34-23l-6 18c19-10 25-32 28-57l4 12c0-20-5-40-9-58L400 34C282-1 166 64 42 106Z"/>
+    <path fill="#79717d" fill-opacity=".65" d="M42 107C124 72 232 18 316 27c30-1 54 4 83 7l6 18C286 27 230 48 143 76Z"/>
+    <!-- Body and the raised sleeve. -->
+    <path fill="url(#shirt)" stroke="#07607c" stroke-width="2.8" d="M74 345c-18 19-37 47-33 67 2 22 23 28 51 27l54-3c10 13 18 31 28 49h257c-11-41-25-80-39-109 35-25 72-28 108-51V199c-8-17-16-32-24-44-17 8-31 13-50 13l30 99c-29 14-88 23-142 44-7 3-13 0-15-8l-3-19-64 11 3 25c1 6-5 9-14 11l-57 13Z"/>
+    <path fill="#075b73" d="M42 416c12 11 35 4 48-10l69-6-13 35c-26 6-52 5-72 3-18-1-28-8-32-22Z"/>
+    <path fill="#07617b" d="m145 434 18-8 18-1-22 6 30 15-22-5-11-3 13 15-13-10Zm-57-7 23-15-7 8Zm287-32c5-23 17-41 38-51-18 13-27 28-33 42l21-17Zm3-26c2-11 7-18 13-23-5 8-9 15-13 23Zm53-54c13-16 20-33 25-48l-7 29Zm21-4c6-14 8-24 4-44 10 5 15 13 16 17-6-7-10-9-13-10 3 14 0 26-7 37Z"/>
+    <!-- Neck and chin shadow. -->
+    <path fill="url(#skin)" stroke="#694f3b" stroke-width="2.4" d="M231 289c1 11 5 28 3 35-1 4-7 6-13 7 7 12 26 20 43 19 22-1 43-15 51-35-12 2-16-4-18-13l-2-24Z"/>
+    <path fill="#dc987b" d="m232 290 64-13-1 13c-17 12-41 18-61 14Z"/>
+    <!-- Face, with the silhouette following the original fringe. -->
+    <path fill="url(#skin)" d="M109 132c2 40 10 76 24 105l21 35c14 17 41 24 77 24 35 1 66-13 91-32l12-13-24 4c24-17 33-41 35-76 3-36-3-73-15-100-1 16-4 32-10 44-21-13-49-49-61-85-3 50-13 91-32 121-28-7-51-42-62-76-4 32-14 63-33 97-10-16-18-31-23-48Z"/>
+    <!-- Eye and expressive brows. -->
+    <path fill="#159bb8" d="M156 164c8-5 22-8 37-9 7 9 11 22 11 34 0 9-2 16-7 22l-23-17 3 22c-10-12-17-30-21-52Z"/>
+    <ellipse cx="179" cy="181.5" rx="4.7" ry="10.7" transform="rotate(-9 179 181.5)" fill="#5bbbd0"/>
+    <path d="M145 175c14-12 33-20 50-21" fill="none" stroke="#65431e" stroke-width="8"/>
+    <path d="M291 161c11-12 26-17 40-18" fill="none" stroke="#62401e" stroke-width="7.3"/>
+    <path d="M290 167c12 1 23 5 31 11" fill="none" stroke="#61401f" stroke-width="5.4"/>
+    <path d="m256 257 14-2" fill="none" stroke="#654122" stroke-width="4.7"/>
+    <!-- Raised hand and fingers. -->
+    <path fill="url(#skin)" stroke="#795c48" stroke-width="2.3" d="m380 32 12 47-2 15c-7 4-10 18-9 31 0 11 5 17 16 21l29 10 7 12c15 3 33-1 42-12 6-16 3-39-4-59-5-16-13-25-21-26-4-2-8-2-10 0-3-8-8-8-11-4l-12-31Z"/>
+    <path d="m400 39 11 35m18-7 13 38c3 8 10 8 12 2m-14-36 15 34c3 4 8 3 8-2 0-7-4-16-7-22M390 94c8-1 18-1 25 0 6 1 9 7 5 11-4 4-11 5-19 3l-5 13" fill="none" stroke="#8a6852" stroke-width="2"/>
+    <path fill="#8a6852" d="M416 119c8 2 14 7 18 16-5-7-10-10-18-16Z"/>
+    <!-- Purple hat brim, in front of the hair and raised fingers. -->
+    <path fill="url(#hat)" stroke="#472934" stroke-width="3.3" d="M-2-16h503v36c-42 19-84 22-128 14C293 16 260 29 204 46 128 72 56 95-2 128Z"/>
+    <!-- Hand gripping the metal door handle. -->
+    <path fill="url(#skin)" stroke="#815e45" stroke-width="2.7" d="M122 289c-16 0-28 6-38 17-18 20-20 49-11 77 8 24 27 33 52 32 22 0 44-6 48-17 2-3 1-7 0-11 8-6 10-15 6-23 8-6 7-17-1-24 8-6 8-15 3-22-6-8-16-9-28-10l-2-25Z"/>
+    <!-- Backplate: bevels and the dark keyhole remain separate vector shapes. -->
+    <path fill="#8c8a76" stroke="#847e6c" stroke-width="2.4" d="M174 198c0-5 2-7 6-7 2 0 4 1 6 4l29 34c2 2 3 5 3 10v64c0 5-2 7-6 7l-11 1c-3 0-5-2-7-5l-17-25Z"/>
+    <path fill="url(#plate)" d="m176 197 5-3 20 37v75l-5-3-18-25Z"/>
+    <path fill="url(#plateTop)" stroke="#ada996" stroke-width="1.3" d="M176 195q0-3 4-2l3 2 30 32q2 2 1 3l-13 1Z"/>
+    <path d="m177 198 23 34" fill="none" stroke="#faf2dc" stroke-width="1.9"/>
+    <path fill="#faf8ec" stroke="#aaa793" stroke-width="1.2" d="m201 231 12-1q4 2 4 7v4l-4-4-11 1-2 3v-7Z"/>
+    <path fill="url(#plateEdge)" stroke="#9b9987" stroke-width="1.5" d="m202 237 11-1c2 0 3 1 3 4v62c0 4-1 6-4 6l-9 1c-2 0-3-2-3-4v-65c0-2 0-3 2-3Z"/>
+    <path fill="#ffffed" fill-opacity=".65" d="m202 239 2 1v65h-2Z"/>
+    <!-- Sideways keyhole (O◄), foreshortened on the backplate. -->
+    <path fill="#57594c" d="M191 255c0-3-1.4-5.5-3.2-5.8-2-.3-3.3 2-3.3 5.3s1.4 5.9 3.3 6.2c1.5.3 2.6-1 3-3l4.7 9v-15Z"/>
+    <path fill="#1e281e" d="M190.4 255.2c0-2.6-1.1-4.7-2.5-4.9-1.5-.2-2.5 1.7-2.5 4.4s1.1 4.9 2.5 5.1c1.2.2 2.1-1.1 2.4-3l4.2 8v-12Z"/>
+    <!-- Curved hollow-looking metal grip and its highlights. -->
+    <path fill="url(#metal)" stroke="#8c8774" stroke-width="2.7" d="m121 310 1-41c1-15 7-25 20-31 8-5 17-5 39-6 4 5 5 17 2 26-5 3-15 2-22 4-7 1-9 5-9 12l-1 37c-10 3-20 3-30-1Z"/>
+    <path fill="url(#bend)" d="M124 272c0-16 7-26 19-32 10-5 22-4 37-5 2 4 2 14 1 20-13 2-22 1-30 6-5 3-8 7-9 13Z"/>
+    <path d="m127 306 1-36c1-13 8-22 18-26 9-4 19-4 31-4" fill="none" stroke="#fff7e2" stroke-width="5.7"/>
+    <path d="m133 306 1-34c1-11 6-18 15-21 7-3 17-3 29-3" fill="none" stroke="#f7efd7" stroke-width="3.1" stroke-opacity=".65"/>
+    <path d="m147 307 1-33c0-9 5-13 13-15l19-2" fill="none" stroke="#aba58e" stroke-width="2"/>
+    <!-- Fingers overlap the bottom of the grip. -->
+    <path fill="url(#skin)" d="M112 310c16 4 29 4 42 1 13-1 21 2 25 9 5 8 4 14-3 18-12 8-35 8-57 5l4 27c19 2 40 1 53-5l-3 21c-15 9-34 7-49 6Z"/>
+    <g fill="none" stroke="#805e47" stroke-width="2.7">
+      <path d="M114 309c14 5 28 4 40 2 13-1 23 3 27 10 5 9 0 15-9 19-14 6-34 6-53 3"/>
+      <path d="M178 340c7 6 8 16 1 22-9 9-35 10-58 7"/>
+      <path d="M179 364c5 8 2 17-6 22-12 8-32 8-50 6"/>
+    </g>
+  </g>
+</svg>
