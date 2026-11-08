@@ -13,14 +13,14 @@ import secrets
 import tempfile
 import threading
 import webbrowser
-from datetime import date
+from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent
 METADATA = ROOT / "data" / "metadata.json"
-FIELDS = ("public_title", "public_description", "real_title", "real_description", "date")
+FIELDS = ("public_title", "public_description", "real_title", "real_description", "date", "created_at")
 TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
 
@@ -60,6 +60,13 @@ def save_metadata(value, expected):
             if key == "date" and field:
                 if date.fromisoformat(field).isoformat() != field:
                     raise ValueError("日期必须使用 YYYY-MM-DD")
+            if key == "created_at" and field:
+                try:
+                    parsed = datetime.strptime(field, "%Y-%m-%d %H:%M")
+                except ValueError:
+                    raise ValueError("创建时间必须使用 YYYY-MM-DD HH:MM，且为有效时间") from None
+                if parsed.strftime("%Y-%m-%d %H:%M") != field:
+                    raise ValueError("创建时间必须使用 YYYY-MM-DD HH:MM")
     with LOCK:
         if revision() != expected:
             raise FileExistsError("文件已被其他窗口或程序修改，请刷新后重新编辑。")
@@ -86,11 +93,11 @@ h1{font-size:24px}table{border-collapse:collapse;width:100%}th,td{border:1px sol
 th{white-space:nowrap}input,textarea{box-sizing:border-box;min-width:160px;width:100%;font:inherit;padding:6px;border:1px solid #bbb}
 textarea{min-height:76px;resize:vertical}button{font:inherit;background:white;border:1px solid #555;padding:6px 18px;cursor:pointer}
 .scroll{overflow:auto}#status{min-height:1.6em}td:first-child{min-width:160px;overflow-wrap:anywhere}
-</style><h1>博客元数据</h1><p>文件名相对于 content/posts/。留空即使用默认值；公开字段不会从真实字段取值。日期使用 YYYY-MM-DD。</p>
+</style><h1>博客元数据</h1><p>文件名相对于 content/posts/。首页优先显示公开字段，留空则使用真实字段。创建时间精确到分钟，可手动填写或使用运行脚本的系统当前时间；留空的文章置顶并显示“未知”。修改后点击保存。</p>
 <button id="save" disabled>保存</button> <span id="status" role="status">正在读取…</span>
-<div class="scroll"><table><thead><tr><th>文件</th><th>公开标题</th><th>公开简介</th><th>真实标题</th><th>真实简介</th><th>日期</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="scroll"><table><thead><tr><th>文件</th><th>公开标题</th><th>公开简介</th><th>真实标题</th><th>真实简介</th><th>创建时间</th></tr></thead><tbody id="rows"></tbody></table></div>
 <script>
-const fields=['public_title','public_description','real_title','real_description','date'];
+const fields=['public_title','public_description','real_title','real_description','created_at'];
 let metadata={}, revision='', dirty=false;
 const save=document.querySelector('#save'), status=document.querySelector('#status');
 const token=location.hash.slice(1);
@@ -106,7 +113,18 @@ request('/api/metadata').then(data=>{
       const cell=document.createElement('td'), input=document.createElement(field.endsWith('description')?'textarea':'input');
       input.value=typeof metadata[file]?.[field]==='string'?metadata[file][field]:'';
       input.setAttribute('aria-label',file+' '+field);
-      if(field==='date'){input.type='date';}
+      if(field==='created_at'){
+        input.type='datetime-local';input.step='60';input.value=input.value.replace(' ','T');
+        const now=document.createElement('button');now.type='button';now.textContent='当前时间';
+        now.addEventListener('click',async()=>{
+          now.disabled=true;
+          try{
+            const result=await request('/api/time');input.value=result.created_at.replace(' ','T');
+            input.dispatchEvent(new Event('input'));
+          }catch(error){status.textContent=error.message;}finally{now.disabled=false;}
+        });
+        cell.append(now);
+      }
       input.addEventListener('input',()=>{dirty=true;status.textContent='有未保存的修改';});
       input.dataset.field=field;cell.append(input);row.append(cell);
     }
@@ -122,8 +140,9 @@ save.addEventListener('click',async()=>{
       const file=row.dataset.file;
       const entry=next[file] && typeof next[file]==='object' && !Array.isArray(next[file])?next[file]:{};
       for(const input of row.querySelectorAll('input,textarea')){
-        if(!input.checkValidity()) throw Error(file+'：日期格式无效');
-        const value=input.value.trim();if(value) entry[input.dataset.field]=value;else delete entry[input.dataset.field];
+        if(!input.checkValidity()) throw Error(file+'：创建时间格式无效');
+        let value=input.value.trim();if(input.dataset.field==='created_at') value=value.replace('T',' ');
+        if(value) entry[input.dataset.field]=value;else delete entry[input.dataset.field];
       }
       if(Object.keys(entry).length) next[file]=entry;else delete next[file];
     }
@@ -157,11 +176,12 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/":
             self.reply(200, HTML, "text/html; charset=utf-8")
-        elif path == "/api/metadata":
+        elif path in {"/api/metadata", "/api/time"}:
             if not self.authorized():
                 return self.reply(403, {"error": "请从启动脚本给出的完整地址进入。"})
             try:
-                self.reply(200, snapshot())
+                self.reply(200, {"created_at": datetime.now().strftime("%Y-%m-%d %H:%M")}
+                           if path == "/api/time" else snapshot())
             except (OSError, ValueError) as error:
                 self.reply(400, {"error": str(error)})
         else:

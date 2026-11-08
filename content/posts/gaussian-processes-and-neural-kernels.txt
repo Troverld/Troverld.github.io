@@ -1,0 +1,609 @@
+$$
+\newcommand{\R}{\mathbb R}
+\newcommand{\cur}[1]{\left\{#1\right\}}
+\newcommand{\b}{\boldsymbol}
+\newcommand{\c}{\mathcal}
+\newcommand{\t}{\text}
+\newcommand{\ip}[1]{\left<#1\right>}
+\newcommand{\E}{\mathop{\mathbb E}}
+\newcommand{\p}{\partial}
+\newcommand{\d}{\mathrm d}
+\newcommand{\vare}{\varepsilon}
+\newcommand{\bmat}[1]{\begin{bmatrix}#1\end{bmatrix}}
+\newcommand{\i}{\texttt i}
+$$
+
+# I. GPML
+
+## I. Regression
+
+### I. Weight-Space View
+
+训练数据集 $\c D=\cur{(\b x_i,y_i)}_{i\in[n]}$。$\b x$ 的维数是 $D$。列向量 $\b x_i$ 排列得到 $D\times n$ 的矩阵 $X$，$y_i$ 排列得到 $n$ 维列向量 $\b y$，则 $\c D=(X,\b y)$。
+
+带有 Gaussian 噪声的标准线性回归：$f(\b x)=\b x^\top\b w,y=f(\b x)+\vare$。向 $\b x$ 中额外添加一个值为一的维度可以撤掉 bias。$\vare\sim\c N(0,\sigma_n^2)$。
+
+通过 play with Gaussian，可以得到在该设置下
+$$
+p(\b y\mid X,\b w)=\prod_{i\in[n]}p(y_i\mid\b x_i,\b w)=\c N(X^\top\b w,\sigma_n^2I)
+$$
+在 Bayesian Learning 的语境下，我们对 $\b w$ 有一个先验，一般是零均值的 Gaussian $\b w\sim\c N(\b 0,\Sigma_p)$。此时计算后验分布
+$$
+p(\b w\mid\b y,X)=\dfrac{p(\b y\mid X,\b w)p(\b w)}{p(\b y\mid X)}
+$$
+也即 $p(\b y\mid X,\b w)p(\b w)$ 除以一个与 $\b w$ 无关的 $p(\b y\mid X)$ 归一化的过程。继续 play with Gaussian 可知
+$$
+p(\b w\mid\b y,X)\sim\c N(\bar{\b w}=\sigma_n^{-2}A^{-1}X\b y,A^{-1})
+$$
+其中 $A=\sigma_n^{-2}XX^\top+\Sigma_p^{-1}$。
+
+这说明，$\b w$ 服从一个 Gaussian 后验。
+
+> [!TIP]
+>
+> 另一种思路是采取众数作为 $\b w$ 的预测结果（称作 **maximum a posteriori** estimation）：
+> $$
+> \t{MAP}=\arg\max_{\b w}p(\b w\mid\b y,X)
+> $$
+> 做 $\log$ 变换和线性缩放不影响结果，于是有
+> $$
+> \t{MAP}=\arg\max_{\b w}[\log p(\b y\mid X,\b w)+\log p(\b w)]
+> $$
+> 另一方面，有 $\log p(\b y\mid X,\b w)=\dfrac1{2\sigma_n^2}\sum(y_i-\b x_i^\top\b w)+C$，$\log p(\b w)=\dfrac12\b w^\top\Sigma_p\b w+C$，于是这其实是标准的 MSE 加上一个二次项的形式，也即 **Ridge Regression**。
+>
+> 所以有结论：Ridge Regression 就是 Gaussian 先验的 Bayesian Learning。
+
+然而，Ridge Regression（或者说，一切 MAP 方法）都只能给出「最有可能的函数」，不能给出具体的置信度。然而 Bayesian Learning 可以由全 Bayes 公式得到具体的分布：令 $f_*$ 为 $f(\b x_*)$ 的分布。（这个 notation 比较怪异：$f$ 是 $\R^D\to\R$ 的映射，而 $f_*$ 是描述 $f(\b x_*)$ 的 $\R$ 上的分布）。则
+$$
+p(f_*\mid\b x_*,X,\b y)=\int p(f_*\mid\b x_*,\b w)p(\b w\mid X,\b y)\d\b w
+\\=\c N(\sigma_n^{-2}\b x_*^\top A^{-1}X\b y,\b x_*^\top A^{-1}\b x_*)
+$$
+
+------
+
+按照 SVM 中的思路，可以用 $\b \phi:\R^D\to\R^N$ 将 $\b x$ 升维，则 $f(\b x)=\b\phi(\b x)^\top\b w$。这里的 $\b\phi$ 被称作 **basis function**。同样分析可知，令 $\Phi(X)$ 为每一行分别作用上 $\b \phi$ 并拼接后结果，并简记 $\Phi=\Phi(X)$，$A=\sigma_n^{-2}\Phi\Phi^\top+\Sigma_p^{-1}$，$\b\phi_*=\b\phi(\b x_*)$，则
+$$
+f_*\mid\b x_*,X,\b y\sim\c N(\sigma_n^{-2}\b\phi_*^\top A^{-1}\Phi\b y,\b\phi_*^\top A^{-1}\b\phi_*)
+$$
+这种写法要对 $N\times N$ 的矩阵 $A$ 求逆。但是定义 $K=\Phi^\top\Sigma_p\Phi$，可以得到等价形式
+$$
+f_*\mid\b x_*,X,\b y\sim\c N(\b\phi_*^\top\Sigma_p\Phi(K+\sigma_n^2I)^{-1}\b y,\b\phi_*^\top\Sigma_p\b\phi_*-\b\phi_*^\top\Sigma_p\Phi(K+\sigma_n^2I)^{-1}\Phi^\top\Sigma_p\b\phi_*)
+$$
+现在只需要对 $n\times n$ 的矩阵 $K+\sigma_n^2I$ 求逆，这在数据量 $n$ 小于升维后维数 $N$ 的场合效率会更高。
+
+定义 $k(\b x,\b x')=\b\phi(x)^\top\Sigma_p\b\phi(\b x')$。称 $k$ 为 **covariance function** 或 **kernel**。
+
+因为 $\Sigma_p$ 作为协方差矩阵是正定的，所以存在 $\Sigma_p^{1/2}$。故定义 $\b\psi(\b x)=\Sigma_p^{1/2}\b\phi(\b x)$，则 $k(\b x,\b x')=\ip{\b\psi(\b x),\b\psi(\b x')}$。换言之，$k$ 是关于 $\Sigma_p$ 的点积。
+
+如果一个算法仅与输入空间上的内积相关，则其可以通过 kernel 升维到特征空间上的内积，称作 kernel trick。这个做法在算 kernel 比算特征向量更简单时非常有用。
+
+### II. Function-Space View
+
+**Gaussian Process** (GP) 是一组随机变量集合，其中任意有限个成员都服从某个联合 Gaussian 分布。
+
+假设这个随机变量集合有一个 $\R^D$ 的指标集，也即可以写成 $f(\b x)$ 的形式。则 GP 可以由以下二者唯一确定：
+
+- $m(\b x)=\E[f(\b x)]$。（**一般会直接取 $m(\b x)=0$，不过并非总是如此**）
+- $k(\b x,\b x')=\E[(f(\b x)-m(\b x))(f(\b x')-m(\b x'))]$。
+
+其可以被看做多元 Gaussian 在无穷维上的扩展，记作 $f(\b x)\sim\c{GP}(m(\b x),k(\b x,\b x'))$。
+
+GP 描述了函数空间上的一个先验分布。然而，在函数空间中的采样并不容易：我们只能通过有限的离散样本点来假装得到了连续的分布。因此，我们选取若干采样点构成矩阵 $X_*$，然后按照 $\b f_*\sim\c N(\b0,K(X_*,X_*))$ 获取采样点处的值，连成曲线即为一次采样的拟合。
+
+当然比起先验采样，我们更关注后验采样：假设已知 $X$ 上的采样为 $\b f$（换言之，「训练集」），我们希望知道 $X_*$ 上的采样为 $\b f_*$（换言之，「测试集」）。它们的联合分布满足
+$$
+\bmat{\b f\\\b f_*}\sim\c N\left(\b0,\bmat{K(X,X)&K(X,X_*)\\K(X_*,X)&K(X_*,X_*)}\right)
+$$
+现在要算后验，则仍然 play with Gaussian 得到
+$$
+\b f_*\mid X_*,X,\b f\sim\c N\Big(K(X_*,X)K(X,X)^{-1}\b f,K(X_*,X_*)-K(X_*,X)K(X,X)^{-1}K(X,X_*)\Big)
+$$
+特别地，这个后验分布在训练集上方差为零、在远离训练集处变大。
+
+最后，有一种常见的场合是我们看不到函数本身，只能看到噪声扰动过的 $y=f(\b x)+\vare$，此时有 $\t{cov}(\b y)=K(X,X)+\sigma_n^2I$。此时后验分布变为
+$$
+\bmat{\b y\\\b f_*}\sim\c N\left(\b0,\bmat{K(X,X)+\sigma_n^2I&K(X,X_*)\\K(X_*,X)&K(X_*,X_*)}\right)
+$$
+此时 play with Gaussian 得到：令 $K=K(X,X)$，$K_*=K(X,X_*)$，有
+$$
+\bar{\b f}_*=K_*^\top(K+\sigma_n^2I)^{-1}\b y
+\\\t{cov}(\b f_*)=K(X_*,X_*)-K_*^\top(K+\sigma_n^2I)^{-1}K_*
+$$
+可以发现，它和 weight-space view 的结果本质相同。另外，方差与观察到的 $\b y$ 无关，只与训练集的分布 $X$ 相关，且可以被解释为原始方差（$K$）减去一个正项（观察提供的额外信息），且通过加上一个额外噪声可以得到 $\b y_*$ 分布的显式公式。
+
+特别地，如果测试集仅包含单个元素 $\b x_*$，并令 $\b k_*=k(\b x_*,X)$，则
+$$
+\bar f_*=\b k_*^\top(K+\sigma_n^2I)^{-1}\b y
+\\\t{var}(f_*)=k(\b x_*,\b x_*)-\b k_*^\top(K+\sigma^2_nI)^{-1}\b k_*
+$$
+可以发现，此时预测的均值 $\bar f_*$ 是观察 $\b y$ 的线性组合，有时也被称作 **linear predictor**；其也可以被看做是 kernel 的线性组合：令 $\b\alpha=(K+\sigma^2_nI)^{-1}\b y$，则
+$$
+\bar f(\b x_*)=\sum\alpha_ik(\b x_i,\b x_*)
+$$
+——而这其实是 *representer theorem* 的一个特例。
+
+### INF. Conclusion
+
+假如 $f(\b x)=\b x^\top\b w$ 而 $y=f(\b x)+\vare$，则 Gaussian 先验的 $\b w$ 会导致 Gaussian 后验的 $\b w\mid X,\b y$。进一步，可以由 $\b w$ 对 $\b x_*$ 处函数取值 $f(\b x_*)$ 的分布 $f_*$ 作测试集推断，结果仍然是 Gaussian。还可以对 $\b x$ 使用基函数升维至 $\b\phi(\b x)$，令 $f(\b x)=\b\phi(\b x)^\top\b w$，推论类似。
+
+另一种思路是令 $f(\b x)$ 有一个 GP 的先验，则其实际表现与 Gaussian 先验的 $\b w$ 完全相同：采样的 $\b f_*\mid X_*$ 服从 Gaussian，如果额外提供 $X,\b f$ 的训练集则后验的 $\b f_*\mid X_*,X,\b f$ 仍是 Gaussian。
+
+GP 描述方法涉及到 kernel，而 Bayesian 方法涉及到对 $\b w$ 先验的设置。二者可以互相转化。
+
+## II. Covariance Functions
+
+### I. Preliminaries
+
+一个 **stationary** 的 kernel $k(\b x,\b x')$ 是可以写成 $\b x-\b x'$ 函数的 kernel：其具有平移不变性。例如，RBF kernel $k(\b x,\b x')=\exp(-\dfrac12\|\b x-\b x'\|^2)$ 就是一个这样的 kernel。事实上，这个 kernel 可以写成 $\|\b x-\b x'\|$ 的函数，这样的 kernel 是 **isotropic** 的。
+
+如果其可以写成 $\b x\cdot\b x'$ 的函数，则其是 **点积核**，例如 $k(\b x,\b x')=\sigma_0^2+\b x\cdot\b x'$。特定条件下的 Bayesian Learning 会得到这个 kernel。此外还有非齐次多项式核 $k(\b x,\b x')=(\sigma_0^2+\b x\cdot\b x')^p$ 其中 $p$ 是整数。点积核的特征是旋转不变性。
+
+这里，我们严格定义 kernel。对于空间 $\c X$，任何 $\c X^2\to\R$ 的映射都被称作 kernel——**这里并没有额外要求任何的（半）正定性或对称性**。它在积分算子中被使用：定义算子 $T_k$ 作用在函数 $f$（和测度 $\mu$）上的结果为
+$$
+(T_kf)(\b x)=\int_\c Xk(\b x,\b x')f(\b x')\d\mu(\b x')
+$$
+kernel 可以在一组向量集合 $\cur{\b x_i}$ 上定义 **Gram 矩阵** $K_{i,j}=k(\b x_i,\b x_j)$。
+
+> [!TIP]
+>
+> 其是对线代中的 Gram 矩阵 $G_{i,j}=\ip{\b x_i,\b x_j}$ 的扩展，使用 kernel 取代了内积。
+
+半正定的 kernel 要对于一切关于 $\mu$ 有 $\ell_2$ 连续的 $f$ 均满足
+$$
+\int k(\b x,\b x')f(\b x)f(\b x')\d\mu(\b x)\d\mu(\b x')\geq0
+$$
+或者等价地，其导出的一切 Gram 矩阵都是半正定的。
+
+> [!TIP]
+>
+> 对于 Gaussian Process，我们会关心它的「光滑度」；而 1D GP 的光滑度可以被关于某个界 $u$ 的上穿数衡量。零均值、stationary、单位区间上（因为具有平移不变性，具体区间位置不重要）、几乎处处连续的 GP，其上穿数有式子
+> $$
+> \E[N_u]=\dfrac1{2\pi}\sqrt{-\dfrac{k''(0)}{k(0)}}\exp(-u^2/2k(0))
+> $$
+> （因为具有 stationary，kernel 可以被看做一维函数。）
+>
+> 这个式子表明，kernel 的微观性质会直接影响 GP 路径的宏观表现；而如果 $k$ 并非二阶可微，则它有性质：如果在 $x_0$ 处值为 $u$，则它会在任意 $(x_0,x_0+\delta)$ 中任意多次穿过 $u$！
+>
+> 现在回头定义 GP 的连续性。称 GP 在 $\b x_*$ 处均方连续，如果对于一切 $\b x_k\to\b x_*$ 都有 $\E|f(\b x_k)-f(\b x_*)|^2\to0$；则有性质：GP 在 $\b x_*$ 处均方连续，当且仅当 $k(\b x,\b x')$ 在 $\b x=\b x'=\b x_*$ 处连续，因此 stationary 的 kernel 就只需要查看 $k(\b 0)$ 处的连续性即可。
+>
+> 进一步可以定义均方偏导数
+> $$
+> \dfrac{\p f(\b x)}{\p x_i}=\operatorname*{l.i.m}\limits_{h\to0}\dfrac{f(\b x+h\b e_i)-f(\b x)}h
+> $$
+> 其中 $\operatorname{l.i.m}$ 是均方极限。而 $f(\b x)/\p x_i$ 同样描述一个 GP，其 kernel 恰为 $\p^2k(\b x,\b x')/\p x_i\p x_i'$。这个性质可以进一步拓展到任意阶偏导。
+
+### II. Examples of Covariance Functions
+
+我们将 kernel 扩展到复数，使用 $k(\b x,\b x')=\E[f(\b x)f(\b x')^*]$，其中星号意味着复数共轭。考虑 stationary 的 kernel，将其直接写作 $k(\b\tau)$ 其中 $\b\tau=\b x-\b x'$。
+
+stationary process 的 kernel 可以被表示为一个测度的 Fourier 变换。形式化地，有 **Bochner 定理**：一个 $\R^D$ 上的复值函数 $k$ 是一个 weak stationary 均方连续的复值随机过程，当且仅当其能被写成
+$$
+k(\b\tau)=\int_{\R^D}\exp(2\pi\i\ip{\b s,\b\tau})\d\mu(\b s)
+$$
+其中 $\mu$ 是一个处处有限的正值测度，称作谱测度。特别地，当 $\mu$ 存在密度 $S$（称作谱密度），则有 $S$ 与 $k$ 互为 Fourier 对偶，也即 **Wiener-Khintchine 定理**：
+$$
+k(\b\tau)=\int_{\R^D}S(\b s)\exp(2\pi\i\ip{\b s,\b\tau})\d\b s
+\\S(\b s)=\int_{\R^D}k(\b\tau)\exp(-2\pi\i\ip{\b s,\b\tau})\d\b\tau
+$$
+特别地，因为 $k(\b0)=\int S(\b s)\d\b s$，所以只有可积的 $S$ 才能定义合法的 GP。
+
+$S$ 描述了各个频率上的功率：如果在某个频率上出现了负值就会导致负的方差，因此不合法。
+
+小的 $|\b s|$ 意味着低频信号，而大的意味着高频信号。高频时仍然具有大的 $S(\b s)$ 意味着函数包括很多剧烈震荡成分，导致粗糙的函数曲线；反之，如果高频时迅速衰减到零则函数就会很平滑。
+
+对于各向同性的 kernel，则可以发现 $S$ 仅与模长 $|\b s|$ 相关。于是有相关公式
+$$
+k(r)=\dfrac{2\pi}{r^{D/2-1}}\int_0^{+\infty}S(s)J_{D/2-1}(2\pi rs)s^{D/2}\d s
+\\S(s)=\dfrac{2\pi}{s^{D/2-1}}\int_0^{+\infty}k(r)J_{D/2-1}(2\pi rs)r^{D/2}\d r
+$$
+其中 $J$ 是 Bessel 函数。这表明，同样的频谱 $S$ 在不同维数的空间上能变换出不同的 kernel。
+
+------
+
+现在特别考虑 Squared Exponential (SE) 或称 RBF kernel
+$$
+k_\t{SE}(r)=\exp(-r^2/2\ell^2)
+$$
+其中 $\ell$ 被称作 **characteristic length-scale**。特别地，可以知道 1D RBF GP 关于 $x$ 轴的上穿数目是 $(2\pi\ell)^{-1}$，因此 $\ell$ 确实能衡量 length-scale。
+
+------
+
+考虑点积核。
+
+- 最简单的就是齐次线性核 $k(\b x,\b x')=\b x\cdot\b x'$。
+- 加常数得到非齐次线性核 $k(\b x,\b x')=\sigma_0^2+\b x\cdot\b x'$。
+- 引入协方差矩阵 $\Sigma_p$ 可得到广义线性核 $k(\b x,\b x')=\sigma_0^2+\b x^\top\Sigma_p\b x'$。
+- 进一步扩展得到（非齐次）多项式核 $k(\b x,\b x')=(\sigma_0^2+\b x^\top\Sigma_p\b x')^p$。
+
+非齐次广义多项式核可以通过 $\b x\mapsto\bmat{\Sigma_p^{1/2}\b x\\\sigma_0}$ 来变成最简单的齐次多项式核 $k(\b x,\b x')=\ip{\b x,\b x'}^p$，而这个核可以进一步展开为 $\sum_{d_1=1}^D\dots\sum_{d_p=1}^D(x_{d_1}\dots x_{d_p})(x_{d_1}'\dots x_{d_p}')$，因此确实可以写成两个 $D^p$ 维向量的点积。
+
+因为其在 $\|\b x\|>1$ 时方差会迅速增大，所以其更适用于二值分类或 $[-1,1]$ 上的回归问题，而不适合一般的回归问题。
+
+------
+
+考虑无穷维神经网络。
+
+具体而言，考虑有一层含 $N_H$ 个神经元的隐藏层，有权重 $v$ 和有界激活函数 $h(\b x;\b u)$，则有
+$$
+f(\b x)=b+\sum_{i=1}^{N_H}v_jh(\b x;\b u_j)
+$$
+考虑有 $b$ 和 $v$ 分别服从独立、零均值、方差为 $\sigma_b^2$、$\sigma_v^2$ 的分布，且所有 $\b u_j$ i.i.d.，令所有参数（$b,v,\b u$）为 $\b w$，则
+$$
+\E_\b w[f(\b x)]=0
+\\\E_\b w[f(\b x)f(\b x')]=\sigma_b^2+\sum_{i=1}^{N_H}\sigma_v^2\E_{\b u_j}[h(\b x;\b u_j)h(\b x';\b u_j)]
+\\=\sigma_b^2+N_H\sigma_v^2\E_{\b u}[h(\b x;\b u)h(\b x';\b u)]
+$$
+现在随着 $N_H$ 增大动态调小 $\sigma_v^2$，也即让 $\sigma_v^2=\omega^2/N_H$，则因为 $h$ 有界，所以可得到有界的协方差函数；对任意 $\cur{f(\b x_1),\dots,f(\b x_n)}$ 用多元 CLT 可知当 $N_H\to\infty$ 时，随机初始化的神经网络以 GP 为先验。这种 GP 被称作 **NNGP**，其描述随机初始化且未训练的神经网络——但显然与如今的深度学习范式有些脱节。
+
+对于特定的 $h$ 以及 $\b u$ 的初始化方式可以显式地求出这个 GP 的协方差。考虑令 $h(\b x;\b u)=\t{erf}(u_0+\ip{\b x,\b u_{1:D}})$，其中 $\t{erf}(z)=\dfrac2{\sqrt\pi}\int_0^z\exp(-t^2)\d t$，而 $\b u\sim\c N(\b0,\Sigma)$，则可知
+$$
+k_\t{NN}(\b x,\b x')=\dfrac2\pi\sin^{-1}\left(\dfrac{2\tilde{\b x}^\top\Sigma\tilde{\b x}'}{\sqrt{(1+2\tilde{\b x}^\top\Sigma\tilde{\b x})(1+\tilde{\b x}'^\top\Sigma\tilde{\b x}')}}\right)
+$$
+其中 $\tilde{\b x}=\bmat{1\\\b x}$。
+
+> [!TIP]
+>
+> 注意，这里并不能使用常见的 Sigmoid 核 $\tanh(a+b\ip{\b x,\b x'})$，因为其甚至不是正定核！
+
+另一种设置是 $h(\b x;\b u)=\exp(-\|\b x-\b u\|^2/2\sigma_g^2)$，其中 $\sigma_g$ 决定了 scale；选择 $\b u\sim\c N(\b0,\sigma_u^2I)$。此时有
+$$
+k_\t G(\b x,\b x')=\dfrac1{(2\pi\sigma_u^2)^{d/2}}\int\exp\left(-\dfrac{\|\b x-\b u\|^2}{2\sigma_g^2}-\dfrac{\|\b x'-\b u\|^2}{2\sigma_g^2}-\dfrac{\|\b u\|^2}{2\sigma_g^2}\right)\d\b u
+\\=(\sigma_e/\sigma_u)^d\exp\left(\dfrac{-\|\b x\|^2}{2\sigma_m^2}\right)\exp\left(\dfrac{-\|\b x-\b x'\|^2}{2\sigma_s^2}\right)\exp\left(\dfrac{-\|\b x'\|^2}{2\sigma_m^2}\right)
+$$
+其中 $1/\sigma_e^2=2/\sigma_g^2+1/\sigma_u^2,\sigma_s^2=2\sigma_g^2+\sigma_g^4/\sigma_u^2,\sigma_m^2=2\sigma_u^2+\sigma_g^2$。其不是 stationary 的——但是当 $\sigma_u\to\infty$ 时有 $k_G(\b x,\b x')\propto\exp(-\|\b x-\b x'\|^2/4\sigma_g^2)$。
+
+------
+
+如何从已有的 kernel 上造新 kernel？
+
+- kernel 的和是 kernel：如果 $k_1(\cdot,\cdot),k_2(\cdot,\cdot)$ 分别是独立的 $f_1(\cdot),f_2(\cdot)$ 的 kernel，则 $k_1+k_2$ 是 $f_1+f_2$ 的 kernel。
+- kernel 的积是 kernel：如果 $k_1(\cdot,\cdot),k_2(\cdot,\cdot)$ 分别是独立的 $f_1(\cdot),f_2(\cdot)$ 的 kernel，则 $k_1k_2$ 是 $f_1f_2$ 的 kernel。进一步，整数幂次是 kernel。
+- 考虑确定性函数 $a(\b x)$，并令 $g(\b x)=a(\b x)f(\b x)$，其中 $f(\b x)$ 是随机过程。则此时有 $\t{cov}(g(\b x),g(\b x'))=a(\b x)k(\b x,\b x')a(\b x')$。特别地，选取 $a(\b x)=k(\b x,\b x)^{-1/2}$ 可以得到归一化的 $\tilde k$。
+- kernel 可以以卷积的方式从已有的随机过程出发定义新随机过程：例如 $g(\b x)=\int h(\b x,\b z)f(\b z)\d\b z$。则有 $\t{cov}(g(\b x),g(\b x'))=\int h(\b x,\b z)k(\b z,\b z')h(\b x',\b z')\d\b z\d\b z'$。
+- 对于定义在 $\c X_1,\c X_2$ 上的 $k_1$ 和 $k_2$，可以定义在 $\c X_1\times\c X_2$ 上的 $k_1\oplus k_2$ 以及 $k_1\otimes k_2$，它们是合法的 kernel。
+- 进一步，对于 $\R^D$ 上的 $f(\b x)$，其是加性模型，若 $f(\b x)=c+\sum_{i=1}^Df_i(x_i)$；如果每个 $f_i$ 都是独立随机过程，则其满足直和的形式。如果再加上二元随机过程，即 $f(\b x)=c+\sum_if_i(x_i)+\sum_{i<j}f_{i,j}(x_i,x_j)$，且所有 $f_i,f_{i,j}$ 联合独立，则有 $k(\b x,\b x')=\sum_i k_i(\b x,\b x')+\sum_{i<j}k_{i,j}(x_i,x_j;x'_i,x'_j)$，且其可以被扩展到任意更多元的场景。
+
+### III. Eigenfunction Analysis of Kernels
+
+考虑一组特殊的基函数 $\phi$，其满足
+$$
+\int k(\b x,\b x')\phi(\b x)\d\mu(\b x)=\lambda\phi(\b x')
+$$
+则称其为 kernel $k$ 在测度 $\mu$ 下特征值为 $\lambda$ 的 **eigenfunction**。一般而言存在无穷个特征函数，但是可以恰当地选择使得：
+
+- 可数。
+- 可以以特征值递减顺序列举。
+- 两两正交归一（$\int\phi_i(\b x)\phi_j(\b x)\d\mu(\b x)=\delta_{i,j}$，其中 $\delta$ 是 Kronecker Delta）。
+
+> [!TIP]
+>
+> 这里借助了泛函分析相关知识保证了可数性和特征值的有界性。
+
+**Mercer 定理**：对于有限测度空间 $(\c X,\mu)$ 和正定 kernel $k$，令 $\phi_i$ 是正特征值对应的归一化本征函数，则：
+
+- 特征值绝对可求和。
+- $k(\b x,\b x')=\sum_{i=1}^\infty\lambda_i\phi_i(\b x)\phi_i^*(\b x')$——其中 $\phi_i^*$ 是共轭——关于 $\mu^2$ a.e. 成立，右侧的求和关于 $\mu^2$ a.s. 一致绝对收敛。特别地，求和也可能在有限步内中止（这意味着只有有限个对应正特征值的本征函数）。
+
+只有有限个正特征值本征函数的 kernel 是 **degenerate** 的，此时也称其具有有限的秩。反之即为 **nondegenerate** 的。
+
+特别地，考虑 stationary 的 kernel 上的 Bochner 定理，得到
+$$
+k(\b x-\b x')=\int_{\R^D}\exp(2\pi\i\ip{\b s,\b x-\b x'})\d\mu(\b s)=\int_{\R^D}\exp(2\pi\i\ip{\b s,\b x})\exp(2\pi\i\ip{\b s,\b x'})^*\d\mu(\b s)
+$$
+它与 Mercer 定理有几乎一致的形式，区别在于： 
+
+- 可数的求和变成了不可数的积分。这是因为 Mercer 定理通常假定我们在考虑紧空间上的算子，而 Bochner 定理则在考虑更一般的全空间 $\R^D$。
+- 离散的特征值变成了连续的谱范数（$\lambda_i$ 直接对应了存在测度时的谱功率 $S$）。
+- 本征函数变为 Fourier 基 $\exp(2\pi\i\ip{\b s,\b x})$。
+
+------
+
+本征函数和特征值存在数值近似方法。例如，假如 $\mu$ 有密度 $p$，则有
+$$
+\lambda_i\phi_i(\b x')=\int k(\b x,\b x')\phi_i(\b x)\d\mu(\b x)=\int k(\b x,\b x')\phi_i(\b x)p(\b x)\d\b x\approx\dfrac1n\sum k(\b x_i,\b x')\phi_i(\b x_i)
+$$
+其中 $\b x_i$ i.i.d. 地自 $p$ 中采样。分别代入 $\b x'=\b x_1,\dots,\b x_n$，定义 $\b v_i=\bmat{\phi_i(\b x_1)&\phi_i(\b x_2)&\dots&\phi_i(\b x_n)}^\top$，则上式等价于
+$$
+\lambda_i\b v_i=\dfrac1nK\b v_i
+$$
+现在考虑对 $\b v_i$ 归一化得到 $\b u_i$。则因为特征函数的正交归一性，有 $\dfrac1n\sum_{j=1}^n\phi_i(\b x_j)\approx1$，因此 $\|\b v_i\|\approx\sqrt n$，则有 $\b v_i\approx\sqrt n\b u_i$。
+
+另一方面，kernel 的特征值 $\lambda_i$ 和 Gram 矩阵 $K$ 的特征值 $\lambda_i^\t{mat}$ 的关系是 $\lambda_i\approx\lambda_i^\t{mat}/n$，于是总结得到矩阵形式的
+$$
+K\b u_i=\lambda_i^\t{mat}\b u_i
+$$
+的优雅形式。而此处的 $\b u_i$ 就是 Gram 矩阵的单位特征向量，是经典问题。
+
+进一步，算得特征向量后可以使用其对任意 $\b x_*$ 处的本征函数值进行预测：定义 $\b k(\b x_*)=\bmat{k(\b x_1,\b x')&\dots&k(\b x_n,\b x')}^\top$，则有
+$$
+\phi_i(\b x_*)\approx\dfrac{\sqrt n}{\lambda_i^\t{mat}}\b k(\b x_*)^\top\b u_i
+$$
+其将 $\phi_i(\b x_j)\approx\sqrt n(\b u_i)_j$ 延拓至一切 $\b x_*$。
+
+### IV. Kernels for Non-vectorial Inputs
+
+任何能定义具有对称性和正定性的相似关系的结构都可以视作 kernel 并进一步与 GP 挂钩。
+
+对于字符串，可以定义 $\phi_s(x)$ 为 $x$ 中包括字串 $s$ 的次数，$w_s$ 为非负权重，则使用
+$$
+k(x,x')=\sum w_s\phi_s(x)\phi_s(x')
+$$
+特别地，在 $|s|>1$ 时设置 $w_s=0$ 是 bag-of-characters 模型，或者如果以 token 为单位就是经典的 BoW 模型；只考虑某特定长度 $k$ 的字符串则被称作 $k$-spectrum kernel。
+
+也有我们在 SBM 中会使用的 Fisher Kernel：对于生成式模型 $p(x\mid\b\theta)$ 其中 $\b\theta$ 是模型参数，考虑 score function $\b\phi_\b\theta(x)=\nabla_x\log p(x\mid\b\theta)$。以之为基函数可以定义 kernel，例如选择正定矩阵 $M$ 并构造 
+$$
+k(x,x')=\b\phi_\b\theta(x)^\top M^{-1}\b\phi_\b\theta(x')
+$$
+或者 RBF 核
+$$
+k(x,x')=\exp(-\alpha\|\b\phi_\b\theta(x)-\b\phi_\b\theta(x')\|^2)
+$$
+
+### INF. Conclusion
+
+kernel 并不要求对称性或（半）正定性，只不过满足这种性质的 kernel 更优雅所以我们更多地考虑之。
+
+无穷维的单层神经网络等效于 GP。
+
+（对称半正定）kernel 与本征函数是 kernel 的一体两面：一方面，紧空间上这样的 kernel 可以得到 Mercer 定理下的特征分解
+$$
+k(\b x,\b x')=\sum_{i=1}^\infty\lambda_i\phi_i(\b x)\phi_i^*(\b x')
+$$
+另一方面，如果已有基函数 $\b\phi(\b x)$，则可以直接对 $\b\phi(\b x)$ 使用各种技巧反过来构建出 kernel。
+
+## III. Relationships between GPs and Other Models
+
+### I. Reproducing Kernel Hilbert Spaces
+
+令 $\c H$ 为实变函数 $f$ 的 Hilbert 空间，在指标集 $\c X$ 上定义。称其为具有内积 $\ip{\cdot,\cdot}_\c H$ 以及对应的范数 $\|f\|_\c H=\sqrt{\ip{f,f}_\c H}$ 的 RKHS，如果存在 $k:\c X^2\to\R$ 满足：
+
+- 固定 $\b x$ 时，$k(\b x,\cdot)\in\c H$。
+- $k$ 有 **再生性** $\ip{f(\cdot),k(\b x,\cdot)}_\c H=f(\b x)$。特别地，这自然导出推论：$\ip{k(\b x,\cdot),k(\b x',\cdot)}=k(\b x,\b x')$，并由内积的对称性导出 kernel 的对称性。
+
+RKHS 与 kernel 是等价的，由 **Moore-Aronszajn 定理** 给出。这里看一个简单场合的例子：考虑关于测度 $\mu$ 存在特征分解的实 kernel
+$$
+k(\b x,\b x')=\sum_{i=1}^N\lambda_i\phi_i(\b x)\phi_i'(\b x')
+$$
+这里的 $N$ 可以为有限或无限。现在考虑用本征函数的线性组合构建 Hilbert 空间，即 $f(\b x)=\sum_{i=1}^Nf_i\phi_i(\b x)$。现在定义内积
+$$
+\ip{f,g}_\c H=\sum\dfrac{f_ig_i}{\lambda_i}
+$$
+则 $\sum f_i^2/\lambda_i$ 会是平方范数，需要收敛。易验证其再生性。
+
+之所以要引入 RKHS 的工具，是因为 kernel 的特征分解与测度 $\mu$ 相关，但是 RKHS 范数与之无关。
+
+特别地，$\|f\|^2_\c H=\sum f_i^2/\lambda_i$ 和 $\|\b f\|^2=\b f^\top K^{-1}\b f$ 具有对应关系。
+
+特别地，考虑以 $f_i\sim\c N(0,\lambda_i)$ 采样 $f$，则此时有
+$$
+\E\|f\|_\c H^2=\sum\dfrac{\E f_i^2}{\lambda_i}=\sum1
+$$
+这意味当 $N$ 为无穷时，w.p. $1$ 采样的 $f$ 不属于 $\c H$。尽管如此，后验估计反倒属于 $\c H$，因为某些平均性质。
+
+除了特征分解式构造，另一种构造方式是 **再生核映射**：考虑空间
+$$
+\cur{f(\b x)=\sum_{i=1}^n\alpha_ik(\b x,\b x_i):n\in\R,\b x_i\in\c X,\alpha_i\in\R}
+$$
+其与 $g(\b x)=\sum_{i=1}^{n'}\alpha_i'k(\b x,\b x_i')$ 的内积定义为
+$$
+\ip{f,g}_\c H=\sum_{i=1}^n\sum_{j=1}^{n'}\alpha_i\alpha_j'k(\b x_i,\b x_j)
+$$
+则同样易验证再生性。
+
+这两者本质等价。
+
+### II. Regularization
+
+优化问题中有两种常见的提供假设类的方式：取一个先验分布，或者添加正则化项。形式化地，考虑如下问题
+$$
+J[f]=\dfrac\lambda2\|f\|_\c H^2+Q(\b y,\b f)
+$$
+其中 $\b y$ 是真实值，$\b f=\bmat{f(\b x_1)&\dots&f(\b x_n)}^\top$ 是预测值，$Q$ 是某种衡量差异的 metric。
+
+**representer theorem** 指出这个式子的最小值点必然具有
+$$
+f(\b x)=\sum_{i=1}^n\alpha_ik(\b x,\b x_i)
+$$
+的形式；而如果 $Q$ 有凸性，最小值则是唯一的。特别地，GP 的后验估计符合选取 $Q$ 为 Gaussian NLL 时的 representer theorem。
+
+从另一个角度来说，representer theorem 也给出了解的子空间约束，可以看做是 SVM 中的支持向量。
+
+### III. SVM
+
+soft SVM 是在最小化
+$$
+\dfrac12\|\b w\|^2+C\sum_{i=1}^n(1-y_if_i)_+
+$$
+现在考虑由 representer theorem，有 $\b w=\sum\alpha_i\b x_i$，$\|\b w\|^2=\b\alpha^\top K\b\alpha$；定义 $\b f=K\b\alpha$，则在最小化
+$$
+\dfrac12\b f^\top K^{-1}\b f+C\sum_{i=1}^n(1-y_if_i)_+
+$$
+另一方面，GP 二分类器是在最小化
+$$
+\dfrac12\b f^\top K^{-1}\b f-C\sum_{i=1}^n\log(y_i\mid f_i)
+$$
+二者形式很类似。
+
+事实上，SVM 也可以被看做非 Gaussian 先验下的 MAP 估计。但是 SVM 也拥有 MAP 的通病，即只给出均值、未给出方差。
+
+# II. NNGP
+
+我们已知单层神经网络
+$$
+z_i^1(\b x)=b_i^1+\sum_{i=1}^{N_1}W_{i,j}^1x_j^1(\b x)
+\\x_j^1(\b x)=\phi(b_j^0+\sum_{k=1}^{d_\t{in}}W_{j,k}^0x_k)
+$$
+或者写成向量形式
+$$
+\b z^1=\b b^1+W^1\b x^1
+\\\b x^1=\phi(\b b^0+W^0\b x)
+$$
+在 $\b b,W$ 分别服从独立、零均值、方差为 $\sigma_b^2$、$\sigma_v^2$ 的分布时，$N_1\to\infty$ 时所有 $z_i^1$ 服从 GP，且其 kernel 满足
+$$
+C(\b x,\b x')=\E[x_i^1(\b x)x_i^1(\b x')]
+\\k^1(\b x,\b x')=\sigma_b^2+\sigma_w^2C(\b x,\b x')
+$$
+现在考虑扩展到多层的场景，此时有
+$$
+\b z^\ell=\b b^\ell+W^\ell\b x^\ell
+\\\b x^\ell=\phi(\b z^{\ell-1})
+$$
+现在假设趋于无穷的顺序是有序的，此时可以应用归纳法
+$$
+k^\ell(\b x,\b x')=\sigma_b^2+\sigma_w^2\E_{z_i^{\ell-1}\sim\c{GP}(0,K^{\ell-1})}\phi(z_i^{\ell-1}(\b x))\phi(z_i^{\ell-1}(\b x'))
+$$
+这个期望只与 $k^{\ell-1}(\b x,\b x),k^{\ell-1}(\b x,\b x'),k^{\ell-1}(\b x',\b x')$ 三个量以及激活函数 $\phi$ 相关，所以可以写成
+$$
+k^\ell(\b x,\b x')=\sigma_b^2+\sigma_w^2F_\phi(k^{\ell-1}(\b x,\b x),k^{\ell-1}(\b x,\b x'),k^{\ell-1}(\b x',\b x'))
+$$
+特别地，起始有
+$$
+k^0(\b x,\b x')=\sigma_b^2+\sigma_w^2\dfrac{\ip{\b x,\b x'}}{d_\t{in}}
+$$
+
+------
+
+我们已经证明无限宽多层神经网络等效于 GP。而 GP 的 Bayesian 推理就是式子
+$$
+\bar f_*=\b k_*^\top(K+\sigma_n^2I)^{-1}\b y
+\\\t{var}(f_*)=k(\b x_*,\b x_*)-\b k_*^\top(K+\sigma^2_nI)^{-1}\b k_*
+$$
+说明可以不经过具体的训练过程而直接通过矩阵运算给出结果。剩下的就是如何对具体的场景计算 kernel 矩阵了。
+
+------
+
+现在问题是如何对 kernel 进行数值计算。
+
+暴力的解法是每层、每个 $k^\ell(\b x,\b x')$ 都对 $\E_{z_i^{\ell-1}(\b x),z_i^{\ell-1}(\b x')\sim\c N(0,\Sigma^{\ell-1})}\phi(z_i^{\ell-1})\phi(z_i^{\ell-1})$ 做数值积分，复杂度是 $n_g^2 Ln^2$，其中 $n_g$ 是单维采样量（$n_g^2$ 因为是二维积分）。
+
+论文提出了一种预处理方法。首先对输入归一化，这样第 $\ell$ 层的所有 $k^\ell(x_i,x_i)$ 全都为相同的 $s^\ell$，于是 $2\times2$ 的 $\Sigma$ 矩阵就总是 $\bmat{s&sc\\sc&s}$ 的形式，可以只由 $s$ 和 $c$ 两个变量描述。于是直接预处理打一个 $n_v\times n_c$ 的表出来，复杂度 $n_g^2n_vn_c$，之后层间计算时双线性插值即可达到 $Ln^2$。
+
+# III. Some Math behind Neural Tangent Kernel
+
+NNGP 研究 **随机初始化** 的神经网络在层数趋于无穷时的表现，终归有些不近实际；而 NTK 研究 **真实训练动力学** 在层数趋于无穷时的表现，更符合实际。
+
+考虑一个经典的 ERM scheme
+$$
+\c L(\theta)=\dfrac1N\sum\ell(f(\b x^{(i)};\theta);y^{(i)})
+\\\nabla\c L(\theta)=\dfrac1N\sum\nabla_\theta f(\b x^{(i)};\theta)\nabla_f\ell(f;y^{(i)})
+$$
+考虑 GF 也即 $\dot\theta=-\nabla_\theta\c L(\theta)$，则函数在 $\b x$ 处输出的演化模式是
+$$
+\dfrac{\d f(\b x;\theta)}{\d t}=\dfrac{\d f(\b x;\theta)}{\d\theta}\dot\theta=-\dfrac1N\sum\nabla_\theta f(\b x;\theta)^\top\nabla_\theta f(\b x^{(i)};\theta)\nabla_f\ell(f;y^{(i)})
+$$
+有一个很符合我们口味的 kernel 项
+$$
+k(\b x,\b x';\theta)=\nabla_\theta f(\b x;\theta)^\top\nabla_\theta f(\b x';\theta)
+$$
+其对应的 feature map 是 $\phi(\b x)=\nabla_\theta f(\b x;\theta)$。它被称作 **neural tangent kernel**。
+
+> [!TIP]
+>
+> NTK 依赖于几个前提：
+>
+> - 一族特定的参数化方法 $f(\b x;\theta)$。
+> - ERM。
+> - GF。
+>
+> 在此前提下，「对神经网络参数化」就是在隐式地「建立 kernel」。
+>
+> 例如，SVM 使用标准的线性建模：参数就是向量 $\b w$，然后 $f(\b x;\b w)=\b w^\top\phi(\b x)$，则对应的 NTK kernel 也就是常规意义的 kernel $k(\b x,\b x')=\ip{\phi(\b x),\phi(\b x')}$。
+
+------
+
+特别地，考虑无限宽神经网络的 NTK。为了保证方差在层间不变，使用 NTK parameterization 也即
+$$
+\b z^{\ell+1}=\beta\b b^\ell+\dfrac1{\sqrt{n_\ell}}W^\ell\b x^\ell
+\\\b x^{\ell+1}=\phi(\b z^{\ell+1})
+$$
+其中所有参数都使用 standard Gaussian 初始化。
+
+$\b z^1$ 的 NTK kernel 是与 $\theta$ 无关的：
+$$
+k^1(\b x,\b x';\theta)=\ip{\dfrac{\p\b z^1(\b x)}{\p\b b^0},\dfrac{\p\b z^1(\b x')}{\p\b b^0}}+\ip{\dfrac{\p\b z^1(\b x)}{\p W^0},\dfrac{\p\b z^1(\b x')}{\p W^0}}
+\\=\dfrac1{n_0}\ip{\b x,\b x'}+\beta^2
+$$
+
+> [!TIP]
+>
+> 这里一定程度上混用了各种 shape 的东西，不过应当是可以理解的。
+
+现在归纳地考虑 $\b z^{\ell+1}$。令 $\tilde\theta=\cur{\dots,W^{\ell-1},\b b^{\ell-1}},\theta=\cur{\tilde\theta,W^{\ell},\b b^{\ell}}$，则
+$$
+\nabla_{W^\ell}\b z^{\ell+1}=\dfrac1{\sqrt{n_\ell}}\b x^\ell
+\\\nabla_{\b b^\ell}\b z^{\ell+1}=\beta
+\\\nabla_{\tilde\theta}\b z^{\ell+1}=\dfrac1{\sqrt{n_\ell}}\nabla_{\tilde\theta}\b x^\ell W^\ell
+\\=\dfrac1{\sqrt{n_\ell}}\dot{\phi}(\b z^\ell)\nabla_{\tilde\theta}\b z^\ell W^\ell
+$$
+于是有
+$$
+k^{\ell+1}(\b x,\b x';\theta)=\dfrac1{n_\ell}\ip{\b x,\b x'^\ell}+\beta^2+\dfrac1{n_\ell}(W^\ell)^\top[\dot\phi(\b z^\ell)\dot\phi(\b z'^\ell)^\top\odot K^\ell(\b x,\b x';\tilde\theta)](W^\ell)^\top
+$$
+当 $n_\ell\to\infty$ 时前两项就是 NNGP 的 kernel，而后一项可以在前一层的 kernel 基础上得到。于是我们得到，无限宽 NN 关于初始化有固定的 NTK kernel，这是 CLT 决定的。
+
+# IV. Wide Neural Networks of Any Depth Evolve as Linear Models Under Gradient Descent
+
+定义时刻 $t$ 的 NTK 为 $\Theta_k(\b x,\b x')=\ip{\nabla_\theta f(\b x;\theta_k),\nabla_\theta f(\b x';\theta_k)}$。我们希望证明在无限宽神经网络、MSE loss、足够小学习率的 GD（或 GF）的场合，$\Theta_k$ 近似常数。
+
+- $\c X$ 是数据集，$\c Y$ 是 label。
+- 所有层的维数相同且均为 $n$。
+- $f(\theta_t):=f(\c X,\theta_t)\in\R^{|\c X|\times d}$。
+- $g(\theta_t):=f(\theta_t)-\c Y\in\R^{|\c X|\times d}$。
+- $J(\theta_t):=\nabla_\theta f(\theta_t)\in\R^{|\c X| d\times|\theta|}$。
+- $\hat\Theta_t=\dfrac1nJ(\theta_t)J(\theta_t)^\top$ 是 Gram 矩阵。
+- $\Theta=\lim\limits_{n\to\infty}\hat\Theta_0$。
+- MSE loss $\c L(t)=\dfrac12\|g(\theta_t)\|_2^2$。
+
+首先 NNGP 保证了 $f(\theta_0)$ 关于 $n$ 趋于 Gaussian，因此对于任意小的 $\delta_0$ 都存在常数 $R_0$ 和足够大的 $n_0$，使得任意 $n\geq n_0$ 关于 $\theta_0$ 的随机初始化都 w.p. $1-\delta$ 有
+$$
+\|g(\theta_0)\|_2<R_0
+$$
+然后有 GD 式
+$$
+\theta_{t+1}=\theta_t-\eta J(\theta_t)^\top g(\theta_t)
+$$
+和 GF 式
+$$
+\dot\theta_t=-J(\theta_t)^\top g(\theta_t)
+$$
+
+------
+
+引理：$J$ 有局部的 Lipschitz 连续性，也即局部的 Jacobian 近似常数。
+
+形式化地，存在常数 $K$ 使得对于任意 $C$，关于随机初始化以高概率 (w.h.p.o.r.i.)，对于一切 $\theta',\theta''\in B(\theta_0,Cn^{-1/2})$（其中 $B(\theta_0,R)=\cur{\theta:\|\theta-\theta_0\|_2<R}$）有
+$$
+\dfrac1{\sqrt n}\|J(\theta')-J(\theta'')\|_F\leq K\|\theta'-\theta''\|_2
+\\\dfrac1{\sqrt n}\|J(\theta')\|_F\leq K
+$$
+
+> [!NOTE]
+>
+> 这里「对于一切 $C$」似乎有点不同寻常，但实际上对于更大的 $C$，w.h.p.o.r.i. 的「高概率」会更弱。
+>
+> 左边有缩放因子，因为在 NTK initialization 下 $J$ 的范数是关于 $\sqrt n$ scale 的。
+
+第二条是容易从第一条推出的：只需要在第一条中取 $\theta''=\theta_0$ 得到 $J(\theta')$ 和 $J(\theta_0)$ 的差异是微小的，而 $\|J(\theta_0)\|_F$ 由 NNGP w.h.p.o.r.i. 收敛到常数，所以两个结合再调大 $K$ 即可。而第一条的证明我不想啃了。
+
+其它证明也不啃了，等我学完矩阵分析再说罢！
+
+------
+
+总之，如果得到了「NTK 随时间几乎不变」这件事，就有 $\dfrac{\d f(\theta)}{\d t}=-K\nabla\c L$ 的式子；另一种思路是认为整个模型可以被线性近似：$f(\theta(t))\approx f(\theta(0))+(\theta(t)-\theta(0))\cdot\nabla f(\theta(0))$ 也可得到相同结果。
+
+在 MSE loss 下，其是 $\dfrac{\d f(\theta)}{\d t}=-K(f(\theta)-\c Y)$ 也即 $g(\theta)=C\exp(-Kt)$ 的显式解。
+
+这种现象也被称作是「Lazy Training」：过参数化的神经网络只需要很小的参数扰动就可以实现 loss 景观的极大变化，同时 Jacobian 几乎不动。具体地，有
+$$
+\Delta\theta\approx\dfrac{\|\Delta f\|}{\|\nabla_\theta f(\theta(0))\|}
+\\\Delta(\nabla f)\approx\nabla^2 f(\theta(0))\Delta\theta\approx\|\Delta f\|\dfrac{\|\nabla^2f(\theta(0))\|}{\|\nabla f(\theta(0))\|}
+$$
+定义 $\kappa=\dfrac{\Delta(\nabla f)}{\|\nabla f(\theta(0))\|}$，即为梯度的相对变化率。如果这个值 $\to0$ 则意味着 Jacobian 几乎不变，线性模型是一个好假设。有人证明它确实是 $\to0$ 的。
+
+# V. Feature Learning
+
+虽然 NTK 看上去很棒，但是它有一个致命缺陷：信息利用率低，尤其是无法进行特征学习：假如只有少量维数有意义，带 L2 regularization 的普通神经网络只需要 $O(d)$ 个样本就能找到关键维度，但是 NTK 需要 $\Omega(d^2)$ 个样本。
+
+NTK 其实是对 curse of dimension 的反向利用：因为我的维数多，所以利用 CLT 可以把噪声抵消，但正因为用了 CLT 所以必须要更多的样本。NN 则是能动态地挑选有用的样本，压根没有抵消噪声这一步。NTK 没有自适应性，而 NN 有。
+
+这本质是因为 NN 主动改变了 Jacobian，违背了 NTK 的线性假设。

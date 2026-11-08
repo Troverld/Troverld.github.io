@@ -9,7 +9,7 @@
     {{- end -}}
   {{- end -}}
 {{- end -}}
-{{- $publicTitle := $filename -}}
+{{- $publicTitle := "" -}}
 {{- $publicDescription := "" -}}
 {{- $realTitle := $filename -}}
 {{- $hasRealTitle := false -}}
@@ -26,19 +26,21 @@
     {{- end -}}
   {{- end -}}
 {{- end -}}
+{{- $tabTitle := $realTitle -}}
+{{- if not $publicTitle }}{{ $publicTitle = $realTitle }}{{ end -}}
+{{- if not $publicDescription }}{{ $publicDescription = $realDescription }}{{ end -}}
 {{- if not $hasRealTitle -}}
   {{- $headings := findRE `(?m)^#\s+[^\r\n]+` .RawContent 1 -}}
   {{- with $headings }}{{ $realTitle = replaceRE `^#\s+` "" (index . 0) }}{{ end -}}
 {{- end -}}
 {{- if not $realDescription }}{{ $realDescription = $publicDescription }}{{ end -}}
-{{- $date := "" -}}
-{{- with $entry.date -}}
+{{- $createdAt := "" -}}
+{{- with $entry.created_at -}}
   {{- if eq (printf "%T" .) "string" -}}
-    {{- if findRE `^\d{4}-\d{2}-\d{2}$` . -}}
-      {{- $parsed := try (time.AsTime .) -}}
-      {{- if not $parsed.Err }}{{ $date = . }}{{ end -}}
+    {{- if findRE `^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$` . -}}
+      {{- $parsed := try (time.AsTime (printf "%s:00" (replace . " " "T"))) -}}
+      {{- if not $parsed.Err }}{{ $createdAt = . }}{{ end -}}
     {{- end -}}
   {{- end -}}
 {{- end -}}
-{{- if and (not $date) (not .Date.IsZero) }}{{ $date = .Date.Format "2006-01-02" }}{{ end -}}
-{{- return (dict "publicTitle" $publicTitle "publicDescription" $publicDescription "realTitle" $realTitle "realDescription" $realDescription "date" $date) -}}
+{{- return (dict "publicTitle" $publicTitle "publicDescription" $publicDescription "tabTitle" $tabTitle "realTitle" $realTitle "realDescription" $realDescription "createdAt" $createdAt) -}}

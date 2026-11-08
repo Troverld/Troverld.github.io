@@ -1,0 +1,5 @@
+{{- with .createdAt -}}
+<time datetime="{{ replace . " " "T" }}">{{ . }}</time>
+{{- else -}}
+<span class="published-unknown">未知</span>
+{{- end -}}

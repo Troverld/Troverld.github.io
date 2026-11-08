@@ -1,14 +1,8 @@
-<h1>文章</h1>
-<p class="muted">{{ .Site.Params.description }}</p>
+<h1>文章列表</h1>
 <ul class="post-list">
-  {{ $posts := slice }}
-  {{ range where .Site.RegularPages "Section" "posts" }}
-    {{ $m := partial "metadata.html" . }}
-    {{ $posts = $posts | append (dict "page" . "meta" $m "order" (printf "%s/%s" ($m.date | default "0000-00-00") .RelPermalink)) }}
-  {{ end }}
-  {{ range sort $posts "order" "desc" }}
-    <li><h2><a href="{{ .page.RelPermalink }}">{{ .meta.publicTitle }}</a></h2>
-    {{ with .meta.date }}<time datetime="{{ . }}">{{ . }}</time>{{ end }}
-    {{ with .meta.publicDescription }}<p>{{ . }}</p>{{ end }}</li>
+  {{ range partialCached "sorted-posts.html" .Site .Site.Language.Lang }}
+    <li><div class="post-heading"><h2><a href="{{ .page.RelPermalink }}">{{ .meta.publicTitle }}</a></h2>
+    <span class="published-at">{{ partial "published-time.html" .meta }}</span></div>
+    {{ with .meta.publicDescription }}<p>摘要：{{ . }}</p>{{ end }}</li>
   {{ else }}<li>暂无文章。将 .md 或 .txt 文件放入 content/posts/ 即可发布。</li>{{ end }}
 </ul>

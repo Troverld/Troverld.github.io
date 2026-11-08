@@ -1,0 +1,1858 @@
+$$
+\newcommand{\ip}[1]{\left<#1\right>}
+\newcommand{\cur}[1]{\left\{#1\right\}}
+\newcommand{\E}{\mathop{\mathbb E}\limits}
+\newcommand{\t}{\text}
+\newcommand{\co}[2]{{\color{#1}{#2}}}
+\newcommand{\d}{\mathrm d}
+\newcommand{\p}{\partial}
+\newcommand{\mat}[1]{\begin{matrix}#1\end{matrix}}
+\newcommand{\c}{\mathcal}
+\newcommand{\eps}{\epsilon}
+\newcommand{\comp}{\complement}
+$$
+
+## Optimization
+
+### Lipschitz-Smoothness and Strong Convexity
+
+二阶光滑时，$\ell_2$-范数下的 $L$-光滑和 $\mu$-强凸具有以下性质：
+
+- 令 $\lambda$ 为任意 Hessian 特征值，则 $L$-光滑等价于 $|\lambda|\leq L$，$\mu$-强凸等价于 $\lambda\geq\mu$。
+
+然后，$\lambda\leq k$ 具有以下 **等价** 形式：
+
+- $f(y)\leq f(x)+\ip{\nabla f(x),y-x}+\dfrac k2\|y-x\|^2_2$。
+- $\ip{\nabla f(x)-\nabla f(y),x-y}\leq k\|x-y\|^2_2$。
+- $f(\alpha x+(1-\alpha)y)\geq\alpha f(x)+(1-\alpha)f(y)-\alpha(1-\alpha)\dfrac k2\|x-y\|^2_2$。
+
+$\lambda\geq k$ 则具有以下 **等价** 形式：
+
+- $f(y)\geq f(x)+\ip{\nabla f(x),y-x}+\dfrac k2\|y-x\|^2_2$。
+- $\ip{\nabla f(x)-\nabla f(y),x-y}\geq k\|x-y\|^2_2$。
+- $f(\alpha x+(1-\alpha)y)\leq\alpha f(x)+(1-\alpha)f(y)-\alpha(1-\alpha)\dfrac k2\|x-y\|^2_2$。
+
+$|\lambda|\leq k$ 具有以下 **等价** 形式：
+
+- $\|\nabla f(x)-\nabla f(y)\|_2\leq k\|x-y\|_2$。
+
+$\lambda\geq k>0$ 具有以下 **推论**：
+
+- $\|\nabla f(x)-\nabla f(y)\|_2\geq k\|x-y\|_2$。
+
+------
+
+任意范数下仍然可以定义 $L$-光滑和 $\mu$-强凸，但此时很多推论不再成立。
+
+首先来一点基础数学知识。
+
+> [!IMPORTANT]
+>
+> 以下均考虑有限维空间。其上的 $\ell_n$-范数是 $\|x\|_n=\left(\sum_i|x_i|^n\right)^{1/n}$。
+>
+> 对于范数 $\|\cdot\|$ 可以定义对偶范数 $\|\cdot\|_*$，满足 $\|z\|_*=\sup_{\|x\|\leq1}\ip{z,x}$。对于 $1/p+1/q=1$，有 $\ell_p$ 和 $\ell_q$ 互为对偶。
+>
+> Cauchy-Schwartz 不等式 $\ip{x,y}\leq\|x\|\|y\|_*$。特例是 Hölder 不等式：$\ip{x,y}\leq\|x\|_p\|y\|_q$。
+
+$\ell_2$-范数是自对偶范数，且与内积存在直接关联，因此我们喜欢 $\ell_2$-范数。$\ell_1$-范数 $\sum|x_i|$ 和 $\ell_\infty$-范数 $\max|x_i|$ 互为对偶。
+
+此时其无法简单与特征值挂钩，因此只能回归最本源的定义：
+
+- $L$-光滑的定义是 $\|\nabla f(x)-\nabla f(y)\|_*\leq L\|x-y\|$。
+- $\mu$-强凸的定义是 $f(y)\geq f(x)+\ip{\nabla f(x),y-x}+\dfrac\mu2\|y-x\|^2$。
+
+$L$-光滑仍然有一批好用的结论：
+
+- $|\ip{\nabla f(x)-\nabla f(y),x-y}|\leq L\|x-y\|^2$，由 C-S 不等式直接推出。**但不再是等价形式**。
+- $|f(y)-f(x)-\ip{\nabla f(x),y-x}|\leq\dfrac L2\|y-x\|^2$。**仍然是等价形式**。
+- $f(\alpha x+(1-\alpha)y)\geq\alpha f(x)+(1-\alpha)f(y)-\alpha(1-\alpha)\dfrac k2\|x-y\|^2$。**是推论但不是等价形式**。
+
+但 $\mu$-强凸的场合，就只有下面一条成立了：
+
+- $f(\alpha x+(1-\alpha)y)\leq\alpha f(x)+(1-\alpha)f(y)-\alpha(1-\alpha)\dfrac k2\|x-y\|^2$。**是等价形式**。
+
+------
+
+$L$-光滑和 $\mu$-强凸的另一种重要理解方式是 Polyak-Łojasiewicz 不等式或其等价形式。
+
+首先还是来一点基础数学知识。
+
+> [!IMPORTANT]
+>
+> 对于任何函数 $\Phi$ 都可以定义其 Fenchel 共轭 $\Phi^*(\theta)=\sup_x\cur{\ip{\theta,x}-\Phi(x)}$，$\Phi\to\Phi^*$ 即为 Legendre-Fenchel 变换。令 $\Psi=\Phi^*$。
+>
+> 对于严格凸且可微的 $\Phi$，$\nabla\Phi$ 和 $\nabla\Psi$ 是互逆映射：若 $\theta=\nabla\Phi(x)$，则 $x=\nabla\Psi(\theta)$。
+>
+> Fenchel 共轭和对偶范数存在深刻联系：对于 $f(x)=\dfrac12\|x\|^2$，有 $f^*(y)=\dfrac12\|y\|^2_*$。另一方面，对于常规的 $\ell_p$-范数，令 $f(x)=\dfrac1p\|x\|_p^p$，则 $f^*(y)=\dfrac1q\|y\|_q^q$，其中 $1/p+1/q=1$。
+>
+> Fenchel-Young 不等式 $\Phi(x)+\Psi(\theta)\geq\ip{\theta,x}$，在 $\theta=\nabla\Phi(x),x=\nabla\Psi(\theta)$ 时取得最值。由此可得 $\Phi^*(\nabla\Phi(x))=\ip{\nabla\Phi(x),x}-\Phi(x)$。
+>
+> 特别地，有 $(\nabla\Phi^*)(\nabla\Phi(x))=x$，但 $\nabla(\Phi^*(\nabla\Phi(x)))=0$。
+>
+> 在范数的场合有特例 $\dfrac1p\|x\|_p^p+\dfrac1q\|y\|_q^q\geq\ip{x,y}$。
+>
+> 关于 $\|\cdot\|$ 的 $\mu$-强凸函数，其 Fenchel 共轭是关于 $\|\cdot\|_*$ 的 $1/\mu$-光滑严格凸函数，反之亦然。
+
+于是对于 $\mu$-强凸的 $f$，即有
+$$
+f^*(y)\leq f^*(x)+\ip{\nabla f^*(x),y-x}+\dfrac1{2\mu}\|y-x\|^2_*
+\\\ip{\nabla f(y),y}-f(y)\leq\ip{\nabla f(x),x}-f(x)+\ip{x,\nabla f(y)-\nabla f(x)}+\dfrac1{2\mu}\|\nabla f(y)-\nabla f(x)\|^2_*
+\\f(y)\leq f(x)+\ip{\nabla f(x),y-x}+\dfrac1{2\mu}\|\nabla f(y)-\nabla f(x)\|^2_*
+$$
+这是 $\mu$-强凸的 **推论**——因为第一行是 $1/\mu$-光滑的推论。进一步，将该式中的 $x,y$ 交换并相加还能得到另一个可能有用的式子
+$$
+\ip{\nabla f(x)-\nabla f(y),x-y}\geq\dfrac1\mu\|\nabla f(y)-\nabla f(x)\|_*^2
+$$
+然而对于 $L$-光滑严格凸的 $f$，下述描述则是其 **等价形式**——因为其同等推导过程中，使用的第一行就是 $1/L$-强凸的定义。
+$$
+f(y)\geq f(x)+\ip{\nabla f(x),y-x}+\dfrac1{2L}\|\nabla f(y)-\nabla f(x)\|^2_*
+$$
+同时有推论
+$$
+\ip{\nabla f(x)-\nabla f(y),x-y}\leq\dfrac1L\|\nabla f(y)-\nabla f(x)\|_*^2
+$$
+未交换相加的场合，它们在 $x$ 取全局 min 时得到的结果就是 Polyak-Łojasiewicz 不等式。
+
+------
+
+当函数同时是 $L$-光滑和 $\mu$-强凸时，有时我们要证明一些关于 $\mu$ 和 $L$ 的复杂联合不等式。此时非常有用的做法是引入辅助函数 $g(x)=f(x)-\dfrac\mu2\|x\|^2$ 或 $h(x)=\dfrac L2\|x\|^2-f(x)$，两者均是 $L-\mu$-光滑严格凸函数，转成相关形式后再使用前面提到的一车性质即可相应解决。
+
+### Convergence
+
+证明一个迭代的收敛：
+
+- 普遍做法是得到一个 $p(w_{i+1})-p(w_i)\leq q(w_i)-q(w_{i+1})$，求和后得到 $p(w_T)-p(w_0)\leq q(w_0)-q(w_T)$。
+- 性质弱一点也要有 $p(w_i)\leq q(w_i)-q(w_{i+1})$，求和后得到 $\min p(w_i)\leq\dfrac1T[q(w_0)-q(w_T)]$。
+- 倘若是 $p(w_{i+1})-p(w_i)\leq q(w_i)$ 则一般没用，因为右侧的 $\sum q(w_i)$ 不给定额外条件时不一定有界。
+
+$p$ 可以选择 $f,\|\nabla f\|$ 等，一般仅与迭代点有关；$q$ 则一般与极值点挂钩，可以使用 $\|w-w^*\|$、$|f(w)-f(w^*)|$、$\|\nabla f(w)-\nabla f(w^*)\|$ 等。
+
+这种方法似乎有着 **Lyapunov 函数** 的统称。
+
+### Gradient Descent
+
+公式：$w_{i+1}=w_i-\eta\nabla f(w_i)$。需求：$L$-光滑。
+
+收敛性使用公式 $f(y)\leq f(x)+\ip{\nabla f(x),y-x}+\dfrac L2\|y-x\|^2$，代入即得
+$$
+f(w_{i+1})\leq f(w_i)-\eta\|\nabla f(w_i)\|^2+\dfrac{L\eta^2}2\|\nabla f(w_i)\|^2
+$$
+取 $\eta\leq1/L$ 即得
+$$
+f(w_{i+1})-f(w_i)\leq-\dfrac\eta2\|\nabla f(w_i)\|^2
+$$
+
+------
+
+无额外性质的场合，直接求和然后放缩即得 $\min_{i=0}^{T-1}\|\nabla f(w_i)\|\leq\sqrt{\dfrac2{\eta T}[f(w_0)-f(w^*)]}$，于是知此时 $O(1/\sqrt T)$ 收敛。
+
+额外保证凸性的场合，与 $\|w-w^*\|$ 挂钩，有
+$$
+\|w_{i+1}-w^*\|^2=\|w_i-w^*\|^2 - 2\eta\ip{\nabla f(w_i), w_i-w^*} + \eta^2\|\nabla f(w_i)\|^2
+$$
+使用凸性 bound 第二项，使用 $L$-光滑 bound 最后一项，即得
+$$
+\|w_{i+1}-w^*\|^2\leq\|w_i-w^*\|^2 - 2\eta(f(w_i)-f(w^*))-2\eta(f(w_{i+1})-f(w_i))
+$$
+整理即得
+$$
+f(w_{i+1}) - f(w^*) \leq \frac{1}{2\eta}(\|w_i-w^*\|^2 - \|w_{i+1}-w^*\|^2)
+$$
+求和并放缩即知 $f(w_T)-f(w^*)\leq\dfrac1{2T\eta}\|w_0-w^*\|^2$。于是知此时 $O(1/T)$ 收敛。
+
+额外保证 $\mu$-强凸的场合，仍然与 $\|w-w^*\|$ 挂钩则有
+$$
+\|w_{i+1}-w^*\|^2\leq\|w_i-w^*\|^2 - 2\eta(f(w_i)-f(w^*))-\eta\mu\|w_i-w^*\|^2-2\eta(f(w_{i+1})-f(w_i))
+$$
+此时裂项相消时可以乘上一个指数系数，最终得到 $f(w_T)-f(w^*)\leq\dfrac\mu2\|w_0-w^*\|^2(1-\eta\mu)^T$。于是知此时线性收敛。
+
+另一种想法是直接使用 PL 不等式，与 $f(w)-f(w^*)$ 挂钩，得到 $f(w_{i+1})-f(w^*)\leq(1-\eta\mu)(f(w_i)-f(w^*))$。同样可知线性收敛。
+
+### Stochastic Gradient Descent (Bounded Variance)
+
+公式：$w_{i+1}=w_i-\eta G_i=w_i-\eta(\nabla f(w_i)+\xi_i)$，满足 $\E[G_i]=\nabla f(w_i)$ 也即 $\E[\xi_i]=0$。
+
+需求：$L$-光滑。
+
+首先先来一点基础数学知识。
+
+> [!IMPORTANT]
+>
+> 使用总方差衡量一个随机向量的方差
+> $$
+> \t{Var}(X)=\E\bigg[\big\|X-\E[X]\Big\|^2\bigg]
+> $$
+> 其满足经典的式子
+> $$
+> \t{Var}(X)=\E[\|X\|^2]-\|\E[X]\|^2
+> $$
+> 于是令总方差的全局上界为 $\sigma^2$，即有
+> $$
+> \E[\|G_i\|^2]-\|\nabla f(w_i)\|^2\leq\sigma^2
+> $$
+
+从 $f(w_{i+1})\leq f(w_i)+\ip{\nabla f(w_i),w_{i+1}-w_i}+\dfrac L2\|w_{i+1}-w_i\|^2$ 出发，两边取期望后，利用 $\E[G_i]=\nabla f(w_i)$ 和 $\E[\|G_i\|^2]\leq\|\nabla f(w_i)^2\|+\sigma^2$ 即得
+$$
+\E[f(w_{i+1})]\leq f(w_i)-\eta\|\nabla f(w_i)\|^2+\dfrac{L\eta^2}2\|\nabla f(w_i)\|^2+\dfrac{L\eta^2}2\sigma^2
+$$
+这里我们仍然可以取 $\eta<1/L$ 把 $\|\nabla f(w_i)\|^2$ 前的系数放缩掉，但是 $\sigma^2$ 前的 $L\eta<1$ 并不能同样放缩至 $1$。因此我们最终从下式出发。
+$$
+\E[f(w_{i+1})]-f(w_i)\leq-\dfrac\eta2\|\nabla f(w_i)\|^2+\dfrac{L\eta^2}2\sigma^2
+$$
+
+------
+
+无额外性质的场合，有
+$$
+\min_{i=0}^{T-1}\|\nabla f(w_i)\|\leq\sqrt{\dfrac2{\eta T}[f(w_0)-f(w^*)]+L\eta\sigma^2}
+$$
+这里体现出我们不把 $L\eta$ 放成 $1$ 的重要性——要是放了，就无法得到收敛性了（不管 $\eta$ 怎么设都会留下最后的噪声）。此时令 $\eta=O(1/\sqrt T)$，即得最终收敛效率为 $O(1/\sqrt[4]T)$。
+
+有凸性的场合，仍然展开 $\|w_{i+1}-w^*\|^2$ 可得
+$$
+\|w_{i+1}-w^*\|^2=\|w_i-w^*\|^2 - 2\eta\ip{G_i, w_i-w^*} + \eta^2\|G_i\|^2
+$$
+取期望后，仍然结合凸性以及上述结论，可得
+$$
+\E\|w_{i+1}-w^*\|^2=\|w_i-w^*\|^2 - 2\eta\ip{\E[G_i], w_i-w^*} + \eta^2\E[\|G_i\|^2]
+\\\leq\|w_i-w^*\|^2 - 2\eta\ip{\nabla f(w_i), w_i-w^*} + \eta^2(\|\nabla f(w_i)\|^2+\sigma^2)
+\\\leq\|w_i-w^*\|^2 - 2\eta(f(w_i)-f(w^*))-2\eta(\E[f(w_{i+1})]-f(w_i))+\eta^2\sigma^2+L\eta^3\sigma^2
+$$
+于是有
+$$
+\E[f(w_{i+1})] - f(w^*) \leq \frac{1}{2\eta}(\|w_i-w^*\|^2 -\E\|w_{i+1}-w^*\|^2)+\dfrac12(1+L\eta)\eta\sigma^2
+$$
+和 GD 一样求和即得
+$$
+\E[f(\bar w_T)]-f(w^*)\leq\dfrac1{2T\eta}\|w_0-w^*\|^2+\dfrac12(1+L\eta)\eta\sigma^2
+$$
+
+> [!TIP]
+>
+> 这里使用 $\bar w_T=\dfrac1T\sum_{i=0}^{T-1}w_i$ 进行更严谨的放缩是可选项（由 Jensen 保证）。在 GD 的证明中也可以这么放缩。
+
+可以发现，这里的 $L\eta$ 项其实一开始就不保留，不影响其收敛，和非凸场合不同。取 $\eta=O(1/\sqrt T)$ 知其收敛速率为 $O(1/\sqrt T)$。
+
+强凸的场合就不演示使用上述与距离挂钩的推导了，直接使用 PL 不等式，即得
+$$
+\E[f(w_{i+1})]-f(w_i)\leq-\eta\mu(f(w_i)-f(w^*))+\dfrac{L\eta^2}2\sigma^2
+\\\E[f(w_{i+1})]-f(w^*)\leq(1-\eta\mu)(f(w_i)-f(w^*))+\dfrac{L\eta^2}2\sigma^2
+$$
+此时有两种使用方式：
+
+- 选择常数 $\eta$，则因为噪声项小，迭代初期确实以指数形式衰减，但衰减到对应的噪声球后即开始振荡不再稳定收敛。
+- 选择递减 $\eta$。可以归纳证明：当 $\eta$ 以 $O(1/i)$ 速率衰减时，其以 $O(1/T)$ 的速率保证收敛到极值。
+
+### Stochastic Gradient Descent (Bounded Second Moment)
+
+上述分析基于方差有界的前提。但是另一种常见的场景是梯度二阶矩有界，即 $\E\|G_i\|^2\leq\bar\sigma^2$，此时不仅分析更简单了，需要的条件也更弱了。
+
+首先一个前提是，梯度二阶矩有界约等于 $\|\nabla f(w_i)\|$ 有界，而这又等价于 $f$ 的 **Lipschitz-连续** 性，因此是一个合理且常见的假设。
+
+> [!NOTE]
+>
+> $L$-Lipschitz-连续：对于一切 $x$，均有 $\|\nabla f(x)\|\leq L$。
+
+此时更新公式不变，但 **不再需要函数的 $L$-光滑性**，即可导出凸和强凸场合的结论。证明均直接从
+$$
+\E\|w_{i+1}-w^*\|^2=\|w_i-w^*\|^2 - 2\eta\ip{\nabla f(w_i), w_i-w^*} +\eta^2\E\|G_i\|^2
+\\\leq\|w_i-w^*\|^2 - 2\eta\ip{\nabla f(w_i), w_i-w^*} +\eta^2\bar\sigma^2
+$$
+开始，凸性的场合有
+$$
+f(w_i) - f(w^*) \leq \frac{1}{2\eta}(\|w_i-w^*\|^2 -\E\|w_{i+1}-w^*\|^2)+\dfrac\eta2\bar\sigma^2
+$$
+然后一样求和放缩得到
+$$
+f(\bar w_i)-f(w^*)\leq\dfrac1{2\eta T}\|w_0-w^*\|+\dfrac\eta2\bar\sigma^2
+$$
+于是取 $\eta=1/\sqrt T$ 可知其以 $O(1/\sqrt T)$ 收敛。
+
+> [!TIP]
+>
+> 但是这里就不能使用固定步长了，可以说已经和 MD 本质等价了。
+
+而强凸的场合，可以转而使用性质 $\nabla f(w)\cdot(w-w^*)\geq\mu\|w-w^*\|^2$ 得到
+$$
+\E[\|w_{t+1}-w^*\|^2]\leq(1-2\eta\mu)\|w_t-w^*\|^2+\eta^2\bar\sigma^2
+\\\E[\|w_T-w^*\|^2]\leq(1-2\eta\mu)^T\|w_0-w^*\|^2+\dfrac\eta{2\mu}\bar\sigma^2
+$$
+同样可以得到相同结论。
+
+### SVRG
+
+> [!IMPORTANT]
+>
+> SGD 对噪声的来源并没有要求：它可以来自随机采样，也可以手动添加。只要其方差或二阶矩之一有界，就可以以上述方法分析得到收敛速率。
+>
+> 然而，SVRG 假设了一种特定的环境：即噪声完全来自于随机采样，并在此前提下尝试削减噪声。
+
+定义 $f_i$ 为 stochastic loss，$F=\dfrac1n\sum f_i$ 为 full-batch loss 也即 empirical loss，目标是优化出其上的最优值。
+
+要求：每个 $f_i$ 均为 $L$-光滑 $\mu$-强凸函数。因此它们的均值 $f$ 具有同样性质。
+
+考虑 $i$ 时刻随机了一个 stochastic loss $f_{k_i}$。考虑设一个监督点 $\tilde w$，然后使用
+$$
+w_{i+1}=w_i-\eta(\nabla f_{k_i}(w_i)-\nabla f_{k_i}(\tilde w)+\nabla F(\tilde w))
+$$
+更新。这样做只要保证 $\tilde w$ 更新不太频繁，昂贵的 full-batch 梯度的开销就被均摊。
+
+为方便，令括号里的一坨东西为 $v$，即 $w_{i+1}=w_i-\eta v$。
+
+则有一个很好的性质是 $\E[v]=\nabla F(w_i)$，即 $v$ 是对梯度的一个无偏估计——而满足这个性质即可直接和之前用过很多次的式子一样处理
+$$
+\|w_{i+1}-w^*\|^2=\|w_i-w^*\|^2 - 2\eta\ip{v, w_i-w^*} + \eta^2\|v\|^2
+\\\E\|w_{i+1}-w^*\|^2=\|w_i-w^*\|^2 - 2\eta\ip{\nabla F(w_i), w_i-w^*} + \eta^2\E[\|v\|^2]
+\\\leq\|w_i-w^*\|^2 - 2\eta(F(w_i)-F(w^*)) + \eta^2\E[\|v\|^2]
+$$
+其中应用了凸性。
+
+> [!TIP]
+>
+> 为什么不用强凸性？~~我也不知道！~~其实是因为强凸性并不能给出二维的信息。
+>
+> 这个式子已经在之前见过很多次了。其实是 SGD 的通用模式（把分析收敛转成分析方差）。
+
+现在来分析这个 $\|v\|^2$ 应该怎么处理。
+
+我们的 $v$ 式子里包含了一个 $\E[X]-X$ 的部分。这个式子是很有用的，特别是其位于平方之中的场合：有 $\E\|X-\E[X]\|^2=\E\|X\|^2-\|\E X\|^2\leq\E\|X\|^2$，因此 $\E[X]$ 一项可以直接被干掉。现在问题是如何把它写成这个形式。
+
+可以使用 $\|a+b\|^2\leq2(\|a\|^2+\|b\|^2)$ 的基础公式，则有
+$$
+\E\|v\|^2\leq\E\Big[2\|\nabla f_{k_i}(w_i)-\nabla f_{k_i}(w^*)\|^2\Big]+\E\Big[2\|\nabla f_{k_i}(w^*)+\nabla F(\tilde w)-\nabla f_{k_i}(\tilde w)\|^2\Big]
+$$
+其中 $w^*$ 是 $F$ 的全局最小值，因此有 $\nabla F(w^*)=0$。因此右式的 $\nabla F$ 项可以按照上述结论直接被放缩掉，然后剩下的可以直接套 $L$-光滑凸函数的
+$$
+f(y)\geq f(x)+\ip{\nabla f(x),y-x}+\dfrac1{2L}\|\nabla f(y)-\nabla f(x)\|^2
+$$
+结论，得到
+$$
+\|\nabla f_{k_i}(w)-\nabla f_{k_i}(w^*)\|^2\leq2L(f_{k_i}(w)-f_{k_i}(w^*)-\ip{\nabla f_{k_i}(w^*),w-w^*})
+\\\E\|\nabla f_{k_i}(w)-\nabla f_{k_i}(w^*)\|^2\leq2L(F(w)-F(w^*)-\ip{\nabla F(w^*),w-w^*})=2L(F(w)-F(w^*))
+$$
+于是直接得到
+$$
+\E\|v^2\|\leq4L(F(w_i)-F(w^*)+F(\tilde w)-F(w^*))
+$$
+那么代入即得
+$$
+\E\|w_{i+1}-w^*\|^2\leq\|w_i-w^*\|^2 -2\eta(1-2L\eta)(F(w_i)-F(w^*)) + 4\eta^2L(F(\tilde w)-F(w^*))
+$$
+一个想法是直接伸缩和，但是式子中的 $F(w_i)$ 难以处理。但是，注意到我们至今没有指出监督点 $\tilde w$ 是如何定义的，现在我们来处理它：
+
+- 每若干轮更新一次 $\tilde w$，其自上次更新以来所有到达过的 $w_i$ 中随机选一个，然后计算昂贵的 full-batch 梯度 $\nabla F(\tilde w)$ 并保存。
+- 更新完 $\tilde w$ 后，将当前的 $w_i$ 直接重置为 $\tilde w$。
+
+> [!NOTE]
+>
+> 实际上有理智的人都会直接取 $\tilde w$ 为上一轮结束时的 $w_i$ 而不是随机选一个。但此时的收敛性没人会证。
+
+于是考虑令上一轮得到了监督点 $\tilde w_{s-1}$，本轮的起始态是 $w_l=\tilde w_{s-1}$，终止态是 $w_r$，则有
+$$
+\E\|w_r-w^*\|^2\leq\|w_l-w^*\|^2-2\eta(1-2L\eta)(r-l)\E[F(\tilde w_s)-F(w^*)]+4\eta^2Lm(F(\tilde w_{s-1})-F(w^*))
+$$
+在左侧把 $\|w_r-w^*\|$ 丢掉，在右侧用全局最小值处的强凸性放缩掉 $\|w_l-w^*\|^2$，得到
+$$
+2\eta(1-2L\eta)(r-l)\E[F(\tilde w_s)-F(w^*)]\leq2\Big(\dfrac1\mu+2\eta^2Lm\Big)\Big(F(\tilde w_{s-1})-F(w^*)\Big)
+\\\E[F(\tilde w_s)-F(w^*)]\leq\left[\dfrac1{\mu\eta(1-2L\eta)m}+\dfrac{2L\eta}{1-2L\eta}\right]\E[F(\tilde w_{s-1})-F(w^*)]
+$$
+于是选择得当的 $\eta$ 即可知其线性收敛。
+
+> [!NOTE]
+>
+> 事实上，在最后一步之前，$\mu$-强凸都没有被使用（之前只用了凸性）。但是 $\mu$-强凸确实是必要的——只有凸性，GD 都只有 $O(1/T)$ 的收敛，那么 SVRG 自然也不能免俗。
+
+### Mirror Descent
+
+GD 有以下三大缺点：
+
+- 所有分析均基于 $\ell_2$-范数上的 Lipschitz 光滑性和强凸性；倘若切换到其它范数视角，则分析全部失效。
+- 在值域受限时，可能直接迭代出范围。
+- 不「类型安全」：直接将原始空间中的 $x$ 和对偶空间中的 $\nabla f(x)$ 相加似乎不太合法。
+
+需要一些更泛用的场景。
+
+------
+
+GD 的更新也可以被解释为以下等价形式：
+$$
+x_{i+1}=\arg\min_y\left[\ip{\eta\nabla f(x_i),y-x_i}+\dfrac12\|y-x_i\|^2_2\right]
+$$
+然后来点基础数学知识。
+
+> [!IMPORTANT]
+>
+> 任何严格凸可微函数 $\Phi$ 都可以依托之定义 Bregman 散度
+> $$
+> D_\Phi(x,y)=\Phi(x)-\Phi(y)-\ip{\nabla\Phi(y),x-y}
+> $$
+> 特别地，当 $\Phi=\dfrac12\|x\|_2^2$ 时，有 $D_\Phi(x,y)=\dfrac12\|x-y\|_2^2$；当 $\Phi=\sum x_i\log x_i$ 时，有 $D_\Phi(x,y)=D_\t{KL}(x\|y)$。 
+>
+> 因为 $\Phi$ 是严格凸且可微的，所以其 Fenchel 共轭 $\Psi$ 满足 $\nabla\Phi$ 和 $\nabla\Psi$ 是互逆映射，且可以在对偶空间中定义对偶 Bregman 散度 $D_\Psi(\theta,\xi)$，且当 $\theta=\nabla\Phi(x),\xi=\nabla\Phi(y)$ 时，有 $D_\Phi(x,y)=D_\Psi(\theta,\xi)$。
+>
+> Bregman 散度的定义与范数无关——$\Phi$「严格凸」的性质并不依托于某个具体的范数。然而，如果 $\Phi$ 进一步关于某个 $\|\cdot\|$ 是 $\mu$-强凸的，则由强凸性的定义，有 $D_\Phi(x,y)\geq\dfrac\mu2\|y-x\|^2$ 的下界。另一方面，$\mu$-严格凸函数的 Fenchel 共轭是 $1/\mu$-光滑凸的，于是有 $0<D_\Psi(\theta,\xi)\leq\dfrac1{2\mu}\|\theta-\xi\|_*^2$ 的关系。
+
+MD 则使用了更进一步的思想。
+
+要求：$f$ 关于某个 $\|\cdot\|_*$ $L$-连续（即处处有 $\|\nabla f\|_*\leq L$），且是凸函数。
+
+则选取一个关于其对偶范数 $\|\cdot\|$ $\mu$-强凸的 $\Phi$，然后用其引导的 Bregman 散度 $D_\Phi(x,y)$ 替换 GD 中的二次项，并限制迭代值域，则每一步迭代的流程如下：
+$$
+\t{Mirr}_x(\xi)=\arg\min_{y\in\Delta}\left[\ip{\xi,y-x}+V_x(y)\right]
+\\x_{i+1}=\t{Mirr}_{x_i}(\alpha\nabla f(x_i))
+$$
+
+> [!NOTE]
+>
+> 此处的 $V_x(y)=D_\Phi(y,x)$，为了强调此处取 $x$ 作为参考点——Bregman 散度中的梯度是关于后一项的。
+>
+> 此处的 $\alpha$ 就是 GD 中的 $\eta$，此处尊重传统。
+
+而 GD 就是 $\Delta=\R^n,\Phi=\dfrac12\|x\|_2^2$​ 时的 MD。
+
+------
+
+MD 有什么性质？首先来点基础数学知识。
+
+> [!IMPORTANT]
+>
+> 对于不一定可微的凸函数 $f$，$x_0$ 处的次梯度是满足 $\forall x\in\Delta:f(x)\geq f(x_0)+\ip{g,x-x_0}$ 的向量 $g$。所有满足该条件的 $g$ 构成次微分 $\p f(x_0)$，其是一个集合。
+>
+> 凸函数处处存在次梯度，且次微分是凸集。如果函数可微，则有 $\p f(x_0)=\nabla f(x_0)$。
+>
+> 在无约束即 $\Delta=\R^n$ 的场合，是全局极小值当且仅当 $0$ 是次梯度。
+>
+> 在有约束的场合，仅考虑简单的可微场合，则 $\forall x\in\Delta:\ip{\nabla f(x^*),x-x^*}\geq0$ 是充要条件，被称为一阶最优性条件。
+
+GD 的 argmin 式可以显式解得唯一解 $x_{i+1}=x_i-\eta\nabla f(x_i)$；而无约束也即 $\Delta=\R^n$ 的场合，$\t{Mirr}_x(\xi)$ 则亦可通过下法显式计算：
+
+- 计算 $\theta=\nabla\Phi(x)$ 映到对偶空间。
+- 计算 $\theta'=\theta-\xi$。
+- 计算 $x'=(\nabla\Phi)^{-1}(\theta')=\nabla\Psi(\theta')$ 映回原始空间。
+
+但是 $\theta'=\theta-\xi$ 同样会跑出值域，因此上述方法只适用于无约束场景。在有约束时，如果在某些特殊场合（如概率单纯形）存在解析解，否则还是只能硬解这个 argmin 式子。
+
+------
+
+MD 的收敛速率如何？再来点基础数学知识
+
+> [!IMPORTANT]
+>
+> Bregman 散度的三角恒等式
+> $$
+> \ip{\nabla\Phi(x)-\nabla\Phi(y),y-z}=D_\Phi(z,x)-D_\Phi(z,y)-D_\Phi(y,x)
+> $$
+> 这个式子有另一种理解方法（整理并交换变量后）：
+> $$
+> D_\Phi(x,z)=D_\Phi(x,y)+D_\Phi(y,z)+\ip{x-y,\nabla\Phi(y)-\nabla\Phi(z)}
+> $$
+> 即，用 $z$ 来近似 $x$，在引入中间值 $y$ 后，需要多一个内积项（**广义余弦定理**）。
+>
+
+那么代入即得，当 $x'=\t{Mirr}_x(\xi)$ 时，有
+$$
+\forall u\in\Delta:\ip{\xi+\nabla\Phi(x')-\nabla\Phi(x),u-x'}\geq0
+\\\ip{\xi,u-x'}+\ip{\nabla\Phi(x')-\nabla\Phi(x),u-x'}\geq0
+\\\ip{\xi,u-x'}+V_x(u)-V_{x'}(u)-V_x(x')\geq0
+\\\ip{\xi,x-u}\leq\ip{\xi,x-x'}+V_x(u)-V_{x'}(u)-V_x(x')
+$$
+代入 $V_x(x')\geq\dfrac\mu2\|x-x'\|^2$ 以及 $\dfrac\mu2\|\cdot\|^2,\dfrac1{2\mu}\|\cdot\|^2_*$ 间的 Fenchel-Young 不等式，得到
+$$
+\ip{\xi,x-u}\leq\dfrac{\|\xi\|_*^2}{2\mu}+\dfrac{\mu}{2}\|x-x'\|^2+V_x(u)-V_{x'}(u)-\dfrac\mu2\|x-x'\|^2
+\\=\dfrac{\|\xi\|^2_*}{2\mu}+V_x(u)-V_{x'}(u)
+$$
+代入每一步的 $x_{i+1}=\t{Mirr}_{x_i}(\alpha\nabla f(x_i))$，即得
+$$
+\mat{
+\alpha(f(x_i)-f(u))\leq\alpha\ip{\nabla f(x_i),x-u}&(\text{Convexity})
+\\\leq\dfrac{\alpha^2}{2\mu}\|\nabla f(x_i)\|^2_*+V_{x_i}(u)-V_{x_{i+1}}(u)
+\\\leq\dfrac{\alpha^2L^2}{2\mu}+V_{x_i}(u)-V_{x_{i+1}}(u)&(L\text{-Continuity})
+}
+$$
+于是求和并配上 Jensen 不等式即得
+$$
+\alpha T(f(\bar x_T)-f(u))\leq\dfrac{\alpha^2L^2T}{2\mu}+V_{x_0}(u)-V_{x_T}(u)
+\\f(\bar x_T)-f(u)\leq\dfrac{\alpha L^2}{2\mu}+\dfrac{V_{x_0}(u)}{\alpha T}
+$$
+于是令 $\alpha=O(1/\sqrt T)$，即知其以 $O(1/\sqrt T)$ 收敛。~~须知：上述分析的灵活程度远甚 GD——最后的式子里甚至保留的是 $u$ 而非最小值~~ 我回头检查了一遍 GD 的公式，发现 GD 里面其实完全可以保留 $u$ 也无伤大雅。当然其取最小值时的结果也是我们乐意看到的，就是所谓的 **遗憾** (regret)。
+
+> [!TIP]
+>
+> 既然 GD 本质上是二范数引导的 MD，那为什么我们只对 $L$-光滑的场合用 GD 呢？
+>
+> 因为 GD 的特征是固定的学习率！MD 中的学习率要随步长动态调整，所以你如果对 GD 使用动态学习率确实可以处理 $L$-连续的场景，但它就变成一个 MD 式算法了。
+
+> [!NOTE]
+>
+> 事实上，上述分析的适用范围远比想象的要广。
+>
+> - 首先，待优化的函数 $f$ 可以是非光滑的——只要其所有次梯度 $g$ 均有 $\|g\|_*\leq L$ 即可。此时用于迭代的 $\xi=\alpha g$ 可选取任一 $g\in\p f(x_i)$。
+> - 其次，每一步的优化函数 $f_i$ 甚至都可以不同——只要它们全部都遵循次梯度受限于 $L$ 的性质，则仍然可以在最后求和，总遗憾还是会收敛。这就是 **在线学习** 的场景。
+> - 最后，其可以与 GD 结合，得到 Linear Coupling 这一收敛速度更快的方法。
+
+### Linear Coupling*
+
+## Generalization
+
+### Basic Settings
+
+一个学习算法的输入：
+
+- 一个 domain set $\c X$，即所有可能的 instance 集合。
+- 一个 label set $\c Y$，即 instance 可能具有的标签集合。*此场景下默认是二分类。*
+- 一堆训练数据 $S=\cur{(x_i,y_i)\in\c X\times\c Y}_{i=1}^m$。
+
+一个学习算法的输出：
+
+- 确定性预测器 $h:\c X\to\c Y$。
+
+以下机制描述 $S$ 的生成方法：
+
+- 假设存在一个先验的 population distribution $\c D$ 在 $\c X$ 上，而算法对其一无所知。
+- 假设存在一个必定正确的确定性标签算法 $f:\c X\to\c Y$，同样是保密的。
+- $S$ 会 i.i.d. 地从 $\c D$ 中收集一堆 $x_i$，然后使用 $f$ 为它们打标签，最后提供给算法。
+
+> [!NOTE]
+>
+> 此处假定 $\c Y$ 由 $\c X$ 唯一确定。但是我们理解 $\c X$ 的方式是通过一堆 feature，而我们收集到的 feature 往往是 incomplete 的。换句话说，同一个 $\c X$ 也可能对应不同的 label。后文将给出更完整的定义，不过现在还是假设这个标签算法 $f$ 存在吧。
+
+以下机制描述对输出 $h$ 是否成功的度量：
+
+- 可以认为，$\c D$ 是 $\c X$ 上的一个概率测度。于是定义 $L_{\c D,f}(h)=\c D(\cur{h\neq f})$，即为泛化误差 (generalization error)。
+
+------
+
+因为学习算法不知道 $\c D$ 或 $f$，它只能通过经验误差 (empirical error) $L_S(h)=\dfrac1m\sum[h(x_i)\neq y_i]$ 来衡量它现在的表现。一个试图最小化经验误差的算法是 Empirical Risk Minimization (**ERM**) 的。
+
+泛化理论研究的正是在 $L_S$ 很小时，能得到关于 $L_{\c D,f}(h)$ 的什么结论。如果一个算法在经验误差很低时，反倒具有高的泛化误差，那么它就过拟合了。
+
+### Inductive Bias
+
+为了避免过拟合，有时我们会限制算法的能力，先验地将其表现力限制为某个 hypothesis class $\c H$，即强制输出 $h\in\c H$。
+
+> [!NOTE]
+>
+> 这里 $\c H$ 的定义依托于某个具体的 $\c X,\c Y$ 定义。下文中所有分析同样基于这个前提。
+
+在此条件下，仍然遵循 ERM 法则的算法记作 $\t{ERM}_\c H$，即
+$$
+\t{ERM}_\c H(S)=\arg\min_{h\in\c H}L_S(h)
+$$
+有时也简记为 $h_S$。
+
+当然这种先验的假设显然是有偏的，产生的 bias 即为 **归纳偏置** (inductive bias)。一个限制更多的假设类 $\c H$ 更能防止过拟合，但代价是高的归纳偏置。
+
+形式化地，可以将泛化误差拆分为两部分：
+$$
+L_{\c D,f}(h)=\eps_\t{app}+\eps_\t{est}
+$$
+
+- 其中 $\eps_\t{app}=\min_{h\in\c H}L_{\c D,f}(h)$ 即为当前假设类下能达到的最小泛化误差。
+- 而 $\eps_\t{est}=L_{\c D,f}(h)-\eps_\t{app}$ 即为当前得到的分类器与最小泛化误差的差距。
+
+那么 $\c H$ 的选择即决定了 $\eps_\t{app}$，而 $\eps_\t{est}$ 则与具体的 learner 有关。
+
+一个常见的假设是 **可行性假设**。称 $(\c H,\c D,f)$ 三元组满足可行性假设，如果存在 $h^*\in\c H$ 使得 $L_{\c D,f}(h^*)=0$。换句话说，可行性假设保证了 $\eps_\t{app}=0$。
+
+> [!TIP]
+>
+> 这直接给出推论：w.p. $1$，$L_S(h^*)=0$。这里的随机性只存在于 $S$ 的采样。「w.p. $1$」而非「对于一切 $S$」确实是有必要的——泛化误差是使用测度论定义的，因此只能保证 a.e. 经验误差为零。进一步，因为 $L_S(h_S)\leq L_S(h^*)$，所以又有 w.p. $1$，$L_S(h_S)=0$。
+
+### PAC Learning
+
+称一个假设类 $\c H$ 是 Probability Approximately Correct (PAC) 可学习的，如果对于一切 confidence parameter $\delta$ 和 accuracy parameter $\eps$，都存在一个 **与具体 $(\c D,f)$ setting 无关** 的 bound $m_\c H(\eps,\delta)$ 以及一个 **学习算法**，使得：只要 $(\c H,\c D,f)$ 满足可行性假设，在数据集中包括至少 $m_\c H(\eps,\delta)$ 条数据后，则 w.p. $\geq1-\delta$，有 $L_{\c D,f}(h_S)\leq\eps$。
+
+> [!IMPORTANT]
+>
+> 注意，PAC 只要求存在一个算法实现上述效果，并没有要求「对一切算法」或「对一切 ERM 算法」均成立。这个算法本身也可以是非 ERM 的。
+
+------
+
+一个例子是 $|\c H|$ 有限的场合。 我们考虑首先固定 $m,\eps$ 两个参数，求出 $\c D^m(S:\cur{L_{\c D,f}(h_S)>\eps})$ 的一个上界，然后给出为了让这个界不超过 $\delta$，需要多大的 $m$。
+
+站在随机变量的角度，其实际上是 $S\to h_S\to L_{\c D,f}(h_S)$ 的一个复合映射，因此可以直接从中间层 $h_S$ 出发：令 $\c H_B=\cur{h:L_{\c D,f}(h)>\eps}$，则然后寻找何时有 $h_S\in\c H_B$。
+
+我们不妨放松一点，考虑 **任意的 ERM 算法**，只要存在 $h\in\c H_B$ 满足 $L_S(h)=L_S(h_S)=0$ 我们就判它有可能出现。换句话说，记 $M=\cur{S:\exists h\in\c H_B\t{ s.t. }L_S(h)=0}$，则 $\c D^m(\cur{S:L_{\c D,f}(h_S)>\eps})\leq\c D^m(M)$。
+
+注意到有 $M=\bigcup_{h\in\c H_B}\cur{S:L_S(h)=0}$。于是直接用概率测度的 subadditivity（换句话说，Union Bound）得到
+$$
+\mat{\c D^m(\cur{S:L_{\c D,f}(h_S)>\eps})\leq\c D^m(M)\leq\sum_{h\in\c H_B}\c D^m(L_S(h)=0)
+\\=\sum_{h\in\c H_B}\c D(h=f)^m
+\\=\sum_{h\in\c H_B}(1-L_{\c D,f}(h))^m
+\\\leq\sum_{h\in\c H_B}(1-\eps)^m&(h\in\c H_B)
+\\\leq|\c H_B|\exp(-\eps m)\leq|\c H|\exp(-\eps m)}
+$$
+
+> [!NOTE]
+>
+> 以上大量使用了测度论记号。不懂 Kolmogorov 概率公理体系的人有难了。
+
+> [!TIP]
+>
+> Intuition：有一些坏的函数 $\c H_B$。因为它们是坏的，所以当 $S$ 随机时，它们以大概率露馅，且随得越多越容易露馅。$M$ 是那些不露馅的集合。使用 Union Bound 以保证所有坏函数均不露馅的概率是小的。
+
+于是，只要 $|\c H|$ 有限，当 $m$ 充分大时，$\c D^m(S:\cur{L_{\c D,f}(h_S)>\eps})$ 即可任意小，且与 $\c D$ 和 $f$ 的具体形态无关。于是知：有限 $\c H$ 必然是 PAC 可学习的，且有界
+$$
+m_\c H(\eps,\delta)\leq\dfrac{\log(|\c H|/\delta)}{\eps}
+$$
+
+### Generalized Settings
+
+PAC 仍然强调可行性假设，现在我们首先放宽本章开头的设置，然后进一步把可行性假设也给它干掉。
+
+输入：仍然是 domain set $\c X$、label set $\c Y$，以及 data set $S\in(\c X\times\c Y)^m$。
+
+输出：虽然课本上仍然是确定性的 $\c X\to\c Y$，但我还是更想把它泛化为 $\c X\to\c P(\c Y)$，其中 $\c P(\c Y)$ 是 $\c Y$ 上全体概率分布。当然其实还能被进一步泛化到非预测性问题。
+
+生成 $S$ 的方式：认为 $\c D$ 是 $\c X\times\c Y$ 上的一个测度，抛弃了 label function $f$。$S\sim\c D^m$。
+
+Loss：是 $\ell:\c H\times Z\to\R_+$ 的函数，其中 $\c H$ 是假设集也即可能的输出集合，$Z$ 是数据集，在自回归模型下可以认为是 $\c X\times\c Y$。有
+$$
+L_\c D(h)=\E_{z\sim\c D}\ell(h,z)
+\\L_S(h)=\dfrac1m\sum_{i=1}^m\ell(h,z_i)
+$$
+
+### Agnostic PAC
+
+现在即可将 PAC 扩展为 Agnostic PAC：称一个假设类 $\c H$ 关于某个集合 $Z$ 和对应的 loss $\ell$ 是 Agnostic PAC 的，如果对于 $\delta,\eps$ 存在 bound $m_\c H(\eps,\delta)$ 和学习算法，使得只要采样数至少为该 bound，即 w.p. $\geq1-\delta$ 有
+$$
+L_\c D(h_S)\leq\min_{h'\in\c H}L_\c D(h')+\eps
+$$
+为方便，下文将用 $h^*$ 表示右式的 argmin。
+
+> [!NOTE]
+>
+> 这里的 Agnostic (**不可知**) 意味着我们不假设一个先验的最优 $f$ 的存在性，不关心是否有 $\eps_\t{app}=0$，仅仅期望有 $\eps_\t{est}\leq\eps$，也即逼近最优的假设。
+>
+> 事实上，当我们将 $\c D$ 扩充到 $\c X\times \c Y$ 上分布后，满足 $L_\c D(h^*)=0$ 的 $h^*$ 就不保证存在了。此时最优的确定性二分类器是 Bayes 分类器，其在 $\c D(y=1\mid x)>1/2$ 时有 $h(x)=1$，否则有 $h(x)=0$。易知其不保证零误差。
+
+一致收敛法是一个经典且常用的证明 Agnostic PAC 性质的方法。
+
+首先，定义一个数据集 $S$ 是 $\eps$-representative 的，如果对于一切 $h\in\c H$ 都有 $|L_\c D(\c H)-L_S(\c H)|\leq\eps$。这样的数据集是好的，其上得到的 $h_S$ 有 $L_\c D(h_S)\leq L_\c D(h^*)+2\eps$。
+
+称一个假设类 $\c H$ 是一致收敛的，如果对于 $\delta,\eps$ 存在 bound $m_\c H^\t{UC}(\eps,\delta)$，使得只要采样数至少为该 bound，则 w.p. $\geq1-\delta$，采样到的 $S$ 是 $\eps$-representative 的。那么显然，有 $m_\c H(\eps,\delta)\leq m_\c H^\t{UC}(\eps/2,\delta)$，也即一致收敛性推出 Agnostic PAC。
+
+使用一致收敛性分析 $\c H$ 是有限集的场合。
+$$
+\c D^m(\cur{S:\exists h\text{ s.t. }|L_\c D(h)-L_S(h)|>\eps})\leq\sum_{h\in\c H}\c D^m(\cur{S:|L_\c D(h)-L_S(h)|>\eps})
+$$
+$L_S(h)$ 是 $m$ 个 i.i.d. 随机变量的平均，而 $L_\c D(h)$ 是其期望。使用 Hoeffding 不等式即可进一步把它 bound 到
+$$
+\leq\sum_{h\in\c H}2\exp(-2m\eps^2)=2|\c H|\exp(-2m\eps^2)
+$$
+
+> [!NOTE]
+>
+> 这里必须使用大数定律相关不等式而非照抄 PAC 场合的证明，原因是 PAC 最小值是 $0$，我们只在意 $L_S(h)>L_\c D(h)$ 单侧的状况，而此处我们双侧均在意。另一方面，一般化的 loss $\ell$ 也要求我们不能延续之前手动展开的方法，需要更一般的结论。
+
+于是知有限集是一致收敛进而 Agnostic PAC 的，且有界
+$$
+m_\c H(\eps,\delta)\leq\dfrac{2\log(2|\c H|/\delta)}{\eps^2}
+$$
+
+### No Free Lunch
+
+我们之前声称，「一个限制更多的假设类 $\c H$ 更能防止过拟合，但代价是高的归纳偏置」。这是否必要？能否不引入归纳偏置，即获取一个通用学习算法？
+
+**No-Free-Lunch 定理** 指出，当问题是二分类，loss 为 indicator function，预测器 $h$ 是全体确定性 $\c X\to\cur{0,1}$ 映射时，任何学习算法 $A$，只要样本数 $m\leq|\c X|/2$，则存在一个 $\c X\times\cur{0,1}$ 上的分布 $\c D$ 使得满足可行性假设的同时，w.p. $\geq1/7$ 有 $L_\c D(A(S))\geq1/8$。
+
+> [!NOTE]
+>
+> 学习的本质是「使用少量数据拟合整个数据集」。PAC 和 Agnostic PAC 的场合，我们可以通过「限制假设集的大小」，来让「需要的样本数被假设集大小 bound」，进而得到一个相比整个数据集而言较小的界。
+>
+> 然而，NFL 却指出，假如没有归纳偏置，需要的数据量至少是整个数据集的一半，而这是不可接受的。这等效于说，训练必须要依托归纳偏置才能高效展开。
+
+这个 $1/7$ 和 $1/8$ 看上去怪，但是其实际上是由 Markov 不等式导出的。
+
+具体而言，考虑任取一个 $|\c C|=2m$ 的子集，将 $\c D$ 采样的 $x$ 限制其中，简化讨论的同时也相当于直接讨论极限情况（即 $m=|\c X|/2$，此时必有 $\c C=\c X$）。
+
+那么 $\c C\to\cur{0,1}$ 共有 $T=2^{2m}$ 个本质不同的函数 $h_1,\dots,h_T$。我们为每个函数量身定做一个 $\c D_i(x,y)=\begin{cases}1/|\c C|&(y=f_i(x))\\0&(\text{otherwise})\end{cases}$，则必有 $L_{\c D_i}(f_i)=0$，也即满足可行性假设。
+
+我们希望证明，
+$$
+\max_{i\in[T]}\E_{S\sim\c D_i^m}L_{\c D_i}(A(S))\geq1/4
+$$
+然后就能代入 Markov 证明。
+
+> [!TIP]
+>
+> 这里的 Markov 使用了神秘的变体：对于 $X\in[0,1]$，有 $P(X>1-a)=1-P(1-X\geq a)\geq1-\dfrac{1-\E[X]}a$，于是 $P(X\geq1/8)\geq1-\dfrac{1-1/4}{7/8}=1/7$。之所以使用这种变体 Markov，是因为朴素的 Markov 给出的是上界，但我们此处需要的是下界。
+
+因为所有的 $\c D_i$ 都是均匀随机，所以考虑 $\c C$ 上长度为 $m$ 的序列集合，共 $k=(2m)^m$ 个，即 $S_1,\dots,S_k$。对于某个 $S_j=\cur{x_1,\dots,x_m}$，其与各个 $h_1,\dots,h_T$ 结合，得到 $S^i_j=\cur{(x_1,h_i(x_1)),\dots,(x_m,h_i(x_m))}$。$i$ 固定时，全体 $S^i_j$ 即为 $\c D_i^m$ 可能生成的所有数据集，它们均是等概率的。于是有
+$$
+\mat{\max_{i\in[T]}\E_{S\sim\c D_i^m}L_{\c D_i}(A(S))\geq1/4=\max_{i\in[T]}\dfrac1k\sum_{j=1}^kL_{\c D_i}(A(S^i_j))
+\\\geq\dfrac1T\sum_{i=1}^T\dfrac1k\sum_{j=1}^kL_{\c D_i}(A(S^i_j))&(\text{max}\geq\text{mean})
+\\=\dfrac1k\sum_{j=1}^k\dfrac1T\sum_{i=1}^TL_{\c D_i}(A(S^i_j))
+\\\geq\min_{j\in[k]}\dfrac1T\sum_{i=1}^TL_{\c D_i}(A(S^i_j))&(\text{mean}\geq\text{min})}
+$$
+于是我们成功将「找到关于采样随机时，最 adversary 的 $\c D_i$」变成了「找到关于分布随机时，表现最好的 $S_j$」。
+
+最强的 $S_j$ 也有一批 $\c V\sube\c C$ 无法被 cover，且有 $|\c V|\geq m$。所有的 $\c D_i$ 或者说 $f_i$ 对于这些 $v$ 的评价是任意的，而这并不会在 $S_j^i$ 中被泄露。具体而言，有
+$$
+L_{\c D_i}(h)=\dfrac1{|\c C|}\sum_{x\in\c C}[f_i(x)\neq h(x)]\geq\dfrac1{|\c C|}\sum_{x\in\c V}[f_i(x)\neq h(x)]
+\\\dfrac1T\sum_{i=1}^TL_{\c D_i}(A(S^i_j))\geq\dfrac1T\sum_{i=1}^T\dfrac1{|\c C|}\sum_{x\in\c V}[f_i(x)\neq A(S_j^i)(x)]
+\\\geq\dfrac1{2|\c V|}\sum_{x\in\c V}\dfrac1T\sum_{i=1}^T[f_i(x)\neq A(S_j^i)(x)]
+\\\geq\dfrac12\min_{x\in\c V}\dfrac1T\sum_{i=1}^T[f_i(x)\neq A(S_j^i)(x)]
+$$
+每个 $f_i$ 都有一个一一对应的 $f_{\hat i}$，满足 $S_j^i=S_j^{\hat i}$ 但是 $f_i(x)\neq f_{\hat i}(x)$——因为 $x\notin S_j$。我们的 $A(S_j^i)$ 只能满足二者其一。于是即得 $\dfrac1T\sum_{i=1}^TL_{\c D_i}(A(S^i_j))\geq1/4$。于是把上面所有不等式拼一块即证。
+
+> [!TIP]
+>
+> Intuition：
+>
+> 有 $2^{2m}$ 个 labeler，使用它们分别对均匀分布作 label 生成对应的满足可行性假设的数据集。
+>
+> 我们希望对于当前算法，找到最 adversary 的数据分布，使得算法使用关于其采样的期望结果（换句话说，所有生成方案的平均值）的 loss 最大。
+>
+> 使用最大值-均值-最小值换序，变成找到数据分布中最强大的一个，它关于所有 labeler 的平均效果最好。
+>
+> 而一旦把 labeler 平均下来，结果只会差，对于未被数据给出的所有位置（占一半）中，总会有两两配对的 labeler 要求作出相反的评价。所以任何均匀分布的平均损失均不低于 $1/4$。
+
+### VC Dimension
+
+我们已经知道了有限假设类的 (Agnostic) PAC 性。但是在无限假设类的场合，我们需要一些更强大的工具。
+
+在本节中，仍然回到未泛化的 setting，也即问题是二分类、loss 是 indicator function 的场合。这是为了应用 NFL 定理。
+
+------
+
+首先，存在 PAC 的无限假设类。例如，考虑 $\c X=\R$，令 $\c H=\cur{h_a=1_{\cur{x<a}}:a\in\R}$，即全体 threshold 函数。因为我们在讨论 PAC 性，所以作出可行性假设，即存在 $L_\c D(h_{a^*})=0$ 的 $a^*$。
+
+那么可以找到 $a_l\leq a^*\leq a_r$，满足 $\c D(x\in(a_l,a^*))=\eps$ 或 $a_l=-\infty$，以及 $\c D(x\in(a^*,a_r))=\eps$ 或 $a_r=+\infty$。只要最终的的 $h_{a_S}$ 满足 $a_S\in(a_l,a_r)$，即有 $L_\c D(h_{a_S})\leq\eps$。
+
+我们需要 $m$ 次采样中至少有一次落入 $(a_l,a^*)$（当 $a_l=-\infty$ 时该需求忽略），至少有一次落入 $(a_r,a^*)$（同理，$a_r=+\infty$ 时忽略）。使用 Union Bound 可以简单把概率 bound 到
+$$
+(1-\eps)^m+(1-\eps)^m\leq2\exp(-\eps m)
+$$
+于是知 $m_\c H(\eps,\delta)\leq\log(2/\delta)/\eps$。
+
+------
+
+对于测试集大小 $m$，只要满足以下条件：
+
+- 存在 $\c C\sube\c X$ 满足 $|\c C|=2m$。
+- $\c H$ 包含 $\c C\to\cur{0,1}$ 的一切可能映射。换言之，定义 $\c H_\c C=\cur{h_\c C=(\forall x\in\c C,x\mapsto h(x))\mid h\in\c H}$，则 $\c H_\c C$ 为 $\c C\to\cur{0,1}$ 的全集。
+
+即可应用 NFL，得到任何学习算法都能找到满足可行性假设的 $\c D$，使得关于 $S\sim\c D^m$ 随机时，w.p. $1/7$ 有泛化误差至少为 $1/8$。这样的 $\c C$ 称作被 $\c H$「shatter」了。也即，一个大小为 $2m$ 的 shatter 集会否定仅使用 $m$ 个 sample 学习的可能性。
+
+$\c H$ 能 shatter 的最大 $\c C$ 的大小，即称为 $\c H$ 的 VC dimension，记作 $\t{VCDim}(\c H)=|\c C|$。倘若存在无穷的 $\c C$，则 $\c H$ 即拥有无穷的 VC 维，此时 $\c H$ 必然不具有 PAC 性。
+
+特别地，可以举一个 VC 维为无穷的例子：$h(x)=1_\cur{\sin(ax)>0}$。这是因为对于 $x=0.\overline{x_1x_2\dots}$，有 $[\sin(2^m\pi x)>0]=1-x_m$，前提是存在 $k\geq m$ 使得 $x_k=0$。
+
+### Sauer-Shelah Lemma
+
+定义 Growth Function 为
+$$
+\tau_\c H(m)=\max_{\c C\sube\c X,|\c C|=m}|\c H_\c C|
+$$
+即，所有大小为 $m$ 的 $\c C$ 中，$\c H$ 能在其上 induce 的方案数的最大值。则存在大小为 $m$ 的 $\c C$ 被 $\c H$ shatter，当且仅当 $\tau_\c H(m)=2^m$。有 $\t{VCDim}(\c H)$ 为最大的满足 $\tau_\c H(m)=2^m$ 的 $m$。
+
+则有 **Sauer-Shelah 引理**：若 $\t{VCDim}(\c H)=d$，则对于一切 $m$，均有
+$$
+\tau_\c H(m)\leq\sum_{i=0}^d\binom mi
+$$
+我们事实上可以证明更强的结论：有 $|\c H_\c C|\leq|\cur{\c B\sube\c C:\c H\t{ shatters }\c B}|$。有了这个结论，只需结合「没有大小超过 $k$ 的集合被 $\c H$ shatter」即可知有 $|\cur{\c B\sube\c C:\c H\t{ shatters }\c B}|\leq\sum\limits_{i=0}^d\dbinom mi$。
+
+证明考虑归纳。对于 $m=1$ 易知其必然成立。现在假设对一切 $m-1$ 均成立，则令 $\c C=\cur{c_1,\dots,c_m}$，取 $\c C'=\cur{c_2,\dots,c_m}$ 并建立
+$$
+Y_0=\cur{(y_2,\dots,y_m)\mid(0,y_2,\dots,y_m)\in\c H_\c C\lor(1,y_2,\dots,y_m)\in\c H_\c C}
+\\Y_1=\cur{(y_2,\dots,y_m)\mid(0,y_2,\dots,y_m)\in\c H_\c C\land(1,y_2,\dots,y_m)\in\c H_\c C}
+$$
+则容易验证恰好有 $|\c H_\c C|=|Y_0|+|Y_1|$，且 $Y_0=\c H_{\c C'}$，于是由归纳假设即有
+$$
+|Y_0|=|\c H_{\c C'}|\leq|\cur{\c B\sube\c C':\c H\t{ shatters }\c B}|=|\cur{\c B\sube\c C:c_1\notin\c B\land\c H\t{ shatters }\c B}|
+$$
+定义 $\c H'$ 为 $\c H$ 中可以将第一位取反的赋值方案，即
+$$
+\c H'=\cur{h\in\c H\mid \exists h'\in\c H\text{ s.t. }(1-h'(c_1),h'(c_2),\dots,h'(c_m))=(h(c_1),h(c_2),\dots,h(c_m))}
+$$
+则有
+$$
+|Y_1|=|\c H'_{\c C'}|\leq|\cur{\c B\sube\c C':\c H'\t{ shatters }\c B}|=|\cur{\c B\sube\c C:c_1\in\c B\land\c H'\t{ shatters }\c B}|
+\\\leq|\cur{\c B\sube\c C:c_1\in\c B\land\c H\t{ shatters }\c B}|
+$$
+于是即有
+$$
+|\c H_\c C|=|Y_0|+|Y_1|\leq|\cur{\c B\sube\c C:c_1\notin\c B\land\c H\t{ shatters }\c B}|+|\cur{\c B\sube\c C:c_1\in\c B\land\c H\t{ shatters }\c B}|
+\\=|\cur{\c B\sube\c C:\c H\t{ shatters }\c B}|
+$$
+由这个引理即可简单证明：如果 $\t{VCDim}(\c H_1),\t{VCDim}(\c H_2)\leq d$，则 $\t{VCDim}(\c H_1\cup\c H_2)\leq 2d+1$。这是因为 $\tau_{\c H_1\cup\c H_2}(m)\leq\tau_{\c H_1}(m)+\tau_{\c H_2}(m)$。而易知有 $2\sum\limits_{i=0}^d\dbinom{2d+2}i=2^{2d+2}-\dbinom{2d+2}{d+1}$。而这个界确实是紧的：令 $\c X$ 为一个 $2d+1$ 的集合，令 $\c H_1$ 为全体大小不超过 $d$ 的集合的 indicator，$\c H_2$ 为大小超过 $d$ 的集合的 indicator 即可。
+
+### Fundamental Theorem of Statistical Learning*
+
+### Rademacher Complexities*
+
+yy 说这玩意没用。不学啦.jpg
+
+## Supervised Learning
+
+Optimization 告诉我们如何花式求解一个函数的极值，Generalization 告诉我们什么时候这个函数具有代表性，现在终于可以来考虑一点具体的问题了。
+
+### Linear Regression
+
+输入数据 $x_i\in\R^d$，输出数据 $y_i\in\R$。可以限制假设类为 $f_{w,b}(x)=\ip{w,x}+b$，即所有线性函数。进一步，在 $x$ 的末尾补一个 $1$，最后加上的偏置项 $b$ 即可被省略，于是我们默认参数只有 $w$ 一个。
+
+针对这个连续的回归问题，常用的是平方误差 $L(f,x_i,y_i)=\dfrac12(f(x_i)-y_i)^2$。这个待求解的问题即是 **线性回归**。
+
+通过最小二乘法可知显式解是 $w^*=(X^\top X)^{-1}X^\top y$，但是其涉及到求逆，效率不是很高。
+
+另一种解法是直接 SGD。注意到当前的 loss 是简单凸函数，因此 SGD 总是收敛的。
+
+> [!TIP]
+>
+> 不论是显式求解还是 SGD，都只是求解线性回归的一种方法。线性回归本身指的就是 MSE 下线性近似这个具体的任务。
+
+### Linear Perceptron
+
+另一个常见场景是分类问题，此时输入仍然是连续的 $x_i\in\R^d$，但是输出变成了离散的类别。考虑最简单的 $\cur{+,-}$ 两类，此时一个经典算法是 **感知机** (perceptron)，直接输出 $f(x)=\t{sign}(\ip{w,x}+b)$。和线性回归场合类似，偏置项也可以被扔掉。
+
+感知机的一个问题是它的 loss 不可微，就不能用梯度方法。所以有人提出了一个非常 ad-hoc 的算法：
+
+- 随机获取数据 $(x_i,y_i)$。
+- 如果 $\ip{w,x_i}\cdot y_i<0$，则感知机在这组数据上预测错误，令 $w\gets w+y_ix_i$ 加以修正。
+
+我们来分析其收敛性和收敛速率。首先我们仍然作出可行性假设，即存在 $\|w^*\|=1$ 和下界 $\gamma>0$，满足全体 $y_i\ip{w^*,x_i}\geq\gamma$。额外再假设有 $\|x_i\|\leq R$。则声称：该算法在失败至多 $\dfrac{R^2}{\gamma^2}$ 次后，必然收敛到完美预测。
+
+具体而言，从 $w_0=0$ 开始迭代，只考虑那些失败的场合，则有
+$$
+w_{t+1}=w_t+y_tx_t
+\\\ip{w_{t+1},w^*}=\ip{w_t,w^*}+y_t\ip{w^*,x_t}\geq\ip{w_t,w^*}+\gamma
+\\\ip{w_t,w^*}\geq t\gamma
+\\\|w_t\|=\|w_t\|\|w^*\|\geq\ip{w_t,w^*}\geq t\gamma
+$$
+另一方面，又有
+$$
+\|w_{t+1}\|^2=\|w_t\|^2+\|x_t\|^2+2\ip{y_tx_t,w_t}\leq\|w_t\|^2+R^2
+\\t^2\gamma^2\|w_t\|^2\leq tR^2
+$$
+因此必有 $t\leq R^2/\gamma^2$。
+
+### Logistic Regression
+
+但是感知机还是太没有 scalability 了。更常规的做法是把 hard 的 sign function 转成 soft 的 probability，即令 $f(x)$ 为模型预测的属于类别 $A$ 的概率（二分类的场合，属于类别 $B$ 的概率即为 $1-f(x)$）。
+
+使用经典的 sigmoid function 将任意实数映到一个概率。使用任何可微概率度量作为 loss——最常用的是交叉熵
+$$
+\t{XE}(y,p)=-\sum y_i\log p_i
+$$
+其中 $y_i$ 是目标分布，$p_i$ 是预测分布。
+
+交叉熵是一个很有意思的 loss：有 $\t{XE}(y,p)-H(y)=\t{KL}(y\|p)$。换句话说，优化交叉熵其实就是在优化 KL 散度。
+
+### Ridge Regularization
+
+> [!NOTE]
+>
+> 古典机器学习的参数量远小于样本数，此时为了遏制过拟合加 regularization，用 bias 来对 variance 作 tradeoff。
+>
+> 但是现代机器学习的参数量远多于样本数，此时 regularization 则被用于让 loss 更加平滑，引导寻找泛化能力更强的解，乃至于辅助训练收敛。
+
+但不管怎么说，还是来看看怎么正则化吧。
+
+最初的想法是限制假设类有 $\|w\|_2^2\leq c$。但是这会导致优化较为困难。
+
+所以一个等价做法是在 loss 上加上一个二次项 $\dfrac\lambda2\|w\|_2^2$，将一个受限优化问题转成无限制问题。可以证明，对于任何 $c$，都存在一个对应的 $\lambda$。
+
+于是就得到对应的 **Ridge Regression** 问题，即 MSE + $\ell_2$-二次项引导的最优化问题。
+
+其仍然有显式最优解或 SGD，但是另一种理解方式是下述方法：
+
+- 和线性回归一样作 GD 或 SGD。这里以 GD 为例，则有 $\hat w_{t+1}=w_t-\dfrac\eta N\sum_i(\ip{w_t,x_i}-y_i)x_i$。
+- 作一步 **weight decay** $w_{t+1}=(1-\eta\lambda)\hat w_{t+1}$。
+
+> [!TIP]
+>
+> 这样做虽然与原始的 GD 或 SGD 的式子并非完全相同，但它是一个有效的近似。进一步，它似乎是更高级的 Proximal Gradient Descent 的一种一阶近似，因此确实是有道理的。
+
+### LASSO
+
+另一种直觉是，$x_i$ 的 $d$ 维特征并非全都有用，其中往往存在大量无用维数。裸的 linear regression 或 ridge regression 并不会注意到这一点，会在大量维度上留下可能很小但非零的权重。
+
+将这种直觉形式化，就是我们选中 $\|x\|_0\leq c$ 的假设类。然而问题仍然是受限优化不好做，而 $\|x\|_0$ 本身并不像 $\|x\|_2$ 一样可以简单转成无限制问题。
+
+所以解决方案是经典技巧，用 $\ell_1$-范数近似 $\ell_0$-范数，也即使用 $\|x\|_1\leq c$ 的假设类和对应的 $\lambda\|x\|_1$ 的无限制转化。求解后者的回归问题就是 **LASSO Regression**。
+
+直接作 GD/SGD，那么梯度项上就会多一个 $\lambda\t{sign}(w)$ 的项。
+
+但是直接在梯度中添加该修正，会导致原点处存在非连续的阶跃。所以实际采取了和 Ridge Regression 相同的 PGD 式做法：
+
+- $\hat w_{t+1}=w_t-\dfrac\eta N\sum_i(\ip{w_t,x_i}-y_i)x_i$。
+- 检查 $\hat w_{t+1}$ 的每一项。如果其大于 $\eta\lambda$ 则减去之，小于 $-\eta\lambda$ 则加上之，介于两者之间则直接拉到 $0$。由是得到 $w_{t+1}$。
+
+于是现在梯度具有了连续性，效果更佳。
+
+> [!NOTE]
+>
+> 使用 $\ell_1$-norm 近似 $\ell_0$-norm 确实是一定程度上有道理的：$\ell_2$-norm 的等势面是超球，$\ell_1$-norm 的等势面则是超菱形。假如无约束的最优解取到菱形的角区域中，它就会被近似到菱形的角上，在一些维度上即取零；只有最优解落在菱形的面区域时，它才会被近似到面上导致取不到零。但是在高维空间中，前者是主流，也就是说 $\ell_1$-norm 几乎总是可以成功削减一些维数，且系数越小，角区域占比越大，降维效果越好。
+
+### Between LASSO and Compressed Sensoring
+
+LASSO 解决的问题可以被概括为：***给定*** 特征矩阵 $X$ 和结果向量 $y$，要找到一个 ***稀疏*** 的向量 $w$ 使得 $y=Xw$。
+
+而另一个在信号处理中常见的议题是 **压缩感知** (compressed sensoring)：要确定一个隐藏向量 $w$，可以 ***自选*** 观测矩阵 $A$，并以黑箱方式获取观测向量 $y=Aw$，然后尝试反推 $w$。
+
+然而，信号处理领域重要的 **Nyquist 定理** 告诉我们，为了还原一个频率为 $f$ 的信号，至少需要 $2f$ 个采样。这表明一般情况下，$A$ 需要是一个细高的矩阵。
+
+> [!TIP]
+>
+> Nyquist 定理其实类似 NFL 定理，都告诉我们在一般场合，我们无法取得好的结果；但是我们可以通过引入先验信息来降低开销。
+
+假如我们作出「隐藏向量 $w$ 是稀疏向量」的先验假设，则可以证明，一个扁宽的矩阵 $A$ 同样可以达到这一点——也即，可以使用远小于 $w$ 维数的采样数目还原出 $w$。而现实生活中的绝大多数 $w$ 都在某种特定的基下满足这一点（例如，Fourier Transform 后的能量集中于几个特定频率）。
+
+### Compressed Sensoring
+
+现在考虑将问题重述为 $y=Wx$。称矩阵 $W$ 拥有 $(\eps,s)$-RIP 性质，如果对于一切 $\|x\|_0\leq s$ 都有
+$$
+(1-\eps)\|x\|^2_2\leq\|Wx\|^2_2\leq(1+\eps)\|x\|_2^2
+$$
+这说明，「左乘 $W$」对于稀疏向量而言，几乎是一个等距变换。
+
+RIP 矩阵具有良好的性质，可以有效由 $y$ 逆向 $x$。
+
+**定理一**：对于 $(\eps,2s)$-RIP 的 $W$，对于 $\|x\|_0\leq s$，如果 $y=Wx$，则由 $y$ 可以唯一推知 $x$，且 $x$ 是所有满足 $y=Wx'$ 的 $x'$ 中最稀疏（$0$-范数最小）的一个。
+
+> [!TIP]
+>
+> 这表明，稀疏向量关于 $W$ 的变换大概率是可逆的：逆向过程是求 $0$-范数最小者。
+
+证明很简单：两个 $s$-稀疏的不等向量之差是 $2s$-稀疏且非零的，因此由 RIP 性，经过 $W$ 变换后也必然非零，那么它们不可能对应相同的 $y$。
+
+然而我们并不喜欢优化 $0$-范数。因此仍然使用经典技巧，得到 **定理二**：在定理一的基础上，只要 $\eps<1/(1+\sqrt 2)$，则 $0$-范数最小的 $x'$ 即等于 $1$-范数最小的 $x'$。
+
+实际应用时，我们考虑更强的 **定理三**：在定理二的基础上，对于任何 $x$，令 $x_s$ 为 $s$-稀疏向量中，$1$-范数下最接近的向量——换句话说，在 $x$ 的前 $s$ 主要维上与之相等、其它维数上均为 $0$ 的向量。则令 $y=Wx$ 并令 $x^*$ 是满足 $y=Wx'$ 的向量中 $1$-范数最小的之一，则有
+$$
+\|x^*-x\|_2\leq\dfrac{2(1+\rho)s^{-1/2}}{1-\rho}\|x-x_s\|_1
+$$
+其中 $\rho=\sqrt2\eps/(1-\eps)$。特别地，当 $x$ 已经是 $s$-稀疏时，有 $x=x_s$，则定理三即退化为定理二。
+
+> [!NOTE]
+>
+> 其另一种理解方式是，当 $y=Wx_s+\eta$，其中 $\eta=W(x-x_s)$ 时，把 $\eta$ 看做小的噪声，则恢复出的 $x^*$ 和 $x$ 的距离被噪声所控制。
+
+> [!TIP]
+>
+> 这表明，任意向量关于 $W$ 逆向时，最小化 $1$ 范数的解产生的误差是被该向量的「非稀疏度」的常数倍 bound，且在稀疏时准确。
+
+令误差 $h=x^*-x$，则有 $Wh=0$。我们希望其模长小。
+
+将所有维数划分为 $T_0,T_1,\dots$，其中：
+
+- $T_0$ 是 $x$ 中绝对值前 $s$ 大的维，也即 $x_s$ 所有非零维。
+- $T_1$ 是刨除 $T_0$ 后，$h$ 绝对值前 $s$ 大的维。
+- $T_2$ 是刨除 $T_0,T_1$ 后 $h$ 绝对值前 $s$ 大的维，以此类推。
+
+我们希望证明误差集中在 $T_0\cup T_1$ 中。简记其为 $T_{0,1}$，并令 $h_S$ 为 $h$ 保留集合 $S$ 中的所有维后得到的向量。首先先给出几个引理：
+
+- 对于任何 $|S|\leq s$ 和任意向量 $v$，均有 $\|v_S\|_1\leq s^{1/2}\|v_S\|_2$。
+- 当 $i\geq1$ 时，反过来有 $\|h_{T_{i+1}}\|_2\leq s^{-1/2}\|h_{T_i}\|_1$。这是由选取最大值作为 $T_i$ 所保证的。
+- 对其求和后，得到 $\|h_{T_{0,1}^\comp}\|_2\leq\sum_{i\geq2}\|h_{T_i}\|_2\leq s^{-1/2}\sum_{i\geq 1}\|h_{T_i}\|_1=s^{-1/2}\|h_{T_0^\comp}\|_1$。
+
+- 利用 $x^*$ 的 $1$-范数最小性，有 $\|x+h\|_1\leq\|x\|_1$。在两侧分别关于 $T_0,T_0^\comp$ 分解得到
+
+$$
+\|x_{T_0}+h_{T_0}\|_1+\|x_{T_0^\comp}+h_{T_0^\comp}\|_1\leq\|x_{T_0}\|_1+\|x_{T_0^\comp}\|_1
+$$
+
+对左侧使用 $\|a+b\|_1\geq\|a\|_1-\|b\|_1$ 的三角不等式，得到
+
+$$
+\|x_{T_0}\|_1-\|h_{T_0}\|_1-\|x_{T_0^\comp}\|_1+\|h_{T_0^\comp}\|_1\leq\|x_{T_0}\|_1+\|x_{T_0^\comp}\|_1
+\\\|h_{T_0^\comp}\|_1\leq\|h_{T_0}\|_1+2\|x_{T_0^\comp}\|_1
+$$
+
+> [!TIP]
+>
+> 这个不等式也被称作 **Tube Constraint**。这是因为当 $x$ 已经是 $s$-稀疏也即 $x_{T_0^\comp}=0$ 时，其变为 $\|h_{T_0^\comp}\|_1\leq\|h_{T_0}\|_1$；将左侧看做 $y$ 轴，右侧看做 $x$ 轴，则其相当于合法的 $h$ 只能存在 $y=\pm x$ 间夹着的 **圆锥** 中；此时其被称作 **Cone Constraint**，表明误差 $h$ 不能与 $x$ 轴也即 $T_0$——$x$ 主要信号集中的方向——完全垂直。而如果 $x$ 非 $s$-稀疏时，额外的「非稀疏度」$2\|x_{T_0^\comp}\|_1$ 会将这个圆锥撑开一点，它就变成一个管子；$x$ 越稠密，管子越粗。
+
+- 结合 Tube Constraint 和前述与 $s^{-1/2}\|h_{T_0^\comp}\|_1$ 挂钩的式子知
+
+$$
+\|h_{T_{0,1}^\comp}\|_2\leq s^{-1/2}\|h_{T_0^\comp}\|_1\leq s^{-1/2}(\|h_{T_0}\|_1+2\|x_{T_0^\comp}\|_1)\leq\|h_{T_0}\|_2+2s^{-1/2}\|x-x_s\|_1
+$$
+
+以上分析均与具体的 $W$ 无关，仅仅依赖于 $\|x+h\|_1\leq\|x\|_1$ 的性质。现在考虑结合 $W$ 的 RIP 性质，考虑对 $Wx$ 加以分析。
+
+- 对于任何不交的 $|S|,|T|\leq s$ 和任意向量 $v$，均有 $|\ip{Wv_S,Wv_T}|\leq\eps\|v_S\|_2\|v_T\|_2$。这是因为我们可以假设 $\|v_S\|_2=\|v_T\|_2=1$，并使用 $\ip{Wv_S,Wv_T}=\dfrac14(\|W v_S+Wv_T\|^2-\|W v_S-Wv_T\|^2)$。
+
+> [!TIP]
+>
+> 这个性质表明，**正交向量的映射仍然接近正交**。
+
+首先有 $Wh_{T_{0,1}}=-\sum_{j\geq 2}Wh_{T_j}$。两边同时与左侧取内积，则左侧由 RIP 性质有 $\|Wh_{T_{0,1}}\|_2^2\geq(1-\eps)\|h_{T_{0,1}}\|^2_2$，右侧使用 RIP 的近似保正交性有
+$$
+\ip{Wh_{T_{0,1}},-\sum_{j\geq 2}Wh_{T_j}}\leq\eps(\|h_{T_0}\|_2+\|h_{T_1}\|_2)\sum_{j\geq 2}\|h_{T_j}\|_2\leq\sqrt2\eps\|h_{T_{0,1}}\|_2\sum_{j\geq2}\|h_{T_j}\|_2
+$$
+于是定义 $\rho=\sqrt2\eps/(1-\eps)$ 则有
+$$
+\|h_{T_{0,1}}\|_2\leq\rho\sum_{j\geq2}\|h_{T_j}\|_2
+$$
+这个式子是「头部被尾部控制」。另一方面，我们又有「尾部被头部控制」的式子
+$$
+\|h_{T_{0,1}^\comp}\|_2\leq\sum_{i\geq2}\|h_{T_i}\|_2\leq\|h_{T_0}\|_2+2s^{-1/2}\|x-x_s\|_1
+$$
+两个东西结合，并把 $\|h_{T_0}\|_2$ 放缩到 $\|h_{T_{0,1}}\|_2$ 可知
+$$
+\|h_{T_{0,1}}\|_2\leq\rho\|h_{T_0}\|_2+2\rho s^{-1/2}\|x-x_s\|_1\leq\dfrac{2\rho}{1-\rho}s^{-1/2}\|x-x_s\|_1
+$$
+于是
+$$
+\|h\|_2\leq\|h_{T_{0,1}^\comp}\|_2+\|h_{T_{0,1}}\|_2
+\\\leq\|h_{T_{0,1}}\|_2+\|h_{T_0}\|_2+2s^{-1/2}\|x-x_s\|_1
+\\\leq2\|h_{T_{0,1}}\|_2+2s^{-1/2}\|x-x_s\|_1
+\\\leq(\dfrac{4\rho}{1-\rho}+2)s^{-1/2}\|x-x_s\|_1=\dfrac{2(1+\rho)}{1-\rho}s^{-1/2}\|x-x_s\|_1
+$$
+
+> [!NOTE]
+>
+> 另一种思路：
+> $$
+> \|h\|_2\leq\|h_{T_{0,1}^\comp}\|_2+\|h_{T_{0,1}}\|_2\leq(1+\rho)\sum_{j\geq2}\|h_{T_j}\|_2
+> \\\leq(1+\rho)(\|h_{T_0}\|_2+2s^{-1/2}\|x-x_s\|_1)
+> $$
+> 那么不断将 $\|h_{T_0}\|_2$ 放缩到 $\|h_{T_{0,1}}\|_2$ 再放缩到 $\rho\|h_{T_0}\|_2+2\rho s^{-1/2}\|x-x_s\|_1$，可知有一个等比数列求和的形式（每一次放缩的能量都在衰减！），最终放缩到
+> $$
+> (1+\rho)(1+\rho^2+\rho^3+\dots)2(1+\rho)s^{-1/2}\|x-x_s\|_1=\dfrac{2(1+\rho)}{1-\rho}s^{-1/2}\|x-x_s\|_1
+> $$
+
+> [!NOTE]
+>
+> 核心思路阐述：
+>
+> $h$ 属于 $W$ 的零空间。然而 $W$ 的 RIP 性质保证了零空间中没有稀疏向量，所以 $h$ 必须是稠密的，「头部必须能被尾部控制」，也即 $\|h_{T_{0,1}}\|_2\leq\rho\sum_{j\geq2}\|h_{T_j}\|_2$。
+>
+> 另一方面，又可以得到纯几何的 Tube Constraint 也即 $\|h_{T_0^\comp}\|_1\leq\|h_{T_0}\|_1+2\|x_{T_0^\comp}\|_1$，「尾部被头部（加上噪声）控制」。
+
+我们已经知道 RIP 很有用了。但是什么样的矩阵是 RIP 的呢？我们有 **定理四**：$n\times d$ 矩阵，每一项 i.i.d. 服从 $0$ 均值、$1/n$ 方差的 Gaussian，则当 $n\geq c_1\dfrac{s\log(c_2d/\delta\eps)}{\eps^2}$ 时，w.p. $1-\delta$ 其是 $(\eps,s)$-RIP 的。
+
+特别地，对于正交归一化的 $U$，上述矩阵右乘 $U$ 后仍然服从相同分布，因此 w.p. $1-\delta$ 有 $WU$ 是 $(\eps,s)$-RIP 的。
+
+这表明如果 $x$ 并非稀疏，但在某种正交分解（比如 Fourier 变换或是小波变换）下是稀疏的，则相当于是 $y=(WU)x$，其中 $U$ 是变换矩阵。于是 RIP 的特征感知可以在坐标系变换下仍然好用。
+
+进一步，这个变换 $U$ 不一定是常矩阵，它甚至可以是某些低维流形，可以使用神经网络刻画。这将深度学习和信号处理连接。
+
+### SVM
+
+我们已经见过了感知机，它的目标是寻找 ***任意*** 一个二分割平面；SVM 也要实现相同的目标，但在此基础上，它还要做得最好，即寻找 ***离最近点最远*** 的二分割平面。
+
+这个平面可以用 $\ip{w,x}-b=0$ 描述。但是就算是同一个平面，这样的描述也并不唯一！所以我们采用归一化，希望满足
+
+- 对于一个点集，其中所有点都满足 $\ip{w,x}-b\geq1$。
+- 对于另一个点集，其中所有点都满足 $\ip{w,x}-b\leq-1$。
+
+并最小化 $\|w\|_2$。显然在最小化时，$=\pm1$ 的平面上都必须卡了点，不然 $\|w\|_2$ 还能更小。这两个平面上的向量即被称作 **支持向量** (supporting vector)。而 $1/\|w\|_2$ 即为 margin length，即分割平面到任何点的最近距离。
+
+> [!TIP]
+>
+> 所以 SVM 其实是与「支持向量」相关的算法，而非一个以向量作为输入的模型。
+
+这个问题可以被形式化描述为一个二次规划问题：
+
+- 满足 $y_i(\ip{w,x_i}-b)\geq1$。
+- 与此同时，最小化 $\|w\|_2$。
+
+这个二次规划本身是存在多项式解法的。但是，当完美分割不存在时，我们需要的是 relaxed SVM，它适度容忍错误（包括方向错误和太靠近平面的错误）。
+
+标准的解决方案是在 loss 中加上错误识别也即 $y_i(\ip{w,x_i}-b)<1$ 的数目，乘上一个超参数 $\lambda$。但此时其与 $0$-范数相关，往往是难解的，而事实也如此——这个问题是 NP-Hard 的。
+
+所以使用经典技巧，把它松弛为 **Hinge Loss**，即 $\max(0,1-y_i(\ip{w,x_i}-b))$。
+
+将其翻译为二次规划的语境（函数里不能显式地包含 $\max$）后，即得到如下模型：
+
+- $y_i(\ip{w,x_i}-b)\geq1-\xi_i$，其中 $\xi_i\geq0$ 是 **松弛变量**。这两个条件共同描述了对二次规划全体变量的约束。
+- 在此前提下，最小化 $\min\|w\|_2+\lambda\sum\xi_i$。
+
+------
+
+现在，来点基础数学知识。
+
+> [!IMPORTANT]
+>
+> 我们的目标是在一堆 $g_i(x)\leq0$ 约束出的空间中，求出 $f(x)$ 的最小值。
+>
+> 此时使用 Lagrange 乘子法，得到 $L(x,\alpha)=f(x)+\sum\alpha_ig_i(x)$。则原始的带约束最小化问题即为
+> $$
+> p^*=\min_x\max_{\alpha\geq 0}L(x,\alpha)
+> $$
+> 这是因为，在 $x$ 违反约束时，会有一项 $g_i(x)>0$，那么内层的 $\max$ 就会让内层趋于无穷，所以该处的 $x$ 无贡献；而当 $x$ 符合约束时，所有的 $g_i(x)$ 都 $\leq0$，那么内层的 $\max$ 即会取得 $f(x)$。
+>
+> 这是一个经典的 min-max 形式。考虑对偶问题
+> $$
+> d^*=\max_{\alpha\geq 0}\min_xL(x,\alpha)
+> $$
+> 首先有不需要任何额外条件即可永远成立的 **弱对偶** 性质，即 $d^*\leq p^*$。
+>
+> 然后是 **强对偶** 性质，即 $d^*=p^*$。它并非永远成立，但在以下条件满足时其必然成立：
+>
+> - 目标问题是凸优化问题。这要求 $f(x)$ 和全体 $g_i(x)$ 都是凸的。
+> - 在此基础上，满足 **Slater 条件**：存在可行解 $x$ 使得全体 *非线性* 的不等式约束 $g_i(x)\leq0$ 严格成立，即取 $<$ 号。至于对于线性或仿射的不等式约束，取等也没关系。
+>
+> 当强对偶性成立时，原始问题的最优解 $x^*$ 和对偶问题的最优解 $\alpha^*$ 必须满足 **KKT 条件**，包括：
+>
+> - 平稳性也即 $\nabla_x L(x^*,\alpha^*)=0$。
+> - 互补松弛性也即 $\alpha_i^*g_i(x^*)=0$。这意味着，要么约束是紧的即 $g_i(x^*)=0$，要么约束是不起效的即 $\alpha_i^*=0$。
+
+SVM（不管有没有松弛）显然满足凸优化和 Slater 条件。
+
+考虑未凸优化且忽略偏置的 toy case，则原始问题是
+
+- 最小化 $\|w\|_2^2/2$。
+- 约束是 $y_i\ip{w,x_i}\geq1$。
+
+对偶是
+
+- $L(w,\alpha)=\|w\|_2^2/2-\sum\alpha_i(y_i\ip{w,x_i}-1)$。
+- 约束是 $\alpha_i\geq0$。
+
+此时仅使用平稳性即可，得到
+
+- $\nabla_wL=0$，即 $w=\sum\alpha_iy_ix_i$。
+
+代回即得 $L(w,\alpha)=\sum_i\alpha_i-\dfrac12\sum_i\sum_jy_iy_j\alpha_i\alpha_j\ip{x_i,x_j}$。
+
+> [!TIP]
+>
+> 最大化这个，就是对偶目标函数。虽然其是一个看上去很友善的二次型，但因为有约束 $\alpha\geq0$，所以实际解起来并不容易。但怎么解并非本课程内容。
+
+现在回到更一般的 relaxed case，此时是
+
+- 最小化 $\|w\|_2^2/2+\lambda\sum\xi_i$。
+- 约束是 $y_i(\ip{w,x_i}-b)\geq1-\xi_i$ 且 $\xi_i\geq0$。
+
+对偶是
+$$
+L(w,b,\xi,\alpha,\kappa)=\|w\|_2^2/2+\lambda\sum\xi_i-\sum\alpha_i(y_i(\ip{w,x_i}-b)-1+\xi_i)-\sum\kappa_i\xi_i
+$$
+约束是 $\alpha_i,\kappa_i\geq0$。
+
+平稳性是
+$$
+\dfrac{\p L}{\p w}=w-\sum_i\alpha_iy_ix_i=0
+\\\dfrac{\p L}{\p b}=\sum\alpha_iy_i=0
+\\\dfrac{\p L}{\p\xi_i}=\lambda-\alpha_i-\kappa_i=0
+$$
+代入并推推可知有对偶目标仍然是
+$$
+\sum_i\alpha_i-\dfrac12\sum_i\sum_jy_iy_j\alpha_i\alpha_j\ip{x_i,x_j}
+$$
+至于约束呢？$\alpha_i,\kappa_i\geq0$，但鉴于 $\lambda-\alpha_i-\xi_i=0$ 的保障，所以其约束只需 $0\leq\alpha_i\leq\lambda$ 且 $\sum\alpha_iy_i=0$ 即可。
+
+> [!TIP]
+>
+> 和前文一样，我们只管求对偶，不管怎么解它。
+
+现在考虑互补松驰性（因为它同时挂钩 $w$ 和 Lagrange 乘子，所以其无法单独对 $\alpha_i$ 施加约束，对偶问题的约束还是只有上述内容；当然，它提供一个由 $\alpha$ 推知 $w$ 的方法），则其为
+$$
+\alpha_i(y_i(\ip{w,x_i}-b)-1+\xi_i)=0
+\\\kappa_i\xi_i=0
+$$
+则如果 $\alpha_i=0$，则 $\kappa_i=\lambda$、$\xi_i=0$，于是 $y_i(\ip{w,x_i}-b)\geq1$，即分类准确。
+
+如果 $0<\alpha_i<\lambda$，则类似分析可得，其不仅分类准确，它还处于边界线上，是支持向量。
+
+如果 $\alpha_i=\lambda$，则其未被正确分类，此时 $\xi_i$ 发力了，它是一个内部支持向量。
+
+------
+
+注意到我们的对偶目标
+$$
+\sum_i\alpha_i-\dfrac12\sum_i\sum_jy_iy_j\alpha_i\alpha_j\ip{x_i,x_j}
+$$
+只需要知道内积项 $\ip{x_i,x_j}$ 即可。这意味着，我们可以用一个可能很复杂、甚至是无穷维的映射 $\phi$ 把它们升维，且这个映射应该满足 $\ip{\phi(x_i),\phi(x_j)}$ 容易求，即可发挥高维的力量。这就是 **Kernel Trick**：其选用有好的 **Kernel** $K(x,y)=\ip{\phi(x),\phi(y)}$ 的映射 $\phi$。
+
+比如说，一个可行的映射是
+$$
+\phi(x)=\cur1+\cur{\sqrt2x^i}_i+\cur{(x^i)^2}_i+\cur{\sqrt2x^ix_j}_{i<j}
+$$
+其包含 $1$ 个常数项、$d$ 个线性项、$d$ 个平方项和 $\dbinom d2$ 个交叉项。使用好的性质
+$$
+(\ip{x,y}+1)^2=1+\sum_i2x^iy^i+\sum_i(x^i)^2(y^i)^2+\sum_{i<j}2x^ix^jy^iy^j=\ip{\phi(i),\phi(j)}
+$$
+即可知这个映射拥有简单的卷积核。
+
+注意到我们其实并不在意 $\phi$ 长什么样，只在意 kernel $K$ 的性质。事实上，有所谓的 **Mercer 定理**：只要对于任何 $\cur{x_i}$，都有 **kernel matrix**
+$$
+\begin{bmatrix}K(x_i,x_j)\end{bmatrix}_{i,j}
+$$
+是半正定的，则其必然对应着某个至高维空间的映射 $\phi$。
+
+一个常见的 kernel 是 **Gaussian Kernel** $K(x_i,x_j)=\exp(-\|x_i-x_j\|^2/2\sigma^2)$。特别地，这个核对应的 $\phi$ 是无穷维的。
+
+> [!IMPORTANT]
+>
+> 来点神秘数学。
+>
+> 我们有一个函数空间（无穷维向量空间）$\c H$。其上的内积是双线性映射 $\c H\times\c H\to\R$。**Reproducing Kernel Hilbert Space** 满足 **评估泛函** $\delta_x:\c H\to\R,f\mapsto f(x)$ 是连续且有界的。例如，如果将内积定义为 $\ell_2$ 积分，则对其上零测集的任意修改都不影响内积值，于是评估泛函不满足连续有界，此时不是 RKHS。
+>
+> 线性代数中的 **Riesz 表示定理** 可以扩展到无穷维的场合：对于任何线性泛函 $L$ 均存在唯一的 $h$ 使得 $L(f)=\ip{f,h}_\c H$。对评估泛函应用，则有 $\delta_x(f)=\ip{f,K_x}_\c H$，其中 $K_x$ 是 $x$ 处的代表函数。于是这就是「再生性」：通过代表函数可以求值，即
+> $$
+> f(x)=\ip{f,K_x}_\c H
+> $$
+> 代表函数之间也可以计算内积。定义 $k(x,y)=\ip{K_x,K_y}_\c H$，则由再生性有 $K_y(x)=\ip{K_y,K_x}_\c H=k(x,y)$。因此 $K_x$ 也被记作 $k(\cdot,x)$。那么有第二种「再生」：
+> $$
+> f(x)=\ip{f,k(\cdot,x)}_\c H
+> \\k(x,y)=\ip{k(\cdot,x),k(\cdot,y)}_\c H
+> $$
+> 定义 $\phi(x)=K_x=k(\cdot,x)$，则它就是升维的工具。$k(x,y)=\ip{\phi(x),\phi(y)}_\c H$ 是相似性度量，而它与距离的关系是
+> $$
+> d_\c H(x,y)=\|\phi(x)-\phi(y)\|^2=k(x,x)+k(y,y)-2k(x,y)
+> $$
+
+> [!TIP]
+>
+> 换言之，SVM 本身使用朴素内积 $\ip{x_i,x_j}$ 来建模低维场合的相似性；但实际上我们可以换成任何刻画相似性的 $K$，则其隐式地寻找了 RKHS 进行高维相似性的捕捉。
+
+### Decision Tree
+
+目标是建立从具有多维特征的数据 $x\in\R^d$ 到预测 $y\in Y$ 的映射。
+
+决策树不断选择一个特征维度，将数据集关于该特征分裂，然后递归对分裂后的子集继续建立决策树。
+
+如何选择特征维度？首先可以对一个集合 $D$ 定义 **Gini 系数**
+$$
+\t{Gini}(D)=1-\sum_{y\in Y}\left(\dfrac{|\cur{y_i=y\mid(x_i,y_i)\in D}|}{|D|}\right)^2
+$$
+也即，用 $1$ 减去所有预测出现的频率平方和。换句话说，「随机两个数据，它们预测不同的概率」。在集合中的预测是纯的时候，Gini 系数取得下界 $0$。纯的集合即为决策树的叶节点，不需要进一步分裂。
+
+则，选择分裂的维度要最小化分裂后的带权 Gini 系数：假设分裂为 $D_1,\dots,D_k$，则最小化
+$$
+\sum\dfrac{|D_i|}{|D|}\t{Gini}(D_i)
+$$
+显然，决策树的表现能力是非常强的——只要足够深就可以拟合任何输入。然而问题也很显然——这玩意太容易过拟合了。
+
+### Random Forest
+
+既然决策树容易过拟合，我们对它整点限制不就行了。我们可以提出两种限制：
+
+- 数据层面的限制：只给它提供部分数据。采样的方式是「随机且放回」$n$ 次，约相当于所有元素都有 $1/e$ 的概率未被选中，这些元素即为 out-of-bag 的数据，可以拿来 validate。
+- 树的形态的限制：每次分裂一个节点时，只给它提供少量的特征维度。
+
+当然，因为这种限制比较强，所以我们会直接整一个 ensemble 的决策树集合，这样第二条对树形态的限制同时也保证了不同树的结构的不相关性。至于如何将决策树的结果 aggregate 起来，回归问题可以用均值、分类问题可以 majority voting。
+
+### Boosting
+
+并行 ensemble 的能力显然难以超脱 ensemble 自身的。如果串行的话。能否用一堆弱分类器拼出一个强分类器呢？
+
+一种最基础的想法是，**固定** 一组 weak classifier $h_1,\dots,h_T$，然后对于数据 $x_i$，构造 $x'_i=(h_1(x_i),\dots,h_T(x_i))$，于是就有新数据集 $D'=\cur{(x'_i,y_i)}$。可以在 $D'$ 上用死板的 average 等，也可以再整一个分类器。这种被称作 **stacked learner** 的方法是最基础的组合方式。
+
+事实上，boosting 的 framework 如下：
+
+- 训练集 $D=\cur{(x_i,y_i)}$。其中，$y_i=\pm1$。
+- 对于 $t=1,\dots,T$，建立 $\cur{1,\dots,m}$ 上的分布 $D_t$，然后找到一个 $D_t$ 上的弱分类器 $h_t$，其误差是 $\eps_t$。这里的 $D_t$ 可以 **自适应** 地构造，不再是前述固定的模式。
+- 最终聚合出 $h_\t{final}$。
+
+### AdaBoost
+
+初始的 $D_1$ 是 uniform 的。然后根据当前 $h_t$ 的误差 $\eps_t$，取一个系数 $\alpha_t=\dfrac12\ln\dfrac{1-\eps_t}{\eps_t}$。如果当前误差 $\eps_t$ 比较小，那么:
+
+- 一方面，你的话语权比较高，最终聚合的分类器使用 $h_\t{final}(x)=\t{sgn}(\sum\alpha_th_t(x))$。
+- 另一方面，你的错题需要被额外关注，所以错题的权重乘以 $\exp(\alpha_t)$，对题的权重乘以 $\exp(-\alpha_t)$，归一化后得到 $D_{t+1}$。
+
+令 $\eps_t=\dfrac12-\gamma_t$。则 $\gamma_t$ 即为真正有效的信息（对于完全乱猜的分类器，$\gamma_t=0$）。那么有定理：
+$$
+\eps_\t{final}\leq\prod2\sqrt{\eps_t(1-\eps_t)}=\prod\sqrt{1-4\gamma_t^2}\leq\exp(-2\sum\gamma_t^2)
+$$
+因此，如果存在下界 $|\gamma_t|\geq\gamma>0$，则即有 $\eps_\t{final}\leq\exp(-2\gamma^2T)$，即误差以指数收敛。并且，它是自适应的，不需要知道 $\gamma$ 或 $T$ 为先验信息；且如果有一个分类器做的很好（或很不好），聚合结果可以自适应地捕捉到这一点。
+
+------
+
+首先，有
+$$
+D_{t+1}(i)=\dfrac{D_t(i)\exp(-\alpha_ty_ih_t(x_i))}{Z_t}
+$$
+不断展开即有
+$$
+D_{T+1}(i)=\dfrac1m\cdot\dfrac{\exp(-y_i\sum\alpha_th_t(x_i))}{\prod Z_t}
+$$
+注意到这里面有一个 $\sum\alpha_th_t$ 项刚好产生 $h_\t{final}$，于是定义其为 $f$，则有
+$$
+D_{t+1}(i)=\dfrac{\exp(-y_if(x_i))}{m\prod Z_t}
+$$
+
+> [!TIP]
+>
+> 其实，正是因为展开式中出现了 $f$，我们的 $h_\t{final}$ 才会与之挂钩。
+
+现在，对于分类错误的 $h_\t{final}(x_i)$，必有 $y_if(x_i)\leq0$，故 $\exp(-y_if(x_i))\geq1$。而对于分类正确的，则这个值会 $\in(0,1)$。于是必有 $[y_i\neq h_\t{final}(x_i)]\leq\exp(-y_if(x_i))$，代入即得
+$$
+\eps_\t{final}=\dfrac1m\sum[y_i\neq h_\t{final}(x_i)]\leq\dfrac1m\sum\exp(-y_if(x_i))=\prod Z_t\sum D_{T+1}(i)
+$$
+因为 $D_{T+1}$ 是概率分布，所以求和必然为 $1$。于是即得
+$$
+\eps_\t{final}\leq\prod Z_t
+$$
+注意到上述分析只与系数 $\alpha_t$ 有关，与其选择方式无关。我们可以设置 $\alpha_t$ 以最小化归一化系数 $Z_t$ 的积。有
+$$
+Z_t=\sum D_t(i)\exp(-\alpha_ty_ih_t(x_i))=(1-\eps_t)\exp(-\alpha_t)+\eps_t\exp(\alpha_t)
+$$
+求导得到极值点，即得到公式 $\alpha_t=\dfrac12\ln\dfrac{1-\eps_t}{\eps_t}$，且代回即得 $Z_t=2\sqrt{\eps_t(1-\eps_t)}$。于是上述定理即证。
+
+> [!TIP]
+>
+> 注意到这个描述其实很像在线学习的框架：我们可以把分布 $D_t$ 当成被优化的东西，而 $h_t$ 则是每次随机获取的数据。
+>
+> 事实上，选取 $D_{t+1}(i)=D_t(i)\exp(-\alpha y_ih_t(x_i))/Z$ 的迭代方式，恰好就是概率单纯形上以 KL 散度作为 Bregman 散度、$\E_{i\sim D}y_ih_t(x_i)$ 作为优化函数时的 Mirror Descent。
+>
+> 因此正确的推理第一步应当是由 Mirror Descent 得到 $D_t$ 的迭代方式。
+
+> [!TIP]
+>
+> 推理第二步，首先有 $\eps_\t{final}=\dfrac1m\sum[y_i\neq h_\t{final}(x_i)]$，然后把非凸、不连续的误差放缩为指数损失 $\dfrac1m\sum\exp(-y_if(x_i))$，然后由上述描述，其恰好等于归一化系数积 $\prod Z_i$。因此，可以说 AdaBoost 就是取归一化系数积为误差，并尝试最小化之的一种 **解析解**。
+
+------
+
+AdaBoost 的优势不仅在于指数级别的收敛，更在于它天生 **不会过拟合**！就算 Training Error 降为零，Test Error 仍会缓慢下降！
+
+因此，除了 Training Error，我们还需要一些更细的指标，比如 **Margin**，也即 $y_if(x_i)$。我们现在不仅希望其 $>0$ 也即分类正确，还希望其越大越好。
+
+增大 Margin 能提升了模型的抗干扰能力。这体现在如下定理上：令 $S$ 是服从 population distribution $D$ 采样的 $m$ 个 sample 构成的训练集，令假设集 $H$ 有限，则对于一切 $\delta$ 都有 w.p. $1-\delta$，都有
+$$
+\Pr_D(yf(x)\leq0)\leq\Pr_S(yf(x)\leq\theta)+O\left(\dfrac1{\sqrt m}\left(\dfrac{\log m\log|H|}{\theta^2}-\log\delta\right)^{1/2}\right)
+$$
+这个定理不要求证明。
+
+另一方面，随着 $T$ 增加，$\Pr(yf(x)\leq\theta)$ 会下降。这里因为并非与 $0$ 作比，所以我们有必要将 $f(x)$ **归一化**，即 $\dfrac{\sum\alpha_th_t(x)}{\sum\alpha_t}$。这个是有证明的，且证明大体相同：
+$$
+yf(x)\leq\theta\implies y\sum_t\alpha_th_t(x)\leq\theta\sum_t\alpha_t
+\\\implies\exp\left(-y\sum_t\alpha_th_t(x)+\co{red}{\theta\sum_t\alpha_t}\right)\geq1
+$$
+因此
+$$
+\Pr(yf(x)\leq\theta)\leq\E\exp\left(-y\sum_t\alpha_th_t(x)+\co{red}{\theta\sum_t\alpha_t}\right)
+\\=\exp(\co{red}{\theta\sum_t\alpha_t})\dfrac1m\sum_i\exp\left(-y\sum_t\alpha_th_t(x_i)\right)
+\\=\exp(\co{red}{\theta\sum_t\alpha_t})\prod_tZ_t\sum_iD_{T+1}(i)
+$$
+代入 $\sum D_{T+1}(i)=1$，$Z_t=2\sqrt{\eps_t(1-\eps_t)}$，$\alpha_t=\dfrac12\ln\dfrac{1-\eps_t}{\eps_t}$，则有
+$$
+=2^T\prod\sqrt{\eps_t^{1-\theta}(1-\eps_t)^{1+\theta}}
+$$
+取 $|\gamma_t|\geq\gamma>0$ 并代入，可将其简化为
+$$
+\leq\left(\sqrt{(1-2\gamma)^{1-\theta}(1+2\gamma)^{1+\theta}}\right)^T
+$$
+则只要 $\theta<\gamma$，这个式子就会随着 $T\to\infty$ 而指数衰减。
+
+### Gradient Boost
+
+AdaBoost 虽然强大，但它是一个二分类器。如何将其扩展到一般场景？
+
+注意到按照前文说法，AdaBoost 本质是对 $\prod Z_i$ 这个 loss 做 **Coordinate Descent**，即每次沿一个 weak learner 角度 descent（好处是有解析解）。如果想扩展到 Gradient Descent 呢？注意到 $\prod Z_i$ 本身是强依赖于 Coordinate Descent 语境的，因此必须切换 loss。
+
+考虑数据为 $\cur{(x_i,y_i)}$，我们的目标是构建 $F(x)$ 最小化某种 loss（比如说，均方误差 $\dfrac12\sum(y_i-F(x_i))^2$）。
+
+考虑当前模型的输出是 $F_\t{old}(x)$，我们要给它 **加** 一个额外项 $h(x)$ 满足对于所有 $i$ 都有 $F_\t{old}(x_i)+h(x_i)\approx y_i$。这个 $h(x_i)$ 可以是在数据集 $\cur{(x_i,y_i-F_\t{old}(x_i))}$ 上训练出的 weak learner。于是有 $F_\t{new}(x)=F_\t{old}(x)+\eta h(x)$。
+
+注意到这个 $h(x)$ 的理想状态其实就是 MSE 误差下的梯度（$\dfrac{\p L}{\p F(x_i)}=F(x_i)-y_i$），因此式子中有 GD 常见的学习率 $\eta$。同时，如果 loss 不是 MSE 也可以拟合除了残差以外的其它东西。例如，在使用 $\ell_1$ loss 时，有 $\dfrac{\p L}{\p F(x_i)}=\t{sgn}(F(x_i)-y_i)$，于是效果是在二分类集 $\cur{(x_i,\t{sgn}(y_i-F_\t{old}(x_i)))}$ 上训练 $h$ 然后 $F_\t{new}(x)=F_\t{old}(x)+\eta h(x)$。
+
+## Unsupervised Learning
+
+### Dimension Reduction
+
+一个基础的框架是，检查点集是否处于一个低维空间中。
+
+首先有基础的 J-L Lemma：只需要 $\Omega(\log n/\eps^2)$ 个维度，即可保证两两间距几乎不变。但是如果我们并不在意是否保距呢？
+
+### PCA
+
+我们认为一个方向 $v$ 是重要的，如果所有点在该方向上的投影具有较大的方差——有理由相信这样的方向能保有更多的信息。在取均值为原点后，方差就是二阶矩期望 $\E\ip{v,x_i}^2$。令 $X=[x_1,\dots,x_n]\in\R^{d\times n}$，则方差即为 $\dfrac1nv^\top XX^\top v$，并试图最大化之。
+
+除此之外还有另一种理解方式，即最小化重建误差 $\E\|x_i-\ip{v,x_i}v\|^2$——这是因为 $\ip{v,x_i}v$ 相当于 $x_i$ 在 $v$ 方向的投影，于是有
+$$
+\co{lightblue}{\|x_i\|^2}=\co{pink}{\|x_i-\ip{v,x_i}v\|^2}+\co{violet}{\|\ip{v,x_i}v\|^2}
+$$
+蓝项是固定的，于是最小化粉项就等效于最大化紫项，而紫项在 $v$ 是单位向量的前提下就等于 $\dfrac1nv^\top XX^\top v$。
+
+------
+
+计算角度更好用的还是最大化 $v^\top XX^\top v$ 的单位向量 $v$。这应是最大特征值对应的特征向量。计算其的方法除了硬算特征值还有 **power method**：
+
+- $b_0$ 为随机单位向量。
+- $b_{t+1}=\dfrac{XX^\top b_t}{\|XX^\top b_t\|}$。
+
+则，如果 $b_0=\sum a_iv_i$ 其中 $v_i$ 是特征向量，则 $b_t=\sum\lambda_i^t a_iv_i$。迭代充分多轮次后，$\lambda$ 最大的 $v_1$ 应成为主流。
+
+一旦求出 $v_1$ 后，就可以从 $b_0$ 中移除 $v_1$ 分量再次迭代，即可得到 $v_2$……
+
+> [!TIP]
+>
+> 当然，$v_1$ 能被正确求出，依赖于其是唯一最大特征向量。除此之外，因为 $XX^\top$ 是对称阵，所以它必然有特征正交基。最后，因为随机选择 $b_0$，所以其与 $v_1$ 正交的概率为零。
+
+### kNN
+
+作为分类器时，一个点的标签取决于邻居的标签。它是一个 **non-parametric** 的算法，这意味着 **模型的复杂度会随着样本量增加而增加**——在 kNN 的场合，模型就是输入的所有点。决策树和带 Gaussian 核的 SVM 也是 non-parametric 的。
+
+当 $k$ 值较小时，kNN 容易过拟合；而 $k$ 大时就容易欠拟合。因此要选择合适的 $k$。
+
+然而，算严格的 kNN 是困难的。我们一般只需要近似 kNN 即可。具体而言，我们希望有 $R$-near neighbour，即找到 $p\in P$ 满足 $\|p-q\|\leq R$。
+
+事实上，$R$-near neighbour 本身与 kNN 是等价的，因为可以先倍增后二分定位。所以我们考虑放宽的 $R$-near neighbour，即 randomized $c$-approximate $R$-near neighbour ($(c,R)$-NN)：对于半径 $R$ 和正确性参数 $\delta$，则对于一切 $q$，如果其存在 $R$-临近邻居，则需要 w.p. $1-\delta$ 汇报一个 $cR$-临近邻居。那么这是一个 RP 算法，通过 boosting 可以让失败概率任意小。
+
+如何实现 $(c,R)$-NN？一个想法是借助 **Locality-Sensitive Hashing** (LSH)。称一个 hash 函数族 $H$ 是 $(R,cR,P_1,P_2)$-LSH 的，如果：
+
+- 对于距离 $\leq R$ 的两点，出现 hash 碰撞的概率至少为 $P_1$。这里的概率是关于 $H$ 中随机 hash 函数而言的。
+- 对于距离 $\geq cR$ 的两点，hash 碰撞的概率至多为 $P_2$。
+- 显然，只有 $P_1>P_2$ 的 LSH 是有意义的。
+
+一个例子是当值域是 $\cur{0,1}^d$、距离是 Hamming Distance 时，取 $H$ 为全体坐标函数，则距离 $\leq R$ 的两点碰撞的概率即为 $1-R/d$，$\geq cR$ 的两点碰撞的概率即为 $1-cR/d$，于是即构成一合法 LSH。当然，其仅适用于 binary 值域、Hamming 距离这个特例——不过在 $\R^d,\ell_2$ 上也存在更一般的 LSH。
+
+现在先假设我们已经有 LSH 了，怎么利用它实现近似 NN？
+
+假如我们有 $P_1=1,P_2=0$，则此时只需找到 $h(p)=h(q)$ 即可，可以通过预处理桶来简单查询。
+
+现在我们尝试 boosting 得到更大的 $P_1$-$P_2$ gap。
+
+- 首先，原本仅随机一个 $h$ 然后检查是否有 $h(p)=h(q)$，现在直接独立随机 $k$ 次并要求每一个都对上才算碰撞（相当于换成了 $H^k$ 的 hash 族）。这样就得到了 $(P_1^k,P_2^k)$ 的 LSH，虽然可以压制远点碰撞，但近点碰撞也一并被压制了。
+- 以上相当于一个 $k$-AND 的过程，我们再在外面套一个 $L$-OR 的过程，得到 $(1-(1-P_1^k)^L,1-(1-P_2^k)^L)$ 的 LSH。
+- 于是核心转为设置合适的 $(k,L)$ 来增大 gap。
+- 令 $\rho=\dfrac{\log(1/P_1)}{\log(1/P_2)}$，这个值越小则说明初始的 LSH 越良好（具有较大的 gap），且有意义的 LSH 保证 $\rho<1$。则选取 $k=\log_{1/P_2}n$，$L=n^\rho$，则一方面有 $P_2^k=1/n$，于是远点碰撞为 $(1-(1-1/n)^L)\leq L/n=n^{\rho-1}$；另一方面有 $P_1=P_2^\rho,P_1^k=n^{-\rho}$，于是近点碰撞为 $(1-(1-1/n^\rho)^{n^\rho})\approx1-1/e$。
+
+但是我们实际上在意的不是构造的 LSH 的性质，而是下述算法失败的概率：
+
+- 采样 $L$ 组独立的 $H_i(p)=(h_i^1(p),\dots,h_i^k(p))$，为每个 $H_i$ 分开维护一个桶，桶的总空间复杂度为 $O(nkL)=\tilde O(n^{\rho+1})$。
+- 查询时，对于一个 $q$，依次检查 $H_i(q)$ 对应的桶中的所有 $p$ 是否是 $cR$-近邻点。
+- 如果查询了 $2L+1$ 个点仍然一无所获，则终止搜寻。这样单次查询的复杂度就是 $O(kL)=\tilde O(n^\rho)$。
+
+则我们现在只在意远点碰撞的总数。每个 $p$ 在某个 $H_i$ 中碰撞的概率是 $1/n$，于是单个 $H_i$ 期望碰撞数是 $1$，总碰撞数是 $L$，那么由 Markov 不等式，有超过 $2L$ 次远点碰撞的概率不超过 $1/2$。
+
+另一方面，由前述分析，近点不碰撞的概率为 $1/e$，于是「远点碰撞不超过 $2L$ 次」且「近点碰撞」的概率即不超过 $1/2-1/e$。
+
+最后，如何构造一个有足够大的 gap 且在 $\R^d,\ell_2$ 上的初始 LSH 呢？一个做法是 $h_{r,b}=\left\lfloor\dfrac{\ip{r,x}+b}{w}\right\rfloor$，其中 $w$ 是量化宽度，$b$ 是偏移量，在 $[0,w)$ 上均匀随机，$r$ 是 $d$ 维标准 Gaussian。
+
+现在若 $\|p-q\|_2=1$ 且 $w=1$，则 $\ip{r,p-q}$ 会是 1D 标准 Gaussian。于是令 $f_p$ 为 Gaussian PDF，则如果 $\ip{r,p-q}=t$，则 $(0,1-t)$ 中的 $b$ 能够使二者分到同一个桶中，考虑 Gaussian 对称性即得碰撞概率为
+$$
+2\int_0^1f_p(t)(1-t)\d t
+$$
+那么对于更一般的场景，无非是多了一些 scaling。令 $\|p-q\|_2=c$，则有碰撞概率为
+$$
+\dfrac2c\int_0^wf_p(t/c)(1-t/w)\d t
+$$
+对于固定的 $w$，随着 $c$ 增大，碰撞概率会减小。实际选择的 $w$ 需要根据分布性质，在 $P_1$ 和 $P_2$ 间作权衡。
+
+> [!TIP]
+>
+> 这里选择 Gaussian 的原因是 Gaussian 满足 $\sum a_iX_i=\|a\|_2X$ 的性质。倘若是 $\ell_1$-norm 就要选择满足该性质的 Cauchy Distribution $f(x)=\dfrac1{\pi(1+x^2)}$。
+
+> [!NOTE]
+>
+> 总结：近似 kNN 的流程：
+>
+> - 建立 $P_1>P_2$ 的 LSH。$\cur{0,1}^d$、Hamming 的场合直接取坐标函数，$\R^d$ 的场合取投影量化。
+> - 通过 $k$-AND 约束远点碰撞概率，这样在外层套上 $L$-OR 后碰撞的远点数目与 $L$ 成正比，且可以设置合适的 $L$ 让近点不碰撞概率是常数。
+> - 其不能保证总是输出结果。
+
+### Metric Learning
+
+有时在原始空间上信息不一定具有严格的连续性，但是过一个映射 $f$ 后就适合用 kNN 了。这里的 $f$ 可以是一个神经网络。
+
+但是问题是，kNN 本身无法提供梯度信息。因此，有必要将其换成可微的部件，比如说 **NCA**：其将「选择邻居」的过程变为概率分布，离得越近的点就越可能被选作邻居。$x_i$ 选择 $x_j$ 为邻居的概率是
+$$
+p_{i,j}=\dfrac1Z\exp(-\|f(x_i)-f(x_j)\|^2)
+$$
+则目标即为最大化 $x_i$ 选中与之同标签的点的概率，即
+$$
+\sum_i\sum_{j\neq i,c_i=c_j}p_{i,j}
+$$
+这个设计可以防止 $f$ 将所有东西坍缩在一块——把异类点排斥能够增大上述目标。
+
+另一种 loss 是 **LMNN**，其对于点 $x$ 找了正样本 $x^+$ 和负样本 $x^-$，然后希望前者比后者要更近，且两者的距离差要有一个 $r$ 的 margin。也即，
+$$
+\max(0,\|f(x)-f(x^+)\|_2-\|f(x)-f(x^-)\|_2+r)
+$$
+一般 $x^+$ 就选择同类别中的真实 NN，而 $x^-$ 如果选择不当，很容易选择远处的点导致 loss 为零，所以要手动选择那些分类效果最差的 $x^-$，也即 $x$ 异类点中的 NN。
+
+### Clustering
+
+求聚类。将点集分成 $k$ 组，最小化组内所有点到其均值距离的平方和。
+
+问题本身是 NP-Hard 的，但存在一些 Heuristic 方法，比如说 **Lloyd 算法**：
+
+- 随机设置初始 center。（一般设置为某个数据点，否则容易产生空簇）
+- 把每个点分配到最近的 center，以此分组。
+- 在组内更新 center 为均值。
+- 不断重复前述两步，直到收敛。
+
+虽然这个方法有种种问题：
+
+- 不仅容易产生局部最小值，甚至有时会在某些鞍态卡住。
+- 虽然保证收敛（到最近 center 的平均距离总是衰减），但极端情况的复杂度可能是 $2^{\Omega(\sqrt n)}$ 级别的。
+
+但是鉴于实际表现良好，所以如果提到 K-mean 则默认即为该算法。
+
+### Spectral Graph Clustering
+
+上述算法仅适用于某种特定距离下的场合。如果我们需要一些更 general 的场景呢？鉴于其是距离度量，我们可以使用图论建模：令 $A$ 是邻接矩阵（不存在的边记作 $0$）、$D$ 是度数矩阵、$L=D-A$ 是 Laplacian。
+
+性质：$L$ 的 $0$ 特征值数目等于图中的连通块数目。不仅如此，令连通块为 $A_1,\dots,A_k$，则 $0$ 的特征空间会由 $1_{A_1},\dots,1_{A_k}$ 张成。
+
+证明：首先，$L$ 会是对称半正定阵：
+$$
+v^\top Lv=v^\top Dv-v^\top Av=\sum d_iv_i^2-\sum w_{i,j}v_iv_j=\dfrac12\sum w_{i,j}(v_i-v_j)^2\geq0
+$$
+上述理解方式是本质的：如果 $0$ 要成为特征值，则所有连通块内部的 $v$ 值必须都相同（如果不同就会出现 gap 让上式 $>0$）。
+
+------
+
+现在考虑如何应用上述工具求聚类。
+
+聚类的本质就是在求割。但是如果仅仅求最小割
+$$
+\min\t{Cut}(A_1,\dots,A_k)=\dfrac12\sum w(A_i,\bar A_i)
+$$
+则常常会得到某一块仅包含少量点的平凡解。因此我们实际上使用的是 **比例割** (Ratio Cut)
+$$
+\min\t{RatioCut}(A_1,\dots,A_k)=\dfrac12\sum\dfrac{w(A_i,\bar A_i)}{|A_i|}
+$$
+但是这个问题是 NP-Hard 的！
+
+不过可以使用线性代数工具。首先考虑 $k=2$ 场合。假设 $G$ 是连通图，于是全一向量会是特征值最小向量。定义
+$$
+v^A=\begin{cases}\sqrt{|\bar A|/|A|}&(i\in A)\\-\sqrt{|A|/|\bar A|}&(\t{otherwise})\end{cases}
+$$
+则有
+$$
+(v^A)^\top Lv^A=\dfrac12\sum w_{i,j}(v^A_i-v^A_j)^2
+\\=\sum_{i\in A,j\in\bar A}w_{i,j}(\sqrt{|\bar A|/|A|}+\sqrt{|A|/|\bar A|})^2
+\\=\t{Cut}(A,\bar A)(\dfrac{|\bar A|}{|A|}+\dfrac{|A|}{|\bar A|}+2)
+\\=\t{Cut}(A,\bar A)(\dfrac{|V|}{|A|}+\dfrac{|V|}{|\bar A|})
+\\=|V|\t{RatioCut}(A,\bar A)
+$$
+因此最小化 $k=2$ 时的比例割就是寻找「满足条件」的 $v^A$ 最小化 $(v^A)^\top Lv^A$。因为这个条件太奇怪了，所以这显然也不好解。
+
+但是我们可以松弛！注意到 $v^A$ 有两个特征：与全一向量正交；模长为 $\sqrt n$。于是将约束松弛为仅此二条件，而因为其与全一向量（最小特征向量）正交，所以就是次小特征向量！
+
+但我们还需由次小特征向量 $v$ 还原出 $A$。朴素的做法是 $\t{sgn}(v)$，但更好的做法是对这些点跑 $2$-mean（或许 $0$ 不是最好的阈值！）。
+
+现在将其扩充到 $k>2$ 的场景。此时要使用 $n\times k$ 的矩阵 $H$ 描述簇的归属。若 $v_i$ 属于簇 $A_j$，则 $H_{i,j}=1/\sqrt{|A_j|}$，否则为 $0$。这样的定义让 $H^\top H=I$。
+
+令 $h_i$ 为 $H$ 的第 $i$ 列，则有 $h_i^\top Lh_i=\t{Cut}(A_i,\bar A_i)/|A_i|=(H^\top LH)_{i,i}$。于是有
+$$
+\t{RatioCut}(A_1,\dots,A_k)=\t{tr}(H^\top LH)
+$$
+那么松弛后的结果就是寻找 $H^\top H=I$ 且最小化 $\t{tr}(H^\top LH)$ 的矩阵，然后由 $H$ 到 $\cur{A_i}$ 的过程就是行向量的 $k$-mean。
+
+最后，如何求解 $H$？令 $L$ 的谱分解为 $L=Q^\top\Lambda Q$，其中 $Q=[q_1,\dots,q_n]^\top$ 是特征向量，$\Lambda$ 是不降的特征值矩阵。
+
+令 $h_i=\sum_j a_{i,j}q_j$（也即作特征展开），则有 $H^\top LH=A^\top\Lambda A$。于是目标是最小化
+$$
+\sum_{i,j}\lambda_ja_{i,j}^2
+$$
+目前的 $A$ 是 $n\times k$ 列正交矩阵。现在将其扩充为 $n\times n$ 正交矩阵，则令 $b_{i,j}=a_{i,j}^2$ 可知 $B$ 是双随机矩阵（行和、列和均为 $1$ 的非负矩阵）。于是可以应用 **Birkhoff-von Neumann 定理**：双随机矩阵可以表示为排列矩阵的非负线性组合，而 $A$ 会是双随机矩阵的前若干列。
+
+双随机矩阵是一个凸集，而待优化函数是线性的 $\sum\lambda b$。线性函数在凸集上最小值必然在顶点处取得。顶点即为全体排列矩阵，于是为了最小化 $\sum\lambda b$ 需要将 $1$ 分配给小的 $\lambda$ 而 $0$ 分配给大的。
+
+所以最终算法即为：找到最小特征值的 $k$ 个向量，对它们的行向量求 $k$-mean。
+
+> [!TIP]
+>
+> 这些向量的选取方案并不唯一（特别是存在重数特征向量时）。但是因为基于 Euclidean 距离的 $k$-mean 关于旋转不敏感，所以只要它们张成子空间不变就可以任意选取！唯一的问题是，如果 $\lambda_k\approx\lambda_{k+1}$ 则子空间即会出现跳变，因此谱聚类中选择正确的 $k$（卡在特征值断崖式上升处）至关重要！
+
+最后，如何找到这些向量（注意到 power method 求出的是最大特征值向量）？只需要使用 power method 求出最大特征值 $\lambda_\max$ 后，对 $B=A-\lambda_\max I$ 应用 power method，则此时 $\lambda_\min$ 会成为绝对值最大向量，再应用 power method 即可。
+
+> [!NOTE]
+>
+> 上述算法没多少实际应用。这是因为 Laplacian 太大了！
+
+### SimCLR
+
+NCA 是对含标签 $c_i$ 的数据点计算
+$$
+p_{i,j}=\dfrac1Z\exp(-\|f(x_i)-f(x_j)\|^2)
+\\\max\sum_i\sum_{j\neq i,c_i=c_j}p_{i,j}
+$$
+现在如果没有标签、作无监督学习怎么办？
+
+那么从一个 $x_i$ 出发作两种不同的数据增强，分别得到 $q$ 和 $p_1$，然后其它数据为 $\cur{p_i}_{i=2}^n$。则将 $q$ 和 $p_1$ 看作同一类、其它看作另一类，即得 InfoNCE loss
+$$
+-\log\dfrac{\exp(-\|f(q)-f(p_i)\|^2/2\tau)}{\sum_{i=1}^n\exp(-\|f(q)-f(p_i)\|^2/2\tau)}
+$$
+
+------
+
+从更本质的角度理解之。考虑 ***所有*** 被增强后的图片，它们构成一个庞大但有限（因为图片大小有限）的数据集 $X_1,\dots,X_n$。数据增强对 $(X_i,X_j)$ 定义了一对相似对（一条边），边权是 $\pi_{i,j}$，其实际意义是「使用这种数据增强方式」的概率，与数据增强时各种方式的配比相关。这是一种先验信息，其 **不完善**，大部分信息是缺失的。
+
+它们在语义空间中相似，但在像素空间里具有很大的 $\ell_p$ 距离。因此我们试图寻找至理想空间的映射 $Z_i=f(X_i)$，在该空间中它们「距离」接近。
+
+这个距离可以用 Kernel 函数 $\phi:Z\to\c H$ 衡量。有 $K(Z_i,Z_j)=\ip{\phi(Z_i),\phi(Z_j)}_\c H$。当然由 Mercer 定理我们并不需要显式地定义 $\phi$，只需要有半正定的相似矩阵 $K_Z$ 即可。这种建模是 **完善** 的，任两个点间都可以定义相似关系。
+
+我们的目标是让 $K_Z$ 贴近先验相似关系 $\pi$，但不能完全贴近（要有泛化能力）。
+
+但首要问题是，我们既没有 $\pi$（它通过 sample 的方式隐式定义）也无法建立整个 $K_Z$（它太大了）更不可能算二者间的差作为 loss。
+
+------
+
+引入工具 **Markov Random Fields** (MRF)。这是一种从带权图 $\pi$ 中采样无权子图（边集的子集）的方式，相当于为每条边设了权值 $W_{i,j}\in\cur{0,1}$。权值方案 $W$ 的分数是
+$$
+s(W,\pi)=\prod_{(i,j)}\pi_{i,j}^{W_{i,j}}
+$$
+也即，所有「选中」（$W_{i,j}=1$）的边权积。
+
+为了让代码更容易跑，增加一个额外限制 $\Omega(W)$。有 $\Omega(W)=1$，当且仅当所有点出度恰为 $1$（基环树）。于是有
+$$
+P(W;\pi)\propto\Omega(W)s(W,\pi)
+$$
+现在使用 MRF 采样 $\pi$ 和 $K_Z$ 各一个随机子图，它们的邻接矩阵分别是 $W_X$ 和 $W_Z$，都是 $\cur{0,1}^{n\times n}$ 的随机变量。于是计算交叉熵
+$$
+H_\pi^k(Z)=-\E_{W_X\sim P(\cdot;\pi)}\log P(W_Z=W_X;K_Z)
+$$
+------
+
+则可以证明：交叉熵恰等于 InfoNCE，亦恰等于 Spectral Graph Clustering！
+
+首先，$\Omega$ 的限制对于每一行是独立的，$P(W;R)$ 可以如下采样：
+
+- 生成 $W_i$ 也即 $W$ 的第 $i$ 行时，以 $R_i/\|R_i\|_1$ 也即归一化 $R_i$ 的概率生成该行的 one-hot 向量。
+
+于是有
+$$
+H_\pi^k(Z)=-\sum_{W_X}\prod_jP(W_{X,j};\pi)\log\prod_i P(W_{Z,i}=W_{X,i};K_Z)
+\\=-\sum_i\E_{W_{X,i}\sim\t{one-hot}(\pi_i/\|\pi_i\|_1)}\log P(W_{Z,i}=W_{X,i};K_Z)
+\\=-\sum_i\sum_j\dfrac{\pi_{i,j}}{\|\pi_i\|_1}\log\dfrac{K_{i,j}}{\|K_i\|_1}
+$$
+另一方面，有
+$$
+\t{InfoNCE}=-\sum_i\log\dfrac{\exp(-\|f(X_i)-f(X_{i'})\|^2/2\tau)}{\sum_j\exp(-\|f(X_i)-f(X_j)\|^2/2\tau)}=-\sum_i\log\dfrac{K_{i,i'}}{\|K_i\|_1}
+$$
+注意到在数据增强时只有 $\pi_{i,i'}=1$，因此它们确实是等价的！
+
+> [!TIP]
+>
+> 因此，采取「出边为 $1$ 的 MRF」其实是与「只有一种数据增强方式」相对应的。
+
+然后再来证明与谱聚类的等价性。
+
+有归一化系数
+$$
+R(Z)=\sum_W\Omega(W)\prod_{i,j}K_{Z_{i,j}}^{W_{i,j}}
+\\P(W_Z=W_X;K_Z)=\dfrac{\Omega(W_X)\prod_{i,j}K_{Z_{i,j}}^{W_{X_{i,j}}}}{R(Z)}
+\\\log P(W_Z=W_X;K_Z)=\log\Omega(W_X)+\sum W_{X_{i,j}}\log k(Z_i,Z_j)-\log R(Z)
+$$
+因为目标是求 $\arg\min_Z H_\pi^k(Z)$，所以与 $Z$ 无关的项可以扔掉。故
+$$
+\arg\min_Z H_\pi^k(Z)=\arg\min_Z-\E_{W_X\sim P(\cdot;\pi)}[\sum W_{X_{i,j}}\log k(Z_i,Z_j)-\log R(Z)]
+$$
+因为 $k$ 是 Gaussian 所以 $\log k(Z_i,Z_j)=-\|Z_i-Z_j\|^2/2\tau$，故可以写成
+$$
+=\arg\min_Z[\E_{W_X\sim P(\cdot;\pi)}\sum W_{X_{i,j}}\|Z_i-Z_j\|^2/2\tau+\log R(Z)]
+$$
+回忆起 $v^\top Lv=v^\top Dv-v^\top Av=\sum d_iv_i^2-\sum w_{i,j}v_iv_j=\dfrac12\sum w_{i,j}(v_i-v_j)^2\geq0$，因此
+$$
+=\arg\min_Z[\dfrac1\tau\E_{W_X\sim P(\cdot;\pi)}\t{trace}(Z^\top L(W_X)Z)+\log R(Z)]
+$$
+定义 $L^*=\E L(W_X)$，则
+$$
+=\arg\min_Z\dfrac1\tau\t{trace}(Z^\top L^*Z)+\log R(Z)
+$$
+那个额外的 $\log R(Z)$ 项对应着谱聚类中的正交归一约束，不过是 soft 的版本。
+
+### t-SNE
+
+<details>
+踢死你踢死你踢死你踢死你踢死你踢死你踢死你踢死你踢死你踢死你   
+</details>
+
+问题：将高维数据映射到低维空间以便可视化。
+
+通过 NCA 可以计算高维空间相似性：
+$$
+p_{j\mid i}=\dfrac1Z\exp(-\|x_i-x_j\|^2/2\sigma_i^2)
+$$
+假设 $x_i$ 通过映射 $f$ 映到 $y_i$，则 NCA 同样可以得到低维空间的相似性
+$$
+q_{j\mid i}=\dfrac1Z\exp(-\|y_i-y_j\|^2)
+$$
+算法希望寻找最小化 $\sum\t{KL}(p_{\cdot\mid i}\|q_{\cdot\mid i})$ 的映射 $f$。
+
+对于任何分布 $p$ 都可以定义 **perplexity** $\t{perp}(p)=2^{H(p)}$，其中 $H$ 是熵。和熵一样，越大则越不确定。在 NCA 中，更大的 $\sigma_i$ 会抹平大间距和小间距的 gap，导致 perplexity 变大。
+
+> [!TIP]
+>
+> NLP 中的 perplexity 和此处的定义一样，但在 NLP 中其仅仅是用来衡量模型对其输出的不确定性的 metric。
+
+数据分布可能存在稠密处和稀疏处。为了保证均匀，需要设置一个全局的阈值，然后通过二分设置每个 $\sigma_i$，令 $\t{perp}(p_{\cdot\mid i})$ 都趋于该阈值。这样，所有数据点都会参考相同数目的邻居（而非仅参考最近的几个邻居）。 
+
+以上算法为 **SNE**。但是有一个关键问题：高维空间和低维空间的性质完全不同，高维中可能存在大量距离相近的邻居，但是因为高维空间有众多正交方向，这些邻居之间彼此距离可能不是很近；但低维中，轨道周长有限，倘若要把所有邻居都在近处放置则会非常拥挤。解决方案是把距离拉长，换言之在低维空间中选择一个更长尾的分布。实际使用 **Cauchy 分布**
+$$
+q_{i,j}=\dfrac1Z(1+\|y_i-y_j\|^2)^{-1}
+$$
+这个归一化不是对每个 $i$ 独立的，而是全局的。同理，$p$ 也要被全局化为 $p_{i,j}=(p_{i\mid j}+p_{j\mid i})/2n$。
+
+t-SNE 不仅适用于 2D 可视化，其它维度均可。
+
+### RoPE
+
+希望在 $\ip{q_m,k_n}$ 中编码上 $n-m$ 的信息。
+
+当维数是 $2$ 时，点积 $\ip{x,y}$ 可以被视作复数乘法。假如令 $x$ 旋转 $n\theta$、$y$ 旋转 $m\theta$，则整个点积相当于旋转了 $(n-m)\theta$，满足需求。 
+
+这个 $\theta$ 越小意味着旋转周期越长。一旦 context length 超过周期则会出现混淆。
+
+为了扩展到 $2d$ 维，就把相邻两个维度打包成一个复数即可。选取 $\theta_i=b^{-2(i-1)/d}$，此时最低频的向量频率约为 $1/b$，周期是 $2\pi b$，与目标 context length 相关。不同 $\theta_i$ 意味着关注不同周期的信息。
+
+## Auxiliary
+
+### Robust ML
+
+对抗攻击是为，给输入施加微小（肉眼不可察）扰动后，希望让 loss 产生最剧烈的变化。换言之，假设 loss 的计算公式是，对于输入输出对 $(x,y)$，要求
+$$
+\max_{\delta\in\Delta}L(f_\theta(x+\delta),y)
+$$
+这是一个受限最优化问题，可以采用 **Projected Gradient Descent**，即在 GD 的基础上将它拉回到受限区域 $\Delta$。因为此处是最大值，所以要做的其实是梯度上升，有
+$$
+\Delta_{t+1}=P_\Delta(\delta_t+\eta\nabla_xL(f_\theta(x+\delta_t),y))
+$$
+其中 $P_\Delta$ 是对 $\Delta$ 的投影。
+
+其一个特例是 **Fast Gradient Sign Method**：当 $\Delta$ 是 $\ell_\infty$ 不超过 $\eps$ 的方形盒子时，假设函数是 **高度线性** 的，则由凸集上线性函数最值定理，最值必然在顶点处取得，于是只需知道梯度的符号即可。那么即有 $\delta=\eps\cdot\t{sign}(\nabla_xL(f_\theta(x),y))$，这样只需一步即可求解 PGD。而 PGD 也可以被看做是多步的小边长 FGSM。
+
+**adversarial training** 试图寻找抵抗力最强的模型 $\theta$。也即，
+$$
+\min_\theta\sum_{(x,y)}\max_{\delta\in\Delta}L(f_\theta(x+\delta),y)
+$$
+这个问题并不好解：如何对内部的 $\max$ 求梯度呢？事实上，有 **Danskin 定理**：
+
+> [!IMPORTANT]
+>
+> 对于定义在 $X\times Z$ 上的 $f(x,z)$，定义 $\phi(x)=\max_{z\in Z}f(x,z)$，定义 $Z^*(x)$ 为 $x$ 处的 $\arg\max$ 集合，则若：
+>
+> - $z$ 的定义域 $Z$ 需是非空紧集（有界闭集）。这保证最大值的存在，而非上确界。
+> - 对于每一个固定的 $z$，$f(\cdot,z)$ 是凸的。于是 $\phi(x)$ 也是凸的，可以定义次梯度。
+> - $f$ 关于 $x$ 连续可微、且 $\nabla_xf(x,z)$ 关于 $z$ 连续。
+>
+> 则：
+>
+> - $\phi(x)$ 在任意方向 $v$ 上的方向导数存在，且 $\dfrac{\p\phi(x)}{\p v}=\max_{z\in Z^*(x)}\ip{\nabla_xf(x,z),v}$。
+> - $\p\phi(x)=\t{conv}\cur{\nabla_xf(x,z)\mid z\in Z^*(x)}$，其中 $\t{conv}$ 是求凸包。特别地，如果 $Z^*$ 仅包含唯一元素，则其退化为：
+> - $\nabla\phi(x)=\nabla_xf(x,z^*)$。
+
+这个定理有很多更深刻的理解方式，同时如果使用 PGD 求解 $\delta$ 求出的也不一定是全局最值，待优化函数也不一定是凸的，但成熟的炼丹师应该忽略一切数学细节并直接使用 $\delta^*$ 处的导数。换言之，其导出以下算法：
+
+- 对于原始数据 $(x,y)$，其使用 PGD 生成对抗样本 $(x+\delta^*,y)$ 后，以之为样本训练。重复对抗-训练直到收敛。
+
+此外，评估模型的鲁棒性，可以通过随机设初始状态并跑多步 PGD 攻击，只有在此时模型正确率仍然高，才能认为其是鲁棒的。
+
+最后，针对某个范数鲁棒的模型，不一定对其它范数的攻击鲁棒。换言之，上述训练不一定是全局鲁棒的。
+
+> [!TIP]
+>
+> 为什么对抗训练困难？因为其本质是确保训练数据周围的 margin。而如果两个异 label 数据的 margin 重叠，还会产生不可避免的错误。
+>
+> 同时对抗性训练过的模型，其梯度会带上原图的信息，换言之具有更强的可解释性。
+
+> [!TIP]
+>
+> 另一方面，如果对于正确数据 $(x,y)$，给模型提供扰动后的 $(x',y')$ 数据，在扰动数据上训练出的模型在原始测试集上反倒表现良好。
+>
+> 扰动后的图片的 robust 特征是狗，但 non-robust 特征已经变成了猫。这表明，模型很大程度上依赖那些肉眼不可见但会随着扰动被注入的 non-robust 特征。
+
+> [!TIP]
+>
+> 反之，对于 robust 的模型，也可以在其上蒸馏出只包含 robust 语义的数据集：解决方案是对于原始数据 $x$，把 robust 模型当成特征提取器 $g$，然后从随机噪声出发梯度下降出一个特征尽量匹配也即 $g(x)-g(x_r)$ 尽量小的 $x_r$。此时因为 robust 模型仅关注 robust 的特征，梯度下降出的东西大概率也是 robust 的，于是便蒸馏出了高质量的、仅包含 robust 特征的数据集，用它训练出的新模型不需要经过对抗训练就能实现 robust。
+
+> [!TIP]
+>
+> 有些人通过 JPEG 等图像压缩手法试图去除 non-robust 的信号，但只要让扰动处于低频层就能绕过处理。这些试图掩盖 non-robust 信号终究是不如直接适应 non-robust 信号的对抗学习。
+>
+> 具体而言，这些掩盖手法可以看做是在输入 $x$ 经过网络 $f(\cdot)$ 前过了一个视觉几乎不变但不可微或让梯度爆炸/归零的预处理层 $g(\cdot)$。但是攻击者在攻击时可以直接绕过你的 $g$，在反向传播时直接看做 $g(x)=x$，就可以照常反向传播。
+>
+> 进一步，如果你加噪声，则可以通过多次传播求平均的方式把噪声抵消掉。
+
+另一种增加 Robust 性的方式是，既然你通过在邻域中扰动的方式寻找攻击点，那我就干脆直接让分类结果是邻域分类的众数。当然这并不意味着无法攻击：扰动一段距离后，众数也可能发生变化。
+
+考虑一个简化版的二分类问题。此时假设我们要计算 $x+\delta$ 处的扰动在最理想状态下是否能反转 $x$ 处的结果。通过贪心可以发现，假设二者使用相同的扰动核 $p$，则 $\dfrac{p(x'-x)}{p(x'-x-\delta)}$ 越大的位置越应该设作与 $x$ 同色。换言之，我们希望找到一个阈值，使得大于该阈值的概率恰等于 $x$ 处的众数概率，而小于该阈值全都可以填上另一种颜色。只需判断此时是否有 $x+\delta$ 处反转即可。
+
+特别地，当扰动核是 Gaussian 时，阈值划分的等高线是直线，于是找到 $x$ 处的「众数概率」分位数的分割线然后令 $x+\delta$ 恰落在线上即可。
+
+### Hyperparameter
+
+对超参的优化本质上仍然是在优化函数 $f(x_1,\dots,x_d)$，其中每一维可以是离散或连续的。我们希望采样数目尽量少（因为每次采样都是一步完整的训练！）
+
+除了人工进行所有实验外，还有其它调参方式。
+
+首先是 **Bayesian Optimization**。我们所有可能的 $f:\R^d\to\R$ 构成一个函数族，这个函数族可以作为 $\Omega$ 定义一个无穷维的概率空间，作为我们先验的 belief。此时，某种特定超参设置 $x=(x_1,\dots,x_d)$ 就可以定义相应的随机变量 $f(x)$。
+
+希望平衡 exploration 和 exploitation 地进行采样，得到一堆 $(x^i,y^i)$，然后就有后验分布 $f\mid\cur{(x^i,y^i)}$。
+
+一个例子是使用 Gaussian 作为先验。此时先验假设是 $\E f(x^i)=0,\E f(x^i)f(x^j)=K(x^i,x^j)$，其中 $K$ 是一种 kernel。那么可以推出：令 $\Sigma$ 是 $K(x^i,x^j)$ 的协方差矩阵、$k_*=[K(x^1,x),\dots,K(x^m,x)]$，则
+$$
+f(x)\mid\cur{(x^i,y^i)}_{i=1}^m\sim\c N(k_*^\top\Sigma^{-1}y,K(x,x)-k_*^\top\Sigma^{-1}k_*)
+$$
+另一种思路是强行对超参做 **BP**。然而，针对学习率这样在每一步 GD 中都参与其中的超参，要想对它 BP 就需要存储完整的计算图——而这是不可接受的。
+
+但是，假如我们采用动量法，即：
+$$
+g_t=\nabla_xf(x_t)
+\\v_{t+1}=\gamma_t v_t-(1-\gamma_t)g_t
+\\x_{t+1}=x_t+\alpha_t v_t
+$$
+那么可以通过计算 $g_t$ 来从 $(v_{t+1},x_{t+1})$ 逆向到 $(v_t,x_t)$，于是就不用存储所有中间状态了！动量 $v$ 包含了所有历史梯度信息。
+
+但很显然，这样倒推的过程在有限精度的场合根本不可能。解决方案是使用精确可逆的整数进行存储，而除法等有损操作会存入 buffer。当使用很大的 $\gamma$ 时，$v_{t+1}$ 和 $v_t$ 会很相似，这意味着它们的差可以用更少的 bit 数存储！
+
+虽然这让对连续变量的搜索变得可行，但离散变量的场合就会无法求导。
+
+此时基准方案是 **随机搜索**，即简单粗暴地随机取一组超参。其效果其实并不差——任何高级算法必须能打过运行时间两倍的随机搜索才被视作有价值。
+
+这种离散的搜索问题可以使用经典的 **multi-arm bandit** 建模：有 $n$ 个随机变量，每个期望都是 $v_i$，要找到期望最大的那一个。算法之一是 **Successive Halving** 方法：令总预算为 $B$，则每轮分配预算为 $B'=B/\log_2 n$，然后每轮将 $B'$ 均分给所有变量，采样相应次数后按照期望筛掉表现最差的一半变量。
+
+证明其效果。假设所有变量按照期望递减排序，定义 $\Delta_i=v_1-v_i$，是第 $i$ 个变量与最优变量间的差距。
+$$
+H_2=\max_{i>1}i/\Delta_i^2
+$$
+衡量了问题的复杂程度。结论：要想 w.p. $1-\delta$ 找到最优变量，需要的总操作数为 $B=O(H_2\log n\log(\dfrac{\log n}{\delta}))$。
+
+首先，由 Hoeffding 不等式，在 $\bar B$ 次采样中差为 $\Delta$ 的两个变量表现结果相反的概率是
+$$
+\leq\exp(-\dfrac12\bar B\Delta^2)
+$$
+那么令第 $r$ 轮还剩下 $4n_r$ 个变量，其中有 $2n_r$ 个会在本轮中被筛掉。考虑令 $N_r$ 为真实强度居于后 $3n_r$ 的变量中，表现优于最优变量的数目，则因为本轮的 $\bar B=B/4n_r\log_2n$，所以有
+$$
+\E[N_r]\leq\sum_{i=n_r+1}^{4n_r}\exp(-\dfrac12\bar B\Delta_i^2)\leq3n_r\exp(-\dfrac{B\Delta_{n_r}^2}{8n_r\log n})
+$$
+于是使用 Markov 不等式，有
+$$
+P(N_r>n_r)\leq3\exp(-\dfrac{B\Delta_{n_r}^2}{8n_r\log n})
+$$
+即 w.h.p，最差的 $3n_r$ 个变量中不会有太多的变量打得过最优变量。进一步使用 Union Bound 求和并把 $\Delta^2_{n_r}/n_r$ 放缩到 $1/H_2$ 即有失败概率
+$$
+\leq3\log_2n\exp(-\dfrac B{8H_2\log n})
+$$
+但是 MAB 建模是针对不含时（期望与采样次数无关）的随机变量，然而在调参中应用时，loss 是随着时间收敛到目标值的：定义 $\ell_i^k$ 为第 $i$ 个变量 $k$ 时刻的结果，则 $v_i=\lim_{k\to\infty}\ell_i^k$。此时算法仍然是过一段时间后掐掉表现不好的后一半配置，但是我们不再能使用集中不等式。
+
+为了衡量收敛速率，定义 **不增** 的 $\gamma_i(t)$，满足 $|\ell_i^k-v_i|\leq\gamma_i(k)$。令 $\gamma_i^{-1}(\alpha)=\min\cur{t:\gamma_i(t)\leq\alpha}$，则如果
+$$
+k\geq\max(\gamma_i^{-1}(\dfrac{v_i-v_1}2),\gamma_1^{-1}(\dfrac{v_i-v_1}2))
+$$
+则第 $i$ 个变量即与最优变量可分。定义 $\gamma^*=\max\gamma_i$，则此时需要的总次数是
+$$
+B\geq2\log_2(n)(n+\sum_{i=2}^n(\gamma^*)^{-1}(\dfrac{v_i-v_1}2))
+$$
+这个次数是确定性的，因为随机变量的行为被 $\gamma$ 约束，超过阈值后即严格可分。
+
+> [!TIP]
+>
+> 另一个与 MAB 相关的理论是 MCTS 中使用的 UCB/UCT 方法。但是因为 MCTS 的目标是最小化累计 regret，而调参的目标是最小化最小 regret，我们只有 explore 需求没有 exploit 需求，所以使用简单粗暴的 SH。
+
+### Interpretability
+
+尽管模型在全局是复杂的，但是局部一般是简单线性的。因此尝试用可解释的模型（一般是线性模型或决策树）$g$ 来解释复杂的 $f$，就是 **LIME**。令 $\Omega(g)$ 为 $g$ 的「复杂度」，例如线性模型中的非零位置数——我们总是希望解释简单。因为我们只在意局部信息，所以定义一种邻域采样方法 $\Pi_x$，其会更加关注 $x$ 周边的点。然后定义 $L(f,g,\Pi_x)$ 为在采样为 $\Pi_x$ 的前提下用 $g$ 拟合 $f$ 的误差，则 $x$ 处的解释是
+$$
+\xi(x)=\arg\min_gL(f,g,\Pi_x)+\Omega(g)
+$$
+对于图像，$g$ 和 $\Pi_x$ 一般不直接以像素为单位，而是先将图像通过 segmentation 分割为 ***super-pixel***，然后以之为特征应用线性模型。对于 NLP，一般直接以 word 为单位。
+
+但是 LIME 的局部归因性让它难以解释如 ReLU 在负数处的行为：正是因为特征在负数，输出才是 $0$，然而因为 LIME 仅会看到 $x$ 周围一圈点都因为有负数特征所以输出为 $0$ 而以为这维特征不重要。
+
+正因如此，我们应该比较 $x$ 与某个 baseline 的差异，其中 baseline 在图像中是全黑图、在其它任务中是所有 class 的得分均低的输入。我们认为 $x$ 属于某个分类，依靠的是 $x$ 与 baseline 的差异。
+
+事实上，归因性应该遵循如下公理：
+
+- Sensitivity：如果输入和 baseline 仅在某一维不同但分类有区别，则归因值必然非零；如果从数学上（而非实验上）表明与某个变量无关，则归因值必须为零。
+- Implementation Invariance：只要算法本质一样（例如，卷积层的卷积写法或矩阵乘法写法）解释结果必须一样。必须遵从链式法则而非离散梯度的近似。
+- Completeness：所有归因值的和必须恰等于与基线的差。
+- Linearity：如果模型是两个子模型的线性相加，则总解释同理。
+- Symmetry Preserving：对称的变量归因必须恰相同。
+
+唯一满足这些公理的方法只有 **积分梯度**，即
+$$
+\t{IntegratedGrads}_i(x)=(x_i-x_i')\int_0^1\dfrac{\p F(x'+\alpha(x-x'))}{\p x_i}\d\alpha
+$$
+其中 $x'$ 是 baseline。

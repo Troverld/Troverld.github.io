@@ -1,0 +1,8 @@
+{{- $posts := slice -}}
+{{- range where .RegularPages "Section" "posts" -}}
+  {{- $m := partial "metadata.html" . -}}
+  {{- $order := printf "0/%s/%s" $m.createdAt .RelPermalink -}}
+  {{- if not $m.createdAt }}{{ $order = printf "1/%s" .RelPermalink }}{{ end -}}
+  {{- $posts = $posts | append (dict "page" . "meta" $m "order" $order) -}}
+{{- end -}}
+{{- return (sort $posts "order" "desc") -}}

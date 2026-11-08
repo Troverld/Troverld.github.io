@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   {{ $title := .Site.Title }}{{ $description := .Site.Params.description }}
-  {{ if .IsPage }}{{ $m := partial "metadata.html" . }}{{ $title = printf "%s · %s" $m.publicTitle .Site.Title }}{{ $description = $m.publicDescription }}{{ end }}
+  {{ if .IsPage }}{{ $m := partial "metadata.html" . }}{{ $title = $m.tabTitle }}{{ $description = $m.publicDescription }}{{ end }}
   <title>{{ $title }}</title>
   <meta name="description" content="{{ $description }}">
   <link rel="icon" type="image/svg+xml" href="{{ "favicon.svg" | relURL }}">
@@ -17,6 +17,6 @@
 <body>
   <header class="site-header"><a href="{{ .Site.Home.RelPermalink }}">{{ .Site.Title }}</a><nav aria-label="主导航"><a href="{{ "posts/" | relURL }}">文章</a></nav></header>
   <main id="main">{{ block "main" . }}{{ end }}</main>
-  <footer class="site-footer">文字与笔记 · <a href="{{ .Site.Home.RelPermalink }}">首页</a></footer>
+  <footer class="site-footer">文章列表 · <a href="{{ .Site.Home.RelPermalink }}">首页</a></footer>
 </body>
 </html>

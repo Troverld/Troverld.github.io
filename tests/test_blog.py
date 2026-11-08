@@ -5,9 +5,14 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
+from datetime import datetime
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("admin", ROOT / "admin.py")
@@ -22,7 +27,8 @@ class AdminTests(unittest.TestCase):
             target = Path(directory) / "metadata.json"
             with patch.object(admin, "METADATA", target):
                 old = admin.revision()
-                value = {"MoE.txt": {"real_title": "真实标题", "date": "2026-11-07"}}
+                value = {"MoE.txt": {"real_title": "真实标题", "date": "2026-11-07",
+                                     "created_at": "2026-11-07 09:05", "source_url": "https://example.org/post"}}
                 new = admin.save_metadata(value, old)
                 self.assertEqual(admin.read_metadata(), value)
                 self.assertNotEqual(new, old)
@@ -30,7 +36,31 @@ class AdminTests(unittest.TestCase):
                     admin.save_metadata({}, old)
                 with self.assertRaises(ValueError):
                     admin.save_metadata({"MoE.txt": {"date": "2026-02-30"}}, new)
+                for invalid in ("2026-02-30 09:05", "2026-11-07 24:00", "2026-11-07",
+                                "2026-11-07T09:05", "2026-11-07 09:05:30", "2026-1-7 09:05", 123):
+                    with self.subTest(created_at=invalid), self.assertRaises(ValueError):
+                        admin.save_metadata({"MoE.txt": {"created_at": invalid}}, new)
                 self.assertEqual(admin.read_metadata(), value)
+                empty = {"MoE.txt": {"created_at": ""}}
+                admin.save_metadata(empty, new)
+                self.assertEqual(admin.read_metadata(), empty)
+
+    def test_current_system_time_endpoint(self):
+        with ThreadingHTTPServer(("127.0.0.1", 0), admin.Handler) as server:
+            worker = threading.Thread(target=server.serve_forever, daemon=True)
+            worker.start()
+            try:
+                url = f"http://127.0.0.1:{server.server_port}/api/time"
+                with self.assertRaises(HTTPError) as error:
+                    urlopen(url)
+                self.assertEqual(error.exception.code, 403)
+                with patch.object(admin, "datetime") as clock:
+                    clock.now.return_value = datetime(2026, 11, 8, 21, 4, 59)
+                    with urlopen(Request(url, headers={"X-Admin-Token": admin.TOKEN})) as response:
+                        self.assertEqual(json.load(response), {"created_at": "2026-11-08 21:04"})
+            finally:
+                server.shutdown()
+                worker.join()
 
 
 @unittest.skipUnless(HUGO, "Install Hugo or set HUGO_BIN")
@@ -80,7 +110,7 @@ A --> B
         home = (output / "index.html").read_text()
         page = (output / "posts/plain/index.html").read_text()
         simple = (output / "posts/simple/index.html").read_text()
-        self.assertIn("<title>plain · Troverld</title>", page)
+        self.assertIn("<title>plain</title>", page)
         self.assertIn("正文标题</h1>", page)
         self.assertNotIn("正文标题", home)
         self.assertIn('<div id="raw-html">HTML works</div>', page)
@@ -209,27 +239,83 @@ $$
         from html import unescape
         self.assertIn("x^2+y^2=z^2", unescape(page))
 
-    def test_metadata_isolation_and_invalid_optional_values(self):
-        self.article("test.txt", "正文。")
+    def test_metadata_priority_and_invalid_optional_values(self):
+        self.article("test.txt", "# 正文标题\n\n正文。")
         self.metadata({"test.txt": {"public_title": "公开标题", "public_description": "公开简介",
-                                    "real_title": "内部标题", "real_description": "内部简介", "date": "2026-11-07"}})
+                                    "real_title": "内部标题", "real_description": "内部简介",
+                                    "created_at": "2026-11-07 09:05"}})
         output = self.build()
         home = (output / "index.html").read_text()
         page = (output / "posts/test/index.html").read_text()
         head = page.split('</head>')[0]
-        for text in (home, head):
-            self.assertIn("公开标题", text)
-            self.assertIn("公开简介", text)
-            self.assertNotIn("内部标题", text)
-            self.assertNotIn("内部简介", text)
+        self.assertIn("公开标题", home)
+        self.assertIn("摘要：公开简介</p>", home)
+        self.assertNotIn("内部标题", home)
+        self.assertNotIn("内部简介", home)
+        self.assertIn("<title>内部标题</title>", head)
+        self.assertIn('content="公开简介"', head)
+        self.assertNotIn("内部简介", head)
         self.assertIn("内部标题</h1>", page)
-        self.assertIn("内部简介</p>", page)
-        self.assertIn('datetime="2026-11-07"', page)
-        self.metadata({"test.txt": {"public_title": 3, "date": "2026-99-99", "real_title": "内部标题"}})
+        self.assertIn("摘要：内部简介</p>", page)
+        self.assertIn('datetime="2026-11-07T09:05"', page)
+        self.metadata({"test.txt": {"public_title": 3, "public_description": "  ",
+                                    "date": "2026-99-99", "real_title": "内部标题",
+                                    "real_description": "内部简介"}})
         output = self.build()
-        self.assertIn("<title>test · Troverld</title>", (output / "posts/test/index.html").read_text())
-        self.assertNotIn("内部标题", (output / "index.html").read_text())
+        self.assertIn("<title>内部标题</title>", (output / "posts/test/index.html").read_text())
+        home = (output / "index.html").read_text()
+        self.assertIn("内部标题", home)
+        self.assertIn("摘要：内部简介</p>", home)
+        self.assertNotIn("<time", home)
+        self.metadata({"test.txt": {"public_title": "公开标题", "public_description": "公开简介"}})
+        output = self.build()
+        self.assertIn("公开标题", (output / "index.html").read_text())
+        self.assertIn("<title>test</title>", (output / "posts/test/index.html").read_text())
         self.metadata({"test.txt": "bad entry"})
+        output = self.build()
+        home = (output / "index.html").read_text()
+        self.assertIn('href="/posts/test/">test</a>', home)
+        self.assertNotIn("摘要：", home)
+        self.assertIn("<title>test</title>", (output / "posts/test/index.html").read_text())
+
+    def test_creation_time_sorting_and_navigation(self):
+        # Frontmatter and legacy dates must not give an undated post a timestamp.
+        self.article("missing.txt", '---\ndate: 2020-01-01\n---\n正文。')
+        for name in ("invalid", "older", "newer", "tie-a", "tie-b"):
+            self.article(f"{name}.txt", "正文。")
+        self.metadata({
+            "missing.txt": {"date": "2020-01-01"},
+            "invalid.txt": {"created_at": "2026-02-30 10:00"},
+            "older.txt": {"created_at": "2026-11-07 09:04", "public_title": "较早文章"},
+            "newer.txt": {"created_at": "2026-11-07 09:05", "real_title": "较新文章"},
+            "tie-a.txt": {"created_at": "2026-11-06 08:00"},
+            "tie-b.txt": {"created_at": "2026-11-06 08:00"},
+        })
+        output = self.build()
+        import re
+        order = ["missing", "invalid", "newer", "older", "tie-b", "tie-a"]
+        for listing in (output / "index.html", output / "posts/index.html"):
+            text = listing.read_text()
+            self.assertEqual(re.findall(r'<h2><a href="/posts/([^/]+)/">', text), order)
+            self.assertEqual(text.count('class="published-unknown">未知</span>'), 2)
+            self.assertIn('<time datetime="2026-11-07T09:05">2026-11-07 09:05</time>', text)
+            self.assertIn('class="post-heading"', text)
+        for index, name in enumerate(order):
+            page = (output / "posts" / name / "index.html").read_text()
+            nav = page.split('<nav class="post-navigation"', 1)[1]
+            if index + 1 < len(order):
+                self.assertIn(f'rel="prev" href="/posts/{order[index + 1]}/"', nav)
+            else:
+                self.assertIn("前篇：无", nav)
+                self.assertNotIn('rel="prev"', nav)
+            if index:
+                self.assertIn(f'rel="next" href="/posts/{order[index - 1]}/"', nav)
+            else:
+                self.assertIn("后篇：无", nav)
+                self.assertNotIn('rel="next"', nav)
+        page = (output / "posts/newer/index.html").read_text()
+        self.assertIn('href="/posts/older/">较早文章</a>', page)
+        self.metadata({"invalid.txt": {"created_at": 123}})
         self.build()
 
     def test_giscus_is_opt_in_and_base_path_works(self):

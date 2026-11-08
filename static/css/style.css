@@ -17,6 +17,12 @@ li > p { margin: .5em 0; }
 .post-list { padding: 0; list-style: none; }
 .post-list > li { border-bottom: 1px solid #eee; padding: 22px 0; }
 .post-list h2 { margin: 0 0 6px; font-size: 1.25em; }
+.post-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 24px; flex-wrap: wrap; }
+.published-at { margin-left: auto; white-space: nowrap; }
+.published-unknown { color: #666; font-size: .9rem; }
+.post-navigation { display: flex; justify-content: space-between; gap: 16px 32px; flex-wrap: wrap; margin-top: 48px; padding-top: 24px; border-top: 1px solid #ddd; }
+.post-navigation > span { flex: 1 1 240px; }
+.post-navigation > span:last-child { text-align: right; }
 .post-list p { margin: 8px 0 0; }
 .article-header { margin-bottom: 36px; }
 .article-header p { color: #555; }

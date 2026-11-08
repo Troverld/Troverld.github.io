@@ -1,0 +1,10 @@
+{{- $current := .RelPermalink -}}
+{{- $posts := partialCached "sorted-posts.html" .Site .Site.Language.Lang -}}
+{{- range $index, $post := $posts -}}
+  {{- if eq $post.page.RelPermalink $current -}}
+<nav class="post-navigation" aria-label="文章导航">
+  <span>前篇：{{ if lt (add $index 1) (len $posts) }}{{ $older := index $posts (add $index 1) }}<a rel="prev" href="{{ $older.page.RelPermalink }}">{{ $older.meta.publicTitle }}</a>{{ else }}无{{ end }}</span>
+  <span>后篇：{{ if gt $index 0 }}{{ $newer := index $posts (sub $index 1) }}<a rel="next" href="{{ $newer.page.RelPermalink }}">{{ $newer.meta.publicTitle }}</a>{{ else }}无{{ end }}</span>
+</nav>
+  {{- end -}}
+{{- end -}}
