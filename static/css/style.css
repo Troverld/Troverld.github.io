@@ -3,7 +3,8 @@
 body { max-width: 860px; margin: auto; padding: 0 28px; overflow-wrap: anywhere; }
 a { color: inherit; text-underline-offset: .2em; }
 a:hover { text-decoration-thickness: 2px; }
-.site-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; border-bottom: 1px solid #ddd; padding: 24px 0; }
+.site-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; border-bottom: 1px solid #ddd; padding: 24px 0; }
+.site-nav { display: flex; flex-wrap: wrap; gap: 16px; margin-left: auto; }
 .site-title { font-family: "Noto Sans CJK SC", "Microsoft YaHei", "SimHei", sans-serif; font-size: 1.25rem; font-weight: 800; text-decoration: none; }
 .site-motto { margin: 4px 0 0; }
 main { min-height: 65vh; padding: 32px 0 48px; }

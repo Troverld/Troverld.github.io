@@ -5,6 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   {{ $title := .Site.Title }}{{ $description := .Site.Params.description }}
+  {{ if .IsSection }}{{ $title = .Title }}{{ end }}
   {{ if .IsPage }}{{ $m := partial "metadata.html" . }}{{ $title = $m.tabTitle }}{{ $description = $m.publicDescription }}{{ end }}
   <title>{{ $title }}</title>
   <meta name="description" content="{{ $description }}">
@@ -20,9 +21,17 @@
       <a class="site-title" href="{{ .Site.Home.RelPermalink }}">{{ .Site.Title }}</a>
       <p class="site-motto muted">完整文章列表请见<a href="https://www.cnblogs.com/Troverld">博客园</a>。</p>
     </div>
-    <nav aria-label="主导航"><a href="{{ "posts/" | relURL }}">文章</a></nav>
+    <nav class="site-nav" aria-label="主导航">
+      <a href="{{ .Site.Home.RelPermalink }}">主页</a>
+      <a href="{{ "posts/" | relURL }}">文章</a>
+      <a href="{{ "links/" | relURL }}">链接</a>
+    </nav>
   </header>
   <main id="main">{{ block "main" . }}{{ end }}</main>
-  <footer class="site-footer">文章列表 · <a href="{{ .Site.Home.RelPermalink }}">首页</a></footer>
+  {{ $footerTitle := .Title }}
+  {{ if .IsHome }}{{ $footerTitle = "主页" }}
+  {{ else if and .IsSection (eq .Section "posts") }}{{ $footerTitle = "文章" }}
+  {{ else if .IsPage }}{{ $m := partial "metadata.html" . }}{{ $footerTitle = $m.realTitle }}{{ end }}
+  <footer class="site-footer">{{ $footerTitle }} · <a href="{{ .Site.Home.RelPermalink }}">首页</a> · <a href="https://github.com/Troverld/">作者</a> · <a href="https://www.cnblogs.com/Troverld">博客园</a></footer>
 </body>
 </html>
