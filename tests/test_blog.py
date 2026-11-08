@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -71,7 +72,10 @@ class HugoTests(unittest.TestCase):
         self.site = Path(self.temporary.name)
         for directory in ("layouts", "static"):
             shutil.copytree(ROOT / directory, self.site / directory)
-        shutil.copy(ROOT / "hugo.toml", self.site / "hugo.toml")
+        # Tests start with comments disabled, independently of the live site's IDs.
+        config = (ROOT / "hugo.toml").read_text()
+        config = re.sub(r"(?m)^(repoId|categoryId) = .*?$", r"\1 = ''", config)
+        (self.site / "hugo.toml").write_text(config)
         (self.site / "content/posts").mkdir(parents=True)
         (self.site / "data").mkdir()
 
