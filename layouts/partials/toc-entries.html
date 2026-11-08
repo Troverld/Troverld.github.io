@@ -1,0 +1,9 @@
+{{- range . -}}
+  {{- if .ID -}}
+    <li><a href="#{{ .ID }}">{{ .Title | safeHTML }}</a>
+      {{- with .Headings }}<ul>{{ partial "toc-entries.html" . }}</ul>{{ end -}}
+    </li>
+  {{- else -}}
+    {{- with .Headings }}{{ partial "toc-entries.html" . }}{{ end -}}
+  {{- end -}}
+{{- end -}}

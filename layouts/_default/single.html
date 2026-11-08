@@ -1,5 +1,16 @@
 {{ define "main" }}
 {{ $m := partial "metadata.html" . }}
+{{ $hasTOC := gt (len .Fragments.Identifiers) 0 }}
+<div class="post-layout{{ if $hasTOC }} has-toc{{ end }}">
+{{ if $hasTOC }}
+  <aside class="post-sidebar" aria-label="文章目录">
+    <details class="post-toc">
+      <summary>目录</summary>
+      <nav id="TableOfContents" aria-label="章节导航"><ul>{{ partial "toc-entries.html" .Fragments.Headings }}</ul></nav>
+    </details>
+  </aside>
+{{ end }}
+<div class="post-content">
 <article>
   <header class="article-header"><h1>{{ $m.realTitle }}</h1>
     {{ with $m.realDescription }}<p>摘要：{{ . }}</p>{{ end }}
@@ -11,4 +22,7 @@
 {{ if .Store.Get "hasMermaid" }}<script type="module" src="{{ "js/mermaid.js" | relURL }}"></script>{{ end }}
 {{ partial "giscus.html" . }}
 {{ partial "post-navigation.html" . }}
+</div>
+</div>
+{{ if $hasTOC }}<script defer src="{{ "js/toc.js" | relURL }}"></script>{{ end }}
 {{ end }}
