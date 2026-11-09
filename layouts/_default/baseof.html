@@ -9,7 +9,7 @@
   {{ if .IsPage }}{{ $m := partial "metadata.html" . }}{{ $title = $m.tabTitle }}{{ $description = $m.publicDescription }}{{ end }}
   <title>{{ $title }}</title>
   <meta name="description" content="{{ $description }}">
-  <link rel="icon" type="image/svg+xml" href="{{ "cutted-dhms.svg" | relURL }}">
+  <link rel="icon" type="image/svg+xml" href="{{ "cutted-dhms-with-assessory.svg" | relURL }}">
   <link rel="canonical" href="{{ .Permalink }}">
   {{ if .Store.Get "hasMath" }}<link rel="preload" as="script" href="{{ "vendor/mathjax/3.2.2/tex-svg-full.js" | relURL }}">{{ end }}
   {{ if .Store.Get "hasMermaid" }}<link rel="modulepreload" href="{{ "vendor/mermaid/11.12.0/mermaid.esm.min.mjs" | relURL }}">{{ end }}
@@ -18,7 +18,7 @@
 <body>
   <header class="site-header">
     <div class="site-brand">
-      <img class="site-logo" src="{{ "dhms-with-background.svg" | relURL }}" alt="" width="499" height="499">
+      <img class="site-logo" src="{{ "dhms-with-assessory-with-background.svg" | relURL }}" alt="" width="499" height="499">
       <div class="site-brand-text">
         <a class="site-title" href="{{ .Site.Home.RelPermalink }}">{{ .Site.Title }}</a>
         <p class="site-motto muted">完整文章列表请见<a href="https://www.cnblogs.com/Troverld">博客园</a>。</p>
@@ -35,6 +35,6 @@
   {{ if .IsHome }}{{ $footerTitle = "主页" }}
   {{ else if and .IsSection (eq .Section "posts") }}{{ $footerTitle = "文章" }}
   {{ else if .IsPage }}{{ $m := partial "metadata.html" . }}{{ $footerTitle = $m.realTitle }}{{ end }}
-  <footer class="site-footer">{{ $footerTitle }} · <a href="{{ .Site.Home.RelPermalink }}">首页</a> · <a href="https://github.com/Troverld/">作者</a> · <a href="https://www.cnblogs.com/Troverld">博客园</a> · <img class="footer-logo" src="{{ "cutted-dhms.svg" | relURL }}" alt="DHMS" width="280" height="280"></footer>
+  <footer class="site-footer">{{ $footerTitle }} · <a href="{{ .Site.Home.RelPermalink }}">首页</a> · <a href="https://github.com/Troverld/">作者</a> · <a href="https://www.cnblogs.com/Troverld">博客园</a> · <img class="footer-logo" src="{{ "cutted-dhms-with-assessory.svg" | relURL }}" alt="DHMS" width="280" height="280"></footer>
 </body>
 </html>
